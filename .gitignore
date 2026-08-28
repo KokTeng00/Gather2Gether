@@ -1,43 +1,52 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+/coverage/
+*.iml
 
-# dependencies
-node_modules/
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+# Flutter generated platform files
+**/Flutter/ephemeral/
+**/Pods/
+**/.symlinks/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+android/local.properties
 
-# Native
-.kotlin/
-*.orig.*
+# Signing material
 *.jks
+*.keystore
 *.p8
 *.p12
-*.key
 *.mobileprovision
+key.properties
 
-# Metro
-.metro-health-check*
+# Local configuration and infrastructure secrets
+.env.json
+.env.*.json
+!.env.example.json
+.env.deploy
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+crashlytics-build.properties
 
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+# Logs
+*.log
 
-# macOS
-.DS_Store
-*.pem
+# Node / Cloudflare tooling dependencies
+node_modules/
 
-# local env files
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-example
-
-# generated native folders
-/ios
-/android
+# Local deployment tool caches
+.wrangler/
+supabase/.temp/

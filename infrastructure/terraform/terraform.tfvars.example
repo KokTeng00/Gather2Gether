@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and keep the real file out of git.
+# Rotate any credentials that have ever been pasted into chat or source code.
+
+app_name          = "gather2gether"
+environment       = "production"
+production_branch = "main"
+
+cloudflare_api_token = "replace-with-pages-write-token"
+cloudflare_account_id = "replace-with-account-id"
+
+supabase_access_token    = "replace-with-project-admin-token"
+supabase_organization_id = "replace-with-organization-id"
+supabase_region          = "eu-west-1"
