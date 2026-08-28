@@ -216,7 +216,10 @@ class _PostRow extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Material(
       color: colors.surface,
-      borderRadius: BorderRadius.circular(20),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colors.outlineVariant),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -229,14 +232,11 @@ class _PostRow extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [visual.start, visual.end],
-                  ),
-                  borderRadius: BorderRadius.circular(13),
+                  color: visual.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: visual.ink.withValues(alpha: 0.18)),
                 ),
-                child: Icon(visual.icon, color: Colors.white, size: 21),
+                child: Icon(visual.icon, color: visual.ink, size: 21),
               ),
               const SizedBox(width: 13),
               Expanded(

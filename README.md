@@ -9,6 +9,8 @@ ideas in a moderated community forum. One Dart codebase targets Android and iOS.
 - Email/password account creation and sign-in
 - Foreground-only location permission
 - PostGIS nearby-event search at 5, 10, 25, or 50 km
+- Draggable Gather Guide with private chat history, nearby-event questions, app
+  help, preparation tips, a closable panel, and a profile settings toggle
 - Interactive OpenStreetMap view with event markers and map/list switching
 - Free event creation with venue, date/time, and capacity
 - Atomic Join/Tentative/Cancel RSVP updates
@@ -32,6 +34,12 @@ Cloudflare Pages Functions
         v
 Supabase Auth + PostgreSQL + PostGIS + RLS + transactional RPCs
 
+Pages Function -> internal service binding -> model Worker
+                                      |
+                         Cloudflare Secrets Store
+                                      |
+                       OpenRouter / Gemini 3.1 Flash Lite
+
 Terraform
   Supabase project/settings + Cloudflare Pages project
 ```
@@ -41,6 +49,13 @@ session, and forwards the user's JWT. Supabase remains the final authorization
 and transaction boundary. The edge Function has no service-role key. The mobile
 client never receives a database password, JWT signing secret, service-role key,
 Supabase personal token, or Cloudflare token.
+
+Gather Guide performs deterministic, indexed PostGIS/full-text event retrieval
+before its single model call. Event locations use the existing GiST index;
+weighted title/category/venue text uses a generated `tsvector` with a GIN index.
+Only the bounded event matches and recent user-owned messages are sent to the
+model. Chat history is stored in PostgreSQL behind fixed-signature RPCs and is
+never readable across accounts.
 
 ## Local setup
 
@@ -110,13 +125,32 @@ npx supabase@latest db push --dry-run
 npx supabase@latest db push
 ```
 
-Deploy the `/functions` edge API after setting `CLOUDFLARE_API_TOKEN` and
-`CLOUDFLARE_ACCOUNT_ID`:
+Deploy the private model Worker first, then the `/functions` edge API. Cloudflare
+requires the service-binding target to exist before Pages is deployed:
 
 ```bash
 npm exec --yes --package=node@22 --package=wrangler@latest -- \
+  wrangler deploy --config wrangler.assistant.jsonc
+npm exec --yes --package=node@22 --package=wrangler@latest -- \
   wrangler pages deploy cloudflare/public --branch main
 ```
+
+The OpenRouter credential is an account-level Secrets Store binding on the
+private `gather2gether-assistant-model` Worker, not a Pages variable or mobile
+configuration value. Pages calls that Worker through the `ASSISTANT_MODEL`
+service binding, so the secret never enters the public API process. Create it
+through Wrangler's masked prompt and bind it as `OPENROUTER_API_KEY` in
+`wrangler.assistant.jsonc`:
+
+```bash
+wrangler secrets-store store list --remote
+wrangler secrets-store secret create STORE_ID \
+  --name OPENROUTER_API_KEY --scopes workers --remote
+```
+
+Production uses `google/gemini-3.1-flash-lite` with minimal reasoning for short
+response time. Create a separate local-only secret (omit `--remote`) when using
+Wrangler local development; production secret values are not available locally.
 
 The checked-in `wrangler.jsonc` contains only public runtime configuration. Pages
 Functions execute validation and orchestration at Cloudflare; database integrity,

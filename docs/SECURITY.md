@@ -19,6 +19,14 @@
 - Anonymous users cannot read profiles, events, RSVPs, reports, or blocks.
 - Profiles store only rounded coordinates; no background location or location
   history is collected.
+- Assistant messages deny direct table access. Security-definer RPCs scope
+  history, deletion, rate limits, and replies to `auth.uid()`.
+- Assistant event lookup combines a GiST geography index, a GIN full-text index,
+  future-event filters, mutual blocks, and a hard result limit before calling a
+  model. The model cannot query PostgreSQL or invent authoritative availability.
+- The OpenRouter key is an account-level Cloudflare Secrets Store binding on a
+  private model Worker. Pages reaches it through a service binding; neither
+  service logs, returns, or sends the key to the mobile client.
 - Auth sessions use Android Keystore encryption and iOS Keychain.
 - Android cloud backup is disabled for encrypted auth material.
 - Cloudflare serves HSTS, CSP, anti-framing, MIME-sniffing, referrer, and
@@ -41,13 +49,19 @@ The Flutter app may contain only:
 - the Supabase publishable key;
 - the public Cloudflare edge API URL.
 
-The Cloudflare Function environment may contain the same public Supabase URL and
-publishable key. It must never contain a database password, Supabase personal
-access token, service-role key, or JWT signing secret.
+The Pages Function environment may contain the same public Supabase URL and
+publishable key. The OpenRouter credential must be supplied only through the
+`OPENROUTER_API_KEY` account-level Secrets Store binding on the private model
+Worker. Neither Cloudflare service may contain a database password, Supabase
+personal access token, service-role key, or JWT signing secret.
 
 Never place a Cloudflare token, Supabase personal access token, database
 password, service-role/secret key, or JWT signing secret in Dart code, web
 assets, CI logs, or committed variable files.
+
+Any model credential pasted into chat or another third-party system must be
+rotated after initial setup. Update the Secrets Store value through Wrangler's
+masked interactive prompt, never through a command-line `--value` argument.
 
 Terraform state contains the generated database password even though Terraform
 marks it sensitive. Move state to an encrypted, access-controlled remote
@@ -77,3 +91,6 @@ project's database password or JWT secret.
 - Add per-user Cloudflare rate-limit bindings before opening registration at
   scale; database capacity checks must remain authoritative because edge rate
   limits are not transaction locks.
+- Publish assistant-specific retention and AI-subprocessor disclosures. The app
+  currently retains at most 200 messages per user until they clear history or
+  delete their account.

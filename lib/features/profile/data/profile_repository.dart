@@ -15,7 +15,7 @@ class ProfileRepository {
         .from('profiles')
         .select(
           'display_name, city, preferred_radius_km, '
-          'approximate_latitude, approximate_longitude',
+          'approximate_latitude, approximate_longitude, assistant_enabled',
         )
         .eq('id', userId)
         .single();
@@ -43,6 +43,15 @@ class ProfileRepository {
     }
 
     await _client.from('profiles').update(values).eq('id', userId);
+  }
+
+  Future<void> updateAssistantEnabled(bool enabled) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw StateError('Sign in required.');
+    await _client
+        .from('profiles')
+        .update({'assistant_enabled': enabled})
+        .eq('id', userId);
   }
 
   double _roundLocation(double value) => (value * 100).round() / 100;

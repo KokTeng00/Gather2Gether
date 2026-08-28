@@ -4,6 +4,13 @@
   "pages_build_output_dir": "./cloudflare/public",
   "compatibility_date": "2026-08-23",
   "compatibility_flags": ["nodejs_compat"],
+  "placement": {"mode": "smart"},
+  "services": [
+    {
+      "binding": "ASSISTANT_MODEL",
+      "service": "gather2gether-assistant-model"
+    }
+  ],
   "vars": {
     "SUPABASE_URL": "https://zpxwzpdjyvvbpywbrnpr.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_DpBwCFSTnzGRQv91utVxCA_M4v6R0EH"

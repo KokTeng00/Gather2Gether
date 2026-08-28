@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "gather2gether-assistant-model",
+  "main": "./workers/assistant-model.js",
+  "compatibility_date": "2026-08-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "placement": {"mode": "smart"},
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "secrets_store_secrets": [
+    {
+      "binding": "OPENROUTER_API_KEY",
+      "store_id": "0d09852def6c4e0387fb1e64795ab407",
+      "secret_name": "OPENROUTER_API_KEY"
+    }
+  ]
+}

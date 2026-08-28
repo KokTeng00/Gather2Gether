@@ -5,6 +5,7 @@ class UserProfile {
     required this.preferredRadiusKm,
     required this.approximateLatitude,
     required this.approximateLongitude,
+    required this.assistantEnabled,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -15,6 +16,7 @@ class UserProfile {
           (json['preferred_radius_km'] as num?)?.toDouble() ?? 10,
       approximateLatitude: (json['approximate_latitude'] as num?)?.toDouble(),
       approximateLongitude: (json['approximate_longitude'] as num?)?.toDouble(),
+      assistantEnabled: (json['assistant_enabled'] as bool?) ?? true,
     );
   }
 
@@ -23,4 +25,5 @@ class UserProfile {
   final double preferredRadiusKm;
   final double? approximateLatitude;
   final double? approximateLongitude;
+  final bool assistantEnabled;
 }

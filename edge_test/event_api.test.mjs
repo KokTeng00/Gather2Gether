@@ -246,6 +246,136 @@ test('forum comment report uses a fixed reason and target RPC', async () => {
   });
 });
 
+test('assistant searches indexed nearby events before calling the configured model', async () => {
+  const calls = [];
+  const serviceCalls = [];
+  const assistantEnv = {
+    ...env,
+    ASSISTANT_MODEL: {
+      fetch: async (request) => {
+        serviceCalls.push(request);
+        return Response.json({answer: 'Morning Run is about 850 m away.'});
+      },
+    },
+  };
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/begin_assistant_turn')) return Response.json(101);
+    if (address.endsWith('/rpc/search_nearby_events')) {
+      return Response.json([{
+        id: eventId,
+        title: 'Morning Run',
+        category: 'Running',
+        venue_name: 'City Park',
+        start_at: '2099-01-01T08:00:00Z',
+        distance_meters: 850,
+      }]);
+    }
+    if (address.endsWith('/rpc/list_assistant_messages')) {
+      return Response.json([{id: 101, role: 'user', content: 'Any running events near me?'}]);
+    }
+    if (address.endsWith('/rpc/finish_assistant_turn')) return Response.json(102);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const response = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/assistant/chat', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: 'Any running events near me?',
+        latitude: 52.52,
+        longitude: 13.405,
+        radius_km: 10,
+      }),
+    }),
+    assistantEnv,
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  const searchCall = calls.find((call) => call.url.endsWith('/rpc/search_nearby_events'));
+  assert.deepEqual(JSON.parse(searchCall.options.body), {
+    p_latitude: 52.52,
+    p_longitude: 13.405,
+    p_radius_km: 10,
+    p_query: 'running',
+    p_limit: 8,
+  });
+  assert.equal(serviceCalls.length, 1);
+  const modelBody = await serviceCalls[0].json();
+  assert.equal(modelBody.event_search_requested, true);
+  assert.equal(modelBody.location_available, true);
+  assert.equal(modelBody.event_matches[0].title, 'Morning Run');
+  assert.equal(payload.message.content, 'Morning Run is about 850 m away.');
+  assert.equal(payload.event_matches[0].id, eventId);
+});
+
+test('assistant answers app questions without performing an event search', async () => {
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const address = String(url);
+    calls.push(address);
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/begin_assistant_turn')) return Response.json(201);
+    if (address.endsWith('/rpc/list_assistant_messages')) {
+      return Response.json([{id: 201, role: 'user', content: 'How do I use the app?'}]);
+    }
+    if (address.endsWith('/rpc/finish_assistant_turn')) return Response.json(202);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const response = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/assistant/chat', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: 'How do I use the app?',
+        latitude: null,
+        longitude: null,
+        radius_km: 10,
+      }),
+    }),
+    {
+      ...env,
+      ASSISTANT_MODEL: {
+        fetch: async () => Response.json({answer: 'Start in Discover and choose an event.'}),
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.some((url) => url.endsWith('/rpc/search_nearby_events')), false);
+});
+
+test('assistant history can be cleared only through the authenticated RPC', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({url: String(url), options});
+    if (String(url).endsWith('/auth/v1/user')) return Response.json({id: userId});
+    return new Response(null, {status: 204});
+  };
+
+  const response = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/assistant/history', {
+      method: 'DELETE',
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.match(calls[1].url, /\/rpc\/clear_assistant_history$/);
+});
+
 test('browser-origin requests are rejected for the mobile-only API', async () => {
   const response = await handleApiRequest(
     new Request('https://gather2gether.pages.dev/api/v1/events', {

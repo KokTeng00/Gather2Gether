@@ -122,6 +122,40 @@ if [[ "$(printf '%s' "$nearby_response" | jq -r --arg id "$event_id" 'any(.data[
   exit 1
 fi
 
+assistant_response="$(
+  curl --silent --show-error --fail-with-body \
+    --max-time 25 \
+    --request POST \
+    "${edge_api_url}/assistant/chat" \
+    --header "Authorization: Bearer ${attendee_token}" \
+    --header "Content-Type: application/json" \
+    --data '{"message":"Are there any running events near me?","latitude":52.52,"longitude":13.405,"radius_km":10}'
+)"
+
+if [[ -z "$(printf '%s' "$assistant_response" | jq -r '.message.content // empty')" ]]; then
+  printf 'Assistant did not return an answer.\n' >&2
+  exit 1
+fi
+if [[ "$(printf '%s' "$assistant_response" | jq -r --arg id "$event_id" 'any(.event_matches[]; .id == $id)')" != "true" ]]; then
+  printf 'Assistant did not receive the indexed nearby event match.\n' >&2
+  exit 1
+fi
+
+assistant_history="$(
+  curl --silent --show-error --fail-with-body \
+    "${edge_api_url}/assistant/history" \
+    --header "Authorization: Bearer ${attendee_token}"
+)"
+if [[ "$(printf '%s' "$assistant_history" | jq -r '.data | length')" -lt 2 ]]; then
+  printf 'Assistant history was not persisted.\n' >&2
+  exit 1
+fi
+
+curl --silent --show-error --fail-with-body \
+  --request DELETE \
+  "${edge_api_url}/assistant/history" \
+  --header "Authorization: Bearer ${attendee_token}" >/dev/null
+
 set_rsvp() {
   local status="$1"
   local body
@@ -168,4 +202,4 @@ if [[ "$anonymous_status" == "200" ]]; then
   exit 1
 fi
 
-printf 'Smoke test passed: Cloudflare compute, Supabase auth/database, create, nearby, report, RSVP capacity, and RLS.\n'
+printf 'Smoke test passed: Cloudflare compute, private model Worker, Supabase auth/database, indexed assistant search/history, create, nearby, report, RSVP capacity, and RLS.\n'

@@ -1,4 +1,5 @@
 const MAX_BODY_BYTES = 32 * 1024;
+const ASSISTANT_HISTORY_LIMIT = 24;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REPORT_REASONS = new Set([
@@ -63,6 +64,115 @@ export async function handleApiRequest(request, env) {
 
     assertEnvironment(env);
     const identity = await authenticate(request, env);
+
+    if (request.method === 'GET' && segments.join('/') === 'assistant/history') {
+      const messages = await supabaseRpc(
+        env,
+        identity.authorization,
+        'list_assistant_messages',
+        {p_limit: 50},
+      );
+      if (!Array.isArray(messages)) {
+        throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid assistant history.');
+      }
+      return jsonResponse({data: messages}, 200, requestId, cors);
+    }
+
+    if (request.method === 'DELETE' && segments.join('/') === 'assistant/history') {
+      await supabaseRpc(
+        env,
+        identity.authorization,
+        'clear_assistant_history',
+        {},
+      );
+      return jsonResponse({cleared: true}, 200, requestId, cors);
+    }
+
+    if (request.method === 'POST' && segments.join('/') === 'assistant/chat') {
+      const input = validateAssistantChat(await jsonBody(request));
+      const userMessageId = await supabaseRpc(
+        env,
+        identity.authorization,
+        'begin_assistant_turn',
+        {p_message: input.message},
+      );
+      if (!Number.isInteger(userMessageId) || userMessageId < 1) {
+        throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid message identifier.');
+      }
+
+      try {
+        const search = assistantEventSearch(input.message);
+        const eventPromise = search.shouldSearch && input.latitude !== null
+          ? supabaseRpc(
+            env,
+            identity.authorization,
+            'search_nearby_events',
+            {
+              p_latitude: input.latitude,
+              p_longitude: input.longitude,
+              p_radius_km: input.radiusKm,
+              p_query: search.query,
+              p_limit: 8,
+            },
+          )
+          : Promise.resolve([]);
+        const [history, eventMatches] = await Promise.all([
+          supabaseRpc(
+            env,
+            identity.authorization,
+            'list_assistant_messages',
+            {p_limit: ASSISTANT_HISTORY_LIMIT},
+          ),
+          eventPromise,
+        ]);
+        if (!Array.isArray(history) || !Array.isArray(eventMatches)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The assistant received invalid context.');
+        }
+
+        const answer = await openRouterChat({
+          env,
+          history,
+          eventMatches,
+          eventSearchRequested: search.shouldSearch,
+          locationAvailable: input.latitude !== null,
+        });
+        const assistantMessageId = await supabaseRpc(
+          env,
+          identity.authorization,
+          'finish_assistant_turn',
+          {p_user_message_id: userMessageId, p_message: answer},
+        );
+        if (!Number.isInteger(assistantMessageId) || assistantMessageId < 1) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid message identifier.');
+        }
+        return jsonResponse(
+          {
+            message: {
+              id: assistantMessageId,
+              role: 'assistant',
+              content: answer,
+              created_at: new Date().toISOString(),
+            },
+            event_matches: eventMatches,
+          },
+          200,
+          requestId,
+          cors,
+        );
+      } catch (error) {
+        try {
+          await supabaseRpc(
+            env,
+            identity.authorization,
+            'discard_assistant_turn',
+            {p_user_message_id: userMessageId},
+          );
+        } catch (_) {
+          // The original safe error is more useful than cleanup failure details.
+        }
+        throw error;
+      }
+    }
 
     if (request.method === 'GET' && segments.join('/') === 'forum/posts') {
       const posts = await supabaseRpc(
@@ -372,6 +482,9 @@ function mappedSupabaseError(status, payload) {
     forum_post_unavailable: [404, 'forum_post_not_found', 'Discussion was not found.'],
     forum_comment_unavailable: [404, 'forum_comment_not_found', 'Comment was not found.'],
     forum_post_locked: [409, 'forum_post_locked', 'This discussion is locked.'],
+    assistant_validation: [400, 'assistant_validation', 'Your message is invalid.'],
+    assistant_disabled: [403, 'assistant_disabled', 'The assistant is disabled in your settings.'],
+    assistant_rate_limited: [429, 'assistant_rate_limited', 'Please wait a moment before sending another message.'],
     invalid_report_reason: [400, 'invalid_report_reason', 'Report reason is invalid.'],
     cannot_report_own_content: [400, 'cannot_report_own_content', 'You cannot report your own content.'],
     permission_denied: [403, 'permission_denied', 'You do not have permission for this action.'],
@@ -466,6 +579,18 @@ function validateForumReport(body) {
   return body.reason;
 }
 
+function validateAssistantChat(body) {
+  exactKeys(body, ['message', 'latitude', 'longitude', 'radius_km']);
+  const message = stringParameter(body.message, 'message', 1, 600);
+  const latitude = nullableNumberParameter(body.latitude, 'latitude', -90, 90);
+  const longitude = nullableNumberParameter(body.longitude, 'longitude', -180, 180);
+  if ((latitude === null) !== (longitude === null)) {
+    throw new ApiError(400, 'invalid_parameter', 'Location is invalid.');
+  }
+  const radiusKm = numberParameter(body.radius_km, 'radius_km', 1, 100);
+  return {message, latitude, longitude, radiusKm};
+}
+
 function exactKeys(value, expected) {
   const actual = Object.keys(value).sort();
   const wanted = [...expected].sort();
@@ -493,6 +618,11 @@ function numberParameter(value, name, minimum, maximum) {
   return parsed;
 }
 
+function nullableNumberParameter(value, name, minimum, maximum) {
+  if (value === null) return null;
+  return numberParameter(value, name, minimum, maximum);
+}
+
 function integerParameter(value, name, minimum, maximum) {
   const parsed = numberParameter(value, name, minimum, maximum);
   if (!Number.isInteger(parsed)) {
@@ -517,6 +647,81 @@ function dateParameter(value, name) {
     throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
   }
   return parsed;
+}
+
+function assistantEventSearch(message) {
+  const normalized = message.toLowerCase();
+  const categories = [
+    ['language exchange', /\b(language exchange|language practice|practice language)\b/],
+    ['board games', /\b(board game|board games|tabletop)\b/],
+    ['badminton', /\bbadminton\b/],
+    ['running', /\b(run|running|jog|jogging)\b/],
+    ['padel', /\bpadel\b/],
+    ['hiking', /\b(hike|hiking|trail|walking group)\b/],
+    ['coffee', /\b(coffee|cafe|café)\b/],
+    ['photography', /\b(photo|photos|photography|camera)\b/],
+    ['startup', /\b(startup|founder|entrepreneur)\b/],
+    ['cycling', /\b(cycle|cycling|bike ride|biking)\b/],
+  ];
+  const locationIntent = /\b(near me|nearby|around me|close by|in my area|local events?|what(?:'s| is) on)\b/.test(normalized);
+  const category = categories.find(([, pattern]) => pattern.test(normalized));
+  const unknownType = normalized.match(
+    /\b(?:any|find|show me|looking for|are there|is there)\s+([a-z0-9 -]{2,36}?)\s+(?:events?|meetups?|groups?)\b/,
+  )?.[1]?.trim();
+  return {
+    shouldSearch: locationIntent || category !== undefined || unknownType !== undefined,
+    query: category?.[0] ?? unknownType ?? null,
+  };
+}
+
+async function openRouterChat({
+  env,
+  history,
+  eventMatches,
+  eventSearchRequested,
+  locationAvailable,
+}) {
+  if (!env.ASSISTANT_MODEL || typeof env.ASSISTANT_MODEL.fetch !== 'function') {
+    throw new ApiError(503, 'assistant_not_configured', 'The assistant is not configured.');
+  }
+  const messages = history
+    .filter((row) => row?.role === 'user' || row?.role === 'assistant')
+    .filter((row) => typeof row.content === 'string' && row.content.length <= 4000)
+    .slice(-ASSISTANT_HISTORY_LIMIT)
+    .map((row) => ({role: row.role, content: row.content}));
+
+  let response;
+  try {
+    response = await env.ASSISTANT_MODEL.fetch(new Request('https://assistant.internal/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        history: messages,
+        event_matches: eventMatches.slice(0, 8),
+        event_search_requested: eventSearchRequested,
+        location_available: locationAvailable,
+      }),
+    }));
+  } catch (_) {
+    throw new ApiError(503, 'assistant_unavailable', 'The assistant is temporarily unavailable.');
+  }
+  if (!response.ok) {
+    const status = response.status === 429 ? 429 : 503;
+    const code = response.status === 429 ? 'assistant_busy' : 'assistant_unavailable';
+    throw new ApiError(status, code, 'The assistant is temporarily unavailable.');
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (_) {
+    throw new ApiError(502, 'invalid_model_response', 'The assistant returned an invalid response.');
+  }
+  const answer = payload?.answer;
+  if (typeof answer !== 'string' || answer.trim().length < 1 || answer.trim().length > 4000) {
+    throw new ApiError(502, 'invalid_model_response', 'The assistant returned an invalid response.');
+  }
+  return answer.trim();
 }
 
 function supabaseHeaders(env, authorization) {

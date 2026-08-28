@@ -288,6 +288,8 @@ class _ViewControls extends StatelessWidget {
           child: CupertinoSlidingSegmentedControl<bool>(
             groupValue: showMap,
             padding: const EdgeInsets.all(3),
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            thumbColor: Theme.of(context).colorScheme.secondaryContainer,
             children: const {
               false: Padding(
                 padding: EdgeInsets.symmetric(vertical: 7),
@@ -322,6 +324,9 @@ class _ViewControls extends StatelessWidget {
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
             child: Row(
               children: [
@@ -357,7 +362,8 @@ class _MapStatus extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
     decoration: BoxDecoration(
       color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
     ),
     child: Row(
       children: [
@@ -394,7 +400,10 @@ class _EventRow extends StatelessWidget {
         : '${(event.distanceMeters / 1000).toStringAsFixed(1)} km';
     return Material(
       color: colors.surface,
-      borderRadius: BorderRadius.circular(20),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colors.outlineVariant),
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -406,18 +415,11 @@ class _EventRow extends StatelessWidget {
                 width: 90,
                 height: 96,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [visual.start, visual.end],
-                  ),
-                  borderRadius: BorderRadius.circular(15),
+                  color: visual.background,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: visual.ink.withValues(alpha: 0.18)),
                 ),
-                child: Icon(
-                  visual.icon,
-                  size: 38,
-                  color: Colors.white.withValues(alpha: 0.92),
-                ),
+                child: Icon(visual.icon, size: 38, color: visual.ink),
               ),
               const SizedBox(width: 13),
               Expanded(
@@ -486,7 +488,7 @@ class _LocationPrompt extends StatelessWidget {
               color: Theme.of(
                 context,
               ).colorScheme.primary.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(22),
             ),
             child: Icon(
               CupertinoIcons.location_fill,

@@ -1,89 +1,87 @@
-import 'dart:ui';
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class CategoryVisual {
-  const CategoryVisual(this.start, this.end, this.icon);
+  const CategoryVisual(this.background, this.ink, this.icon);
 
-  final Color start;
-  final Color end;
+  final Color background;
+  final Color ink;
   final IconData icon;
 
   static CategoryVisual forName(String value) => switch (value.toLowerCase()) {
     'badminton' => const CategoryVisual(
-      Color(0xFF12B886),
-      Color(0xFF087F5B),
+      Color(0xFFDDEDD5),
+      Color(0xFF245841),
       CupertinoIcons.sportscourt,
     ),
     'running' => const CategoryVisual(
-      Color(0xFFFF7A45),
-      Color(0xFFFF3B30),
+      Color(0xFFF3D3B6),
+      Color(0xFF934724),
       CupertinoIcons.flame_fill,
     ),
     'padel' => const CategoryVisual(
-      Color(0xFF34C759),
-      Color(0xFF008F3C),
+      Color(0xFFD9E7B7),
+      Color(0xFF48602A),
       CupertinoIcons.circle_grid_hex_fill,
     ),
     'hiking' => const CategoryVisual(
-      Color(0xFF6A994E),
-      Color(0xFF386641),
+      Color(0xFFD9E1C8),
+      Color(0xFF405534),
       CupertinoIcons.map_fill,
     ),
     'coffee' => const CategoryVisual(
-      Color(0xFFB08968),
-      Color(0xFF7F5539),
+      Color(0xFFE9D8C6),
+      Color(0xFF6B4932),
       Icons.coffee_rounded,
     ),
     'board games' => const CategoryVisual(
-      Color(0xFF9B5DE5),
-      Color(0xFF5A189A),
+      Color(0xFFE3D8EC),
+      Color(0xFF654B77),
       CupertinoIcons.game_controller_solid,
     ),
     'language exchange' => const CategoryVisual(
-      Color(0xFF00A8E8),
-      Color(0xFF006494),
+      Color(0xFFD3E5E8),
+      Color(0xFF315F68),
       CupertinoIcons.chat_bubble_2_fill,
     ),
     'photography' => const CategoryVisual(
-      Color(0xFFFF5D8F),
-      Color(0xFFB5174B),
+      Color(0xFFF0D7D8),
+      Color(0xFF7A4347),
       CupertinoIcons.camera_fill,
     ),
     'startup' => const CategoryVisual(
-      Color(0xFF5E5CE6),
-      Color(0xFF3634A3),
+      Color(0xFFD8DDED),
+      Color(0xFF414F79),
       CupertinoIcons.rocket_fill,
     ),
     'cycling' => const CategoryVisual(
-      Color(0xFF00B4D8),
-      Color(0xFF0077B6),
+      Color(0xFFD1E5E2),
+      Color(0xFF2C625C),
       Icons.directions_bike_rounded,
     ),
     'safety' => const CategoryVisual(
-      Color(0xFFFF9F0A),
-      Color(0xFFFF6B00),
+      Color(0xFFF0E0B7),
+      Color(0xFF7A5A1E),
       CupertinoIcons.shield_fill,
     ),
     'event ideas' => const CategoryVisual(
-      Color(0xFFFF375F),
-      Color(0xFFC9184A),
-      CupertinoIcons.sparkles,
+      Color(0xFFECD9C7),
+      Color(0xFF785237),
+      CupertinoIcons.lightbulb_fill,
     ),
     'local tips' => const CategoryVisual(
-      Color(0xFF30B0C7),
-      Color(0xFF007A8A),
+      Color(0xFFD4E5DE),
+      Color(0xFF315F50),
       CupertinoIcons.location_fill,
     ),
     'looking for group' => const CategoryVisual(
-      Color(0xFF0A84FF),
-      Color(0xFF0055C7),
+      Color(0xFFD9E3D4),
+      Color(0xFF3B5B43),
       CupertinoIcons.person_2_fill,
     ),
     _ => const CategoryVisual(
-      Color(0xFF8E8E93),
-      Color(0xFF48484A),
+      Color(0xFFE1DED5),
+      Color(0xFF555B55),
       CupertinoIcons.star_fill,
     ),
   };
@@ -109,9 +107,18 @@ class AppPageHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Container(
+              width: 34,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.secondary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
             Text(title, style: Theme.of(context).textTheme.displaySmall),
             if (subtitle != null) ...[
-              const SizedBox(height: 5),
+              const SizedBox(height: 6),
               Text(
                 subtitle!,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -154,16 +161,21 @@ class AppCircleButton extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: filled ? colors.primary : colors.surface,
-        shape: const CircleBorder(),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(13),
+          side: BorderSide(
+            color: filled ? colors.primary : colors.outlineVariant,
+          ),
+        ),
         child: InkWell(
-          customBorder: const CircleBorder(),
+          borderRadius: BorderRadius.circular(13),
           onTap: onPressed,
           child: SizedBox.square(
-            dimension: 42,
+            dimension: 44,
             child: Icon(
               icon,
               size: 21,
-              color: filled ? Colors.white : colors.primary,
+              color: filled ? colors.onPrimary : colors.primary,
             ),
           ),
         ),
@@ -189,25 +201,28 @@ class AppSection extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Padding(
-        padding: const EdgeInsets.only(left: 4, bottom: 8),
+        padding: const EdgeInsets.only(left: 2, bottom: 8),
         child: Text(
           title.toUpperCase(),
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.35,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
           ),
         ),
       ),
       Material(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+        ),
         clipBehavior: Clip.antiAlias,
         child: child,
       ),
       if (footer != null)
         Padding(
-          padding: const EdgeInsets.fromLTRB(4, 7, 4, 0),
+          padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
           child: Text(
             footer!,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -243,72 +258,53 @@ class AppHeroArt extends StatelessWidget {
       button: onTap != null,
       label: title,
       child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(26),
+        color: visual.background,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: visual.ink.withValues(alpha: 0.2)),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
-          child: Ink(
+          child: SizedBox(
             height: height,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [visual.start, visual.end],
-              ),
-            ),
             child: Stack(
               children: [
                 Positioned(
-                  right: -20,
-                  top: -14,
+                  right: -18,
+                  top: -16,
                   child: Icon(
                     visual.icon,
-                    size: height * 0.72,
-                    color: Colors.white.withValues(alpha: 0.13),
-                  ),
-                ),
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withValues(alpha: 0.48),
-                        ],
-                        stops: const [0.35, 1],
-                      ),
-                    ),
+                    size: height * 0.73,
+                    color: visual.ink.withValues(alpha: 0.11),
                   ),
                 ),
                 Positioned(
-                  left: 20,
-                  top: 20,
+                  left: 18,
+                  top: 18,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
+                      horizontal: 9,
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.24),
-                      borderRadius: BorderRadius.circular(999),
+                      color: visual.ink,
+                      borderRadius: BorderRadius.circular(7),
                     ),
                     child: Text(
                       label.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
+                      style: TextStyle(
+                        color: visual.background,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.8,
                       ),
                     ),
                   ),
                 ),
                 Positioned(
-                  left: 20,
-                  right: 20,
+                  left: 18,
+                  right: 18,
                   bottom: 18,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,24 +313,24 @@ class AppHeroArt extends StatelessWidget {
                         title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 25,
-                          height: 1.08,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
+                        style: TextStyle(
+                          color: visual.ink,
+                          fontSize: 26,
+                          height: 1.04,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.7,
                         ),
                       ),
                       if (subtitle != null) ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 7),
                         Text(
                           subtitle!,
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.88),
+                            color: visual.ink.withValues(alpha: 0.78),
                             fontSize: 14,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -356,13 +352,13 @@ class FrostedContainer extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ClipRect(
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-      child: ColoredBox(
-        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.88),
-        child: child,
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      border: Border(
+        top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
     ),
+    child: child,
   );
 }

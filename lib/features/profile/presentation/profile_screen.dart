@@ -7,7 +7,14 @@ import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({
+    required this.assistantEnabled,
+    required this.onAssistantEnabledChanged,
+    super.key,
+  });
+
+  final bool assistantEnabled;
+  final ValueChanged<bool> onAssistantEnabledChanged;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -26,11 +33,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _locating = false;
+  bool _assistantEnabled = true;
+  bool _assistantSaving = false;
 
   @override
   void initState() {
     super.initState();
+    _assistantEnabled = widget.assistantEnabled;
     _load();
+  }
+
+  @override
+  void didUpdateWidget(ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.assistantEnabled != widget.assistantEnabled &&
+        !_assistantSaving) {
+      _assistantEnabled = widget.assistantEnabled;
+    }
   }
 
   @override
@@ -48,6 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _radiusKm = profile.preferredRadiusKm;
       _latitude = profile.approximateLatitude;
       _longitude = profile.approximateLongitude;
+      _assistantEnabled = profile.assistantEnabled;
     } catch (_) {
       _showError('Could not load your profile.');
     } finally {
@@ -101,6 +121,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _setAssistantEnabled(bool enabled) async {
+    if (_assistantSaving) return;
+    final previous = _assistantEnabled;
+    setState(() {
+      _assistantEnabled = enabled;
+      _assistantSaving = true;
+    });
+    widget.onAssistantEnabledChanged(enabled);
+    try {
+      await _profiles.updateAssistantEnabled(enabled);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _assistantEnabled = previous);
+        widget.onAssistantEnabledChanged(previous);
+        _showError('Could not update Gather Guide settings.');
+      }
+    } finally {
+      if (mounted) setState(() => _assistantSaving = false);
+    }
+  }
+
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(
@@ -137,20 +178,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   width: 92,
                   height: 92,
                   alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF0A84FF), Color(0xFF5E5CE6)],
-                    ),
-                    shape: BoxShape.circle,
+                  decoration: BoxDecoration(
+                    color: colors.secondaryContainer,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: colors.outlineVariant),
                   ),
                   child: Text(
                     initial,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: colors.onSecondaryContainer,
                       fontSize: 36,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
@@ -251,6 +289,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ? const CupertinoActivityIndicator()
                     : const Icon(CupertinoIcons.chevron_forward, size: 16),
                 onTap: _locating ? null : _updateLocation,
+              ),
+            ),
+            const SizedBox(height: 24),
+            AppSection(
+              title: 'Gather Guide',
+              footer:
+                  'When enabled, the draggable guide appears after sign-in. Your conversation is private to your account and can be cleared from the chat.',
+              child: _SettingsRow(
+                icon: CupertinoIcons.chat_bubble_2_fill,
+                title: 'Show Gather Guide',
+                subtitle: 'Nearby event search and app help',
+                trailing: _assistantSaving
+                    ? const CupertinoActivityIndicator()
+                    : Switch.adaptive(
+                        value: _assistantEnabled,
+                        onChanged: _setAssistantEnabled,
+                      ),
+                onTap: _assistantSaving
+                    ? null
+                    : () => _setAssistantEnabled(!_assistantEnabled),
               ),
             ),
             const SizedBox(height: 28),

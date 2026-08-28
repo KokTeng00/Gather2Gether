@@ -3,20 +3,39 @@ import 'package:flutter/material.dart';
 class AppTheme {
   const AppTheme._();
 
-  static const blue = Color(0xFF0A84FF);
-  static const lightBackground = Color(0xFFF5F5F7);
-  static const darkBackground = Color(0xFF000000);
+  static const fern = Color(0xFF285F46);
+  static const lightBackground = Color(0xFFF3F0E7);
+  static const darkBackground = Color(0xFF111612);
 
   static ThemeData get light => _theme(Brightness.light);
   static ThemeData get dark => _theme(Brightness.dark);
 
   static ThemeData _theme(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
-    final scheme = ColorScheme.fromSeed(
-      seedColor: blue,
+    final seeded = ColorScheme.fromSeed(
+      seedColor: fern,
       brightness: brightness,
-      primary: isDark ? const Color(0xFF0A84FF) : const Color(0xFF007AFF),
-      surface: isDark ? const Color(0xFF1C1C1E) : Colors.white,
+    );
+    final scheme = seeded.copyWith(
+      primary: isDark ? const Color(0xFF9BD3AD) : fern,
+      onPrimary: isDark ? const Color(0xFF123324) : Colors.white,
+      secondary: const Color(0xFFD7E66D),
+      onSecondary: const Color(0xFF252B0C),
+      secondaryContainer: isDark
+          ? const Color(0xFF31391E)
+          : const Color(0xFFE9EDC2),
+      onSecondaryContainer: isDark
+          ? const Color(0xFFE9F1BD)
+          : const Color(0xFF293010),
+      surface: isDark ? const Color(0xFF1B211C) : const Color(0xFFFCFAF4),
+      onSurface: isDark ? const Color(0xFFE8ECE6) : const Color(0xFF1B211D),
+      onSurfaceVariant: isDark
+          ? const Color(0xFFABB5AC)
+          : const Color(0xFF626B63),
+      outline: isDark ? const Color(0xFF59635B) : const Color(0xFF9D9B91),
+      outlineVariant: isDark
+          ? const Color(0xFF343D36)
+          : const Color(0xFFD5D0C4),
     );
     final base = ThemeData(brightness: brightness, useMaterial3: true);
 
@@ -34,15 +53,15 @@ class AppTheme {
       ),
       textTheme: base.textTheme.copyWith(
         displaySmall: base.textTheme.displaySmall?.copyWith(
-          fontSize: 34,
-          height: 1.05,
-          fontWeight: FontWeight.w700,
-          letterSpacing: -1.1,
+          fontSize: 36,
+          height: 1.02,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -1.3,
         ),
         headlineMedium: base.textTheme.headlineMedium?.copyWith(
           fontSize: 28,
           height: 1.08,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           letterSpacing: -0.7,
         ),
         headlineSmall: base.textTheme.headlineSmall?.copyWith(
@@ -91,11 +110,14 @@ class AppTheme {
         margin: EdgeInsets.zero,
         color: scheme.surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surface,
+        fillColor: isDark ? const Color(0xFF202821) : const Color(0xFFFFFDF8),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 15,
@@ -105,23 +127,23 @@ class AppTheme {
           color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: scheme.outlineVariant),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: scheme.primary, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: scheme.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: scheme.error, width: 1.5),
         ),
       ),
@@ -131,7 +153,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
           textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
         ),
@@ -141,7 +163,7 @@ class AppTheme {
           minimumSize: const Size.fromHeight(52),
           side: BorderSide(color: scheme.outlineVariant),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
           textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
         ),
@@ -152,15 +174,15 @@ class AppTheme {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        height: 66,
+        height: 70,
         elevation: 0,
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: Colors.transparent,
+        indicatorColor: scheme.secondaryContainer,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
-            size: 25,
+            size: 23,
             color: states.contains(WidgetState.selected)
                 ? scheme.primary
                 : scheme.onSurfaceVariant,
@@ -194,13 +216,13 @@ class AppTheme {
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
     );
   }
