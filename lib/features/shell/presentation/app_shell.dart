@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
@@ -24,6 +26,7 @@ class _AppShellState extends State<AppShell> {
   bool _assistantEnabled = true;
   bool _assistantPreferenceLoaded = false;
   Offset? _assistantOffset;
+  bool _assistantIsDragging = false;
 
   @override
   void initState() {
@@ -80,13 +83,26 @@ class _AppShellState extends State<AppShell> {
       }
     }
     if (!mounted) return;
+    final size = MediaQuery.sizeOf(context);
+    final isWide = size.width >= 700;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      showDragHandle: false,
       backgroundColor: Theme.of(context).colorScheme.surface,
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      clipBehavior: Clip.antiAlias,
+      constraints: BoxConstraints(
+        maxWidth: isWide ? 560 : size.width,
+        maxHeight: size.height,
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       builder: (context) => SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.84,
+        width: double.infinity,
+        height: size.height * (isWide ? 0.78 : 0.92),
         child: AssistantPanel(profile: profile!),
       ),
     );
@@ -97,19 +113,61 @@ class _AppShellState extends State<AppShell> {
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
-          const bubbleSize = 58.0;
+          const bubbleSize = 56.0;
+          final safeInsets = MediaQuery.viewPaddingOf(context);
+          final area = Size(constraints.maxWidth, constraints.maxHeight);
           final fallback = Offset(
-            constraints.maxWidth - bubbleSize - 16,
-            constraints.maxHeight - bubbleSize - 20,
+            constraints.maxWidth - bubbleSize,
+            constraints.maxHeight - bubbleSize - safeInsets.bottom - 14,
           );
-          final position = Offset(
-            (_assistantOffset?.dx ?? fallback.dx).clamp(
-              12.0,
-              constraints.maxWidth - bubbleSize - 12,
-            ),
-            (_assistantOffset?.dy ?? fallback.dy).clamp(
-              12.0,
-              constraints.maxHeight - bubbleSize - 12,
+          final proposedPosition = _assistantOffset ?? fallback;
+          final position = _assistantIsDragging
+              ? clampAssistantOffset(
+                  proposedPosition,
+                  area: area,
+                  safeInsets: safeInsets,
+                  bubbleSize: bubbleSize,
+                )
+              : dockAssistantOffset(
+                  proposedPosition,
+                  area: area,
+                  safeInsets: safeInsets,
+                  bubbleSize: bubbleSize,
+                );
+          final launcher = Semantics(
+            button: true,
+            label:
+                'Open Gather Guide. Drag to move; it snaps to the nearest screen edge.',
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _openAssistant,
+              onPanStart: (_) => setState(() {
+                _assistantIsDragging = true;
+                _assistantOffset = position;
+              }),
+              onPanUpdate: (details) {
+                setState(() {
+                  _assistantOffset = clampAssistantOffset(
+                    position + details.delta,
+                    area: area,
+                    safeInsets: safeInsets,
+                    bubbleSize: bubbleSize,
+                  );
+                });
+              },
+              onPanEnd: (_) => _dockAssistant(
+                position,
+                area: area,
+                safeInsets: safeInsets,
+                bubbleSize: bubbleSize,
+              ),
+              onPanCancel: () => _dockAssistant(
+                position,
+                area: area,
+                safeInsets: safeInsets,
+                bubbleSize: bubbleSize,
+              ),
+              child: _AssistantLauncher(isDragging: _assistantIsDragging),
             ),
           );
           return Stack(
@@ -131,31 +189,14 @@ class _AppShellState extends State<AppShell> {
                 ],
               ),
               if (_assistantPreferenceLoaded && _assistantEnabled)
-                Positioned(
+                AnimatedPositioned(
+                  duration: _assistantIsDragging
+                      ? Duration.zero
+                      : const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
                   left: position.dx,
                   top: position.dy,
-                  child: Semantics(
-                    button: true,
-                    label: 'Open Gather Guide. Drag to move.',
-                    child: GestureDetector(
-                      onTap: _openAssistant,
-                      onPanUpdate: (details) {
-                        setState(() {
-                          _assistantOffset = Offset(
-                            (position.dx + details.delta.dx).clamp(
-                              12.0,
-                              constraints.maxWidth - bubbleSize - 12,
-                            ),
-                            (position.dy + details.delta.dy).clamp(
-                              12.0,
-                              constraints.maxHeight - bubbleSize - 12,
-                            ),
-                          );
-                        });
-                      },
-                      child: const _AssistantLauncher(),
-                    ),
-                  ),
+                  child: launcher,
                 ),
             ],
           );
@@ -187,58 +228,128 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
+
+  void _dockAssistant(
+    Offset fallback, {
+    required Size area,
+    required EdgeInsets safeInsets,
+    required double bubbleSize,
+  }) {
+    setState(() {
+      _assistantIsDragging = false;
+      _assistantOffset = dockAssistantOffset(
+        _assistantOffset ?? fallback,
+        area: area,
+        safeInsets: safeInsets,
+        bubbleSize: bubbleSize,
+      );
+    });
+  }
 }
 
 class _AssistantLauncher extends StatelessWidget {
-  const _AssistantLauncher();
+  const _AssistantLauncher({required this.isDragging});
+
+  final bool isDragging;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Tooltip(
       message: 'Gather Guide',
-      child: Material(
-        color: colors.primary,
-        elevation: 3,
-        shadowColor: Colors.black.withValues(alpha: 0.24),
-        borderRadius: BorderRadius.circular(18),
-        child: SizedBox.square(
-          dimension: 58,
-          child: Stack(
-            children: [
-              Center(
-                child: Icon(
-                  CupertinoIcons.chat_bubble_text_fill,
-                  color: colors.onPrimary,
-                  size: 27,
-                ),
-              ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: colors.secondary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: colors.primary, width: 2),
+      child: AnimatedScale(
+        scale: isDragging ? 1.08 : 1,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOutCubic,
+        child: Material(
+          color: colors.primary.withValues(alpha: 0.94),
+          elevation: isDragging ? 8 : 4,
+          shadowColor: Colors.black.withValues(alpha: 0.28),
+          shape: CircleBorder(
+            side: BorderSide(color: colors.onPrimary.withValues(alpha: 0.24)),
+          ),
+          child: SizedBox.square(
+            dimension: 56,
+            child: Center(
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: colors.onPrimary.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: colors.onPrimary.withValues(alpha: 0.72),
+                    width: 1.5,
                   ),
                 ),
-              ),
-              Positioned(
-                left: 7,
-                top: 20,
                 child: Icon(
-                  CupertinoIcons.ellipsis_vertical,
-                  size: 11,
-                  color: colors.onPrimary.withValues(alpha: 0.65),
+                  CupertinoIcons.bubble_left_fill,
+                  color: colors.onPrimary,
+                  size: 19,
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+@visibleForTesting
+Offset clampAssistantOffset(
+  Offset proposed, {
+  required Size area,
+  required EdgeInsets safeInsets,
+  double bubbleSize = 56,
+  double edgeInset = 5,
+}) {
+  final minX = safeInsets.left + edgeInset;
+  final minY = safeInsets.top + edgeInset;
+  final maxX = math.max(
+    minX,
+    area.width - safeInsets.right - bubbleSize - edgeInset,
+  );
+  final maxY = math.max(
+    minY,
+    area.height - safeInsets.bottom - bubbleSize - edgeInset,
+  );
+  return Offset(
+    proposed.dx.clamp(minX, maxX).toDouble(),
+    proposed.dy.clamp(minY, maxY).toDouble(),
+  );
+}
+
+@visibleForTesting
+Offset dockAssistantOffset(
+  Offset proposed, {
+  required Size area,
+  required EdgeInsets safeInsets,
+  double bubbleSize = 56,
+  double edgeInset = 5,
+}) {
+  final clamped = clampAssistantOffset(
+    proposed,
+    area: area,
+    safeInsets: safeInsets,
+    bubbleSize: bubbleSize,
+    edgeInset: edgeInset,
+  );
+  final minX = safeInsets.left + edgeInset;
+  final minY = safeInsets.top + edgeInset;
+  final maxX = math.max(
+    minX,
+    area.width - safeInsets.right - bubbleSize - edgeInset,
+  );
+  final maxY = math.max(
+    minY,
+    area.height - safeInsets.bottom - bubbleSize - edgeInset,
+  );
+  final distances = <({double distance, Offset position})>[
+    (distance: clamped.dx - minX, position: Offset(minX, clamped.dy)),
+    (distance: maxX - clamped.dx, position: Offset(maxX, clamped.dy)),
+    (distance: clamped.dy - minY, position: Offset(clamped.dx, minY)),
+    (distance: maxY - clamped.dy, position: Offset(clamped.dx, maxY)),
+  ]..sort((a, b) => a.distance.compareTo(b.distance));
+  return distances.first.position;
 }

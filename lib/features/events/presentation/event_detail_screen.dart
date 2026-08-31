@@ -268,7 +268,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ? null
                       : () => _setRsvp('joined'),
                   child: _loading
-                      ? const CupertinoActivityIndicator(color: Colors.white)
+                      ? CupertinoActivityIndicator(color: colors.onPrimary)
                       : Text(status == 'joined' ? 'Going ✓' : 'I’m Going'),
                 ),
               ),

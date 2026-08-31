@@ -393,7 +393,7 @@ class _EventRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = CategoryVisual.forName(event.category);
+    final visual = CategoryVisual.resolve(context, event.category);
     final colors = Theme.of(context).colorScheme;
     final distance = event.distanceMeters < 1000
         ? '${event.distanceMeters.round()} m'

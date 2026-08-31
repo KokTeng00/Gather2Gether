@@ -194,7 +194,9 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
               FilledButton.icon(
                 onPressed: _submitting ? null : _submit,
                 icon: _submitting
-                    ? const CupertinoActivityIndicator(color: Colors.white)
+                    ? CupertinoActivityIndicator(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      )
                     : const Icon(CupertinoIcons.paperplane_fill),
                 label: Text(_submitting ? 'Publishing…' : 'Publish Discussion'),
               ),

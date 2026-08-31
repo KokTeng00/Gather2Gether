@@ -93,7 +93,14 @@ class _ForumScreenState extends State<ForumScreen> {
             ),
             const SliverPadding(
               padding: EdgeInsets.fromLTRB(20, 0, 20, 22),
-              sliver: SliverToBoxAdapter(child: _CommunityBanner()),
+              sliver: SliverToBoxAdapter(
+                child: AppFeatureBanner(
+                  label: 'Neighbourhood notes',
+                  title: 'A space for good neighbours',
+                  subtitle: 'Be kind · Keep personal details private',
+                  icon: CupertinoIcons.person_3_fill,
+                ),
+              ),
             ),
             if (_loading)
               const SliverFillRemaining(
@@ -127,17 +134,41 @@ class _ForumScreenState extends State<ForumScreen> {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
                 sliver: SliverToBoxAdapter(
-                  child: Text(
-                    'Latest',
-                    style: Theme.of(context).textTheme.titleLarge,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Latest conversations',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Text(
+                          '${_posts.length}',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                 sliver: SliverList.separated(
                   itemCount: _posts.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
                   itemBuilder: (_, index) => _PostRow(
                     post: _posts[index],
                     onTap: () => _open(_posts[index]),
@@ -152,58 +183,6 @@ class _ForumScreenState extends State<ForumScreen> {
   }
 }
 
-class _CommunityBanner extends StatelessWidget {
-  const _CommunityBanner();
-
-  @override
-  Widget build(BuildContext context) => Container(
-    height: 132,
-    padding: const EdgeInsets.all(19),
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF5E5CE6), Color(0xFF0A84FF)],
-      ),
-      borderRadius: BorderRadius.circular(24),
-    ),
-    child: Stack(
-      children: [
-        Positioned(
-          right: -4,
-          bottom: -20,
-          child: Icon(
-            CupertinoIcons.chat_bubble_2_fill,
-            size: 118,
-            color: Colors.white.withValues(alpha: 0.12),
-          ),
-        ),
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Icon(CupertinoIcons.person_3_fill, color: Colors.white, size: 24),
-            SizedBox(height: 10),
-            Text(
-              'A space for good neighbours',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            SizedBox(height: 3),
-            Text(
-              'Be kind · Keep personal details private',
-              style: TextStyle(color: Color(0xDFFFFFFF), fontSize: 13),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
-
 class _PostRow extends StatelessWidget {
   const _PostRow({required this.post, required this.onTap});
 
@@ -212,101 +191,132 @@ class _PostRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = CategoryVisual.forName(post.category);
+    final visual = CategoryVisual.resolve(context, post.category);
     final colors = Theme.of(context).colorScheme;
-    return Material(
-      color: colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colors.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(15),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return AppSurface(
+      onTap: onTap,
+      borderRadius: 18,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: visual.background,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: visual.ink.withValues(alpha: 0.18)),
-                ),
-                child: Icon(visual.icon, color: visual.ink, size: 21),
-              ),
-              const SizedBox(width: 13),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: visual.background,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: visual.ink.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
+                        Icon(visual.icon, color: visual.ink, size: 14),
+                        const SizedBox(width: 6),
+                        Flexible(
                           child: Text(
                             post.category,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: colors.primary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                              color: visual.ink,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
-                        Text(
-                          forumTimeAgo(post.lastActivityAt),
-                          style: TextStyle(
-                            color: colors.onSurfaceVariant,
-                            fontSize: 12,
-                          ),
-                        ),
                       ],
                     ),
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            post.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                        ),
-                        if (post.isLocked)
-                          const Padding(
-                            padding: EdgeInsets.only(left: 5),
-                            child: Icon(CupertinoIcons.lock_fill, size: 14),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      '${post.authorName}  ·  ${post.commentCount} ${post.commentCount == 1 ? 'reply' : 'replies'}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 6),
-              Padding(
-                padding: const EdgeInsets.only(top: 14),
-                child: Icon(
-                  CupertinoIcons.chevron_forward,
-                  size: 15,
-                  color: colors.onSurfaceVariant,
+              const SizedBox(width: 8),
+              if (post.isLocked) ...[
+                Tooltip(
+                  message: 'Discussion locked',
+                  child: Icon(
+                    CupertinoIcons.lock_fill,
+                    size: 13,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
+                const SizedBox(width: 7),
+              ],
+              Text(
+                forumTimeAgo(post.lastActivityAt),
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Text(
+            post.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            post.body,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 13),
+          Row(
+            children: [
+              Icon(
+                CupertinoIcons.person_crop_circle,
+                size: 15,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  post.authorName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Icon(
+                CupertinoIcons.chat_bubble,
+                size: 15,
+                color: colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                '${post.commentCount}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(
+                CupertinoIcons.chevron_forward,
+                size: 14,
+                color: colors.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -328,31 +338,40 @@ class _ForumMessage extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 52),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 7),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(
+                color: colors.primaryContainer,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(icon, size: 28, color: colors.onPrimaryContainer),
             ),
-          ),
-          const SizedBox(height: 20),
-          FilledButton.tonal(onPressed: onPressed, child: Text(action)),
-        ],
+            const SizedBox(height: 17),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 7),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.tonal(onPressed: onPressed, child: Text(action)),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

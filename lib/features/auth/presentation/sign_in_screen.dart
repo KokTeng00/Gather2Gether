@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/core/validation/validators.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -69,6 +70,11 @@ class _SignInScreenState extends State<SignInScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _setSignUp(bool value) {
+    if (_isLoading || value == _isSignUp) return;
+    setState(() => _isSignUp = value);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -77,33 +83,49 @@ class _SignInScreenState extends State<SignInScreen> {
         children: [
           Positioned.fill(
             child: DecoratedBox(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                   colors: [
-                    Color(0xFF0A84FF),
-                    Color(0xFF5E5CE6),
-                    Color(0xFFFF375F),
+                    Theme.of(context).scaffoldBackgroundColor,
+                    Color.alphaBlend(
+                      colors.primaryContainer.withValues(alpha: 0.32),
+                      Theme.of(context).scaffoldBackgroundColor,
+                    ),
                   ],
-                  stops: [0, 0.55, 1],
                 ),
               ),
             ),
           ),
           Positioned(
-            right: -90,
-            top: 20,
-            child: Icon(
-              CupertinoIcons.person_3_fill,
-              size: 330,
-              color: Colors.white.withValues(alpha: 0.08),
+            right: -84,
+            top: -92,
+            child: Container(
+              width: 238,
+              height: 238,
+              decoration: BoxDecoration(
+                color: colors.primaryContainer.withValues(alpha: 0.62),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Positioned(
+            left: -102,
+            top: 212,
+            child: Container(
+              width: 188,
+              height: 188,
+              decoration: BoxDecoration(
+                color: colors.secondaryContainer.withValues(alpha: 0.5),
+                shape: BoxShape.circle,
+              ),
             ),
           ),
           SafeArea(
             child: SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(20, 34, 20, 30),
+              padding: const EdgeInsets.fromLTRB(20, 26, 20, 30),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 460),
@@ -113,62 +135,90 @@ class _SignInScreenState extends State<SignInScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Container(
-                            width: 64,
-                            height: 64,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.22),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.25),
+                          Row(
+                            children: [
+                              const AppBrandMark(size: 58),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Gather2Gether',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            color: colors.primary,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Nearby plans, made together',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: colors.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            child: const Icon(
-                              CupertinoIcons.person_2_fill,
-                              color: Colors.white,
-                              size: 31,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          const Text(
-                            'Gather2Gether',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 36,
-                              height: 1.05,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -1.2,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Real people. Nearby plans. Always free.',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              fontSize: 17,
-                            ),
+                            ],
                           ),
                           const SizedBox(height: 34),
-                          Container(
-                            padding: const EdgeInsets.all(20),
-                            decoration: BoxDecoration(
-                              color: colors.surface.withValues(alpha: 0.96),
-                              borderRadius: BorderRadius.circular(28),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x33000000),
-                                  blurRadius: 30,
-                                  offset: Offset(0, 14),
+                          Text(
+                            'Make nearby feel closer.',
+                            style: Theme.of(context).textTheme.displaySmall
+                                ?.copyWith(
+                                  color: colors.onSurface,
+                                  fontSize: 40,
+                                  height: 1.02,
                                 ),
-                              ],
-                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Find free events, meet your neighbours, and turn a good idea into a real plan.',
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                  height: 1.42,
+                                ),
+                          ),
+                          const SizedBox(height: 28),
+                          AppSurface(
+                            padding: const EdgeInsets.all(20),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: SegmentedButton<bool>(
+                                    showSelectedIcon: false,
+                                    expandedInsets: EdgeInsets.zero,
+                                    segments: const [
+                                      ButtonSegment(
+                                        value: false,
+                                        label: Text('Sign in'),
+                                      ),
+                                      ButtonSegment(
+                                        value: true,
+                                        label: Text('Create account'),
+                                      ),
+                                    ],
+                                    selected: {_isSignUp},
+                                    onSelectionChanged: _isLoading
+                                        ? null
+                                        : (selection) =>
+                                              _setSignUp(selection.first),
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
                                 Text(
                                   _isSignUp
-                                      ? 'Create your account'
+                                      ? 'Join your local community'
                                       : 'Welcome back',
                                   style: Theme.of(
                                     context,
@@ -177,11 +227,12 @@ class _SignInScreenState extends State<SignInScreen> {
                                 const SizedBox(height: 5),
                                 Text(
                                   _isSignUp
-                                      ? 'Join the community in less than a minute.'
+                                      ? 'Create your account in less than a minute.'
                                       : 'Sign in to see what is happening nearby.',
-                                  style: TextStyle(
-                                    color: colors.onSurfaceVariant,
-                                  ),
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: colors.onSurfaceVariant,
+                                      ),
                                 ),
                                 const SizedBox(height: 20),
                                 if (_isSignUp) ...[
@@ -189,6 +240,7 @@ class _SignInScreenState extends State<SignInScreen> {
                                     controller: _nameController,
                                     textCapitalization:
                                         TextCapitalization.words,
+                                    textInputAction: TextInputAction.next,
                                     autofillHints: const [AutofillHints.name],
                                     decoration: const InputDecoration(
                                       labelText: 'Name',
@@ -249,8 +301,8 @@ class _SignInScreenState extends State<SignInScreen> {
                                 FilledButton(
                                   onPressed: _isLoading ? null : _submit,
                                   child: _isLoading
-                                      ? const CupertinoActivityIndicator(
-                                          color: Colors.white,
+                                      ? CupertinoActivityIndicator(
+                                          color: colors.onPrimary,
                                         )
                                       : Text(
                                           _isSignUp
@@ -258,30 +310,44 @@ class _SignInScreenState extends State<SignInScreen> {
                                               : 'Continue',
                                         ),
                                 ),
-                                const SizedBox(height: 8),
-                                TextButton(
-                                  onPressed: _isLoading
-                                      ? null
-                                      : () => setState(
-                                          () => _isSignUp = !_isSignUp,
-                                        ),
-                                  child: Text(
-                                    _isSignUp
-                                        ? 'Already have an account? Sign In'
-                                        : 'New here? Create an Account',
-                                  ),
-                                ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 18),
-                          Text(
-                            'No subscriptions. No payments. Your precise location is never stored.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.84),
-                              fontSize: 13,
-                              height: 1.35,
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.secondaryContainer.withValues(
+                                alpha: 0.72,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: colors.secondary.withValues(alpha: 0.38),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  CupertinoIcons.checkmark_shield_fill,
+                                  color: colors.onSecondaryContainer,
+                                  size: 21,
+                                ),
+                                const SizedBox(width: 11),
+                                Expanded(
+                                  child: Text(
+                                    'Always free. Your precise location is never stored.',
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color: colors.onSecondaryContainer,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],

@@ -85,6 +85,213 @@ class CategoryVisual {
       CupertinoIcons.star_fill,
     ),
   };
+
+  static CategoryVisual resolve(BuildContext context, String value) {
+    final visual = forName(value);
+    final colors = Theme.of(context).colorScheme;
+    if (Theme.of(context).brightness == Brightness.light) return visual;
+    return CategoryVisual(
+      Color.alphaBlend(visual.ink.withValues(alpha: 0.3), colors.surface),
+      Color.lerp(visual.ink, colors.onSurface, 0.7)!,
+      visual.icon,
+    );
+  }
+}
+
+class AppBrandMark extends StatelessWidget {
+  const AppBrandMark({this.size = 58, super.key});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      image: true,
+      label: 'Gather2Gether',
+      child: SizedBox.square(
+        dimension: size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colors.primary,
+                  borderRadius: BorderRadius.circular(size * 0.3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: colors.primary.withValues(alpha: 0.2),
+                      blurRadius: size * 0.28,
+                      offset: Offset(0, size * 0.12),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  CupertinoIcons.person_2_fill,
+                  size: size * 0.46,
+                  color: colors.onPrimary,
+                ),
+              ),
+            ),
+            Positioned(
+              right: size * 0.08,
+              top: size * 0.08,
+              child: Container(
+                width: size * 0.2,
+                height: size * 0.2,
+                decoration: BoxDecoration(
+                  color: colors.secondary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colors.primary, width: 2),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AppSurface extends StatelessWidget {
+  const AppSurface({
+    required this.child,
+    this.padding,
+    this.onTap,
+    this.color,
+    this.borderColor,
+    this.borderRadius = 20,
+    super.key,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final VoidCallback? onTap;
+  final Color? color;
+  final Color? borderColor;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(borderRadius);
+    final content = padding == null
+        ? child
+        : Padding(padding: padding!, child: child);
+    return Material(
+      color: color ?? colors.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: radius,
+        side: BorderSide(
+          color: borderColor ?? colors.outlineVariant.withValues(alpha: 0.82),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: onTap == null
+          ? content
+          : InkWell(borderRadius: radius, onTap: onTap, child: content),
+    );
+  }
+}
+
+class AppFeatureBanner extends StatelessWidget {
+  const AppFeatureBanner({
+    required this.label,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    super.key,
+  });
+
+  final String label;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AppSurface(
+      color: colors.primaryContainer,
+      borderColor: colors.primary.withValues(alpha: 0.18),
+      borderRadius: 24,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 158),
+        child: Stack(
+          alignment: Alignment.bottomLeft,
+          clipBehavior: Clip.antiAlias,
+          children: [
+            Positioned(
+              right: -12,
+              bottom: -26,
+              child: Icon(
+                icon,
+                size: 132,
+                color: colors.onPrimaryContainer.withValues(alpha: 0.08),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: colors.primary,
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Icon(icon, color: colors.onPrimary, size: 18),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          label.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: colors.onPrimaryContainer,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.9,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: colors.onPrimaryContainer,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.onPrimaryContainer.withValues(alpha: 0.78),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class AppPageHeader extends StatelessWidget {
@@ -108,9 +315,9 @@ class AppPageHeader extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 34,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 10),
+              width: 38,
+              height: 5,
+              margin: const EdgeInsets.only(bottom: 11),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.secondary,
                 borderRadius: BorderRadius.circular(2),
@@ -162,13 +369,13 @@ class AppCircleButton extends StatelessWidget {
       child: Material(
         color: filled ? colors.primary : colors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(13),
+          borderRadius: BorderRadius.circular(15),
           side: BorderSide(
             color: filled ? colors.primary : colors.outlineVariant,
           ),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(13),
+          borderRadius: BorderRadius.circular(15),
           onTap: onPressed,
           child: SizedBox.square(
             dimension: 44,
@@ -201,25 +408,17 @@ class AppSection extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Padding(
-        padding: const EdgeInsets.only(left: 2, bottom: 8),
+        padding: const EdgeInsets.only(left: 2, bottom: 9),
         child: Text(
-          title.toUpperCase(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.8,
+          title,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.1,
           ),
         ),
       ),
-      Material(
-        color: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: child,
-      ),
+      AppSurface(borderRadius: 18, child: child),
       if (footer != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
@@ -253,14 +452,14 @@ class AppHeroArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = CategoryVisual.forName(label);
+    final visual = CategoryVisual.resolve(context, label);
     return Semantics(
       button: onTap != null,
       label: title,
       child: Material(
         color: visual.background,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(22),
           side: BorderSide(color: visual.ink.withValues(alpha: 0.2)),
         ),
         clipBehavior: Clip.antiAlias,

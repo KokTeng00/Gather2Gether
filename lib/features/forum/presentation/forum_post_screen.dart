@@ -154,7 +154,7 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
               onRefresh: _load,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 28),
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
                 children: [
                   _PostHeader(post: post!),
                   const SizedBox(height: 22),
@@ -221,44 +221,61 @@ class _PostHeader extends StatelessWidget {
           height: 210,
         ),
         const SizedBox(height: 14),
-        Material(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(post.body, style: Theme.of(context).textTheme.bodyLarge),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: colors.primary.withValues(alpha: 0.12),
+        AppSurface(
+          borderRadius: 18,
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(post.body, style: Theme.of(context).textTheme.bodyLarge),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: colors.primaryContainer,
+                    child: Text(
+                      post.authorName.isEmpty
+                          ? '?'
+                          : post.authorName.substring(0, 1).toUpperCase(),
+                      style: TextStyle(
+                        color: colors.onPrimaryContainer,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      post.authorName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  if (post.viewerIsAuthor) ...[
+                    const SizedBox(width: 7),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.secondaryContainer,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
                       child: Text(
-                        post.authorName.isEmpty
-                            ? '?'
-                            : post.authorName.substring(0, 1).toUpperCase(),
-                        style: TextStyle(
-                          color: colors.primary,
-                          fontWeight: FontWeight.w700,
+                        'You',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: colors.onSecondaryContainer,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 9),
-                    Text(
-                      post.authorName,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    if (post.viewerIsAuthor) ...[
-                      const SizedBox(width: 7),
-                      Text('You', style: TextStyle(color: colors.primary)),
-                    ],
                   ],
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         ),
       ],
@@ -275,12 +292,9 @@ class _CommentCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Container(
+    return AppSurface(
+      borderRadius: 18,
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 15),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(18),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -361,9 +375,11 @@ class _CommentComposer extends StatelessWidget {
                 tooltip: 'Send reply',
                 onPressed: sending ? null : onSend,
                 icon: sending
-                    ? const SizedBox.square(
+                    ? SizedBox.square(
                         dimension: 18,
-                        child: CupertinoActivityIndicator(color: Colors.white),
+                        child: CupertinoActivityIndicator(
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
                       )
                     : const Icon(CupertinoIcons.arrow_up),
               ),
