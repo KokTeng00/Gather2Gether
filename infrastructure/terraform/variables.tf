@@ -21,7 +21,7 @@ variable "environment" {
 }
 
 variable "cloudflare_api_token" {
-  description = "Cloudflare API token with Account/Cloudflare Pages write access."
+  description = "Cloudflare API token with Cloudflare Pages and Workers R2 Storage write access."
   type        = string
   sensitive   = true
 }

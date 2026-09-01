@@ -6,18 +6,24 @@ import 'package:gather2gether/features/forum/data/forum_repository.dart';
 import 'package:gather2gether/features/forum/domain/forum_comment.dart';
 import 'package:gather2gether/features/forum/domain/forum_post.dart';
 import 'package:gather2gether/features/forum/presentation/forum_format.dart';
+import 'package:gather2gether/features/forum/presentation/forum_post_attachments.dart';
 
 class ForumPostScreen extends StatefulWidget {
-  const ForumPostScreen({required this.postId, super.key});
+  const ForumPostScreen({
+    required this.postId,
+    super.key,
+    ForumRepository? repository,
+  }) : _repository = repository;
 
   final String postId;
+  final ForumRepository? _repository;
 
   @override
   State<ForumPostScreen> createState() => _ForumPostScreenState();
 }
 
 class _ForumPostScreenState extends State<ForumPostScreen> {
-  final _repository = ForumRepository();
+  late final ForumRepository _repository;
   final _comment = TextEditingController();
   ForumPost? _post;
   List<ForumComment> _comments = const [];
@@ -28,6 +34,7 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
   @override
   void initState() {
     super.initState();
+    _repository = widget._repository ?? ForumRepository();
     _load();
   }
 
@@ -156,7 +163,7 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
                 children: [
-                  _PostHeader(post: post!),
+                  _PostHeader(post: post!, repository: _repository),
                   const SizedBox(height: 22),
                   Row(
                     children: [
@@ -204,9 +211,10 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
 }
 
 class _PostHeader extends StatelessWidget {
-  const _PostHeader({required this.post});
+  const _PostHeader({required this.post, required this.repository});
 
   final ForumPost post;
+  final ForumRepository repository;
 
   @override
   Widget build(BuildContext context) {
@@ -220,6 +228,14 @@ class _PostHeader extends StatelessWidget {
           subtitle: '${post.authorName} · ${forumTimeAgo(post.createdAt)}',
           height: 210,
         ),
+        if (post.hasImage) ...[
+          const SizedBox(height: 14),
+          ForumPostImage(
+            postId: post.id,
+            title: post.title,
+            repository: repository,
+          ),
+        ],
         const SizedBox(height: 14),
         AppSurface(
           borderRadius: 18,
@@ -228,6 +244,13 @@ class _PostHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(post.body, style: Theme.of(context).textTheme.bodyLarge),
+              if (post.hasPlace) ...[
+                const SizedBox(height: 18),
+                ForumPlaceCard(
+                  name: post.placeName!,
+                  address: post.placeAddress!,
+                ),
+              ],
               const SizedBox(height: 18),
               Row(
                 children: [

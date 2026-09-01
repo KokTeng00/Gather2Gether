@@ -5,7 +5,7 @@ app_name          = "gather2gether"
 environment       = "production"
 production_branch = "main"
 
-cloudflare_api_token = "replace-with-pages-write-token"
+cloudflare_api_token = "replace-with-pages-and-r2-write-token"
 cloudflare_account_id = "replace-with-account-id"
 
 supabase_access_token    = "replace-with-project-admin-token"

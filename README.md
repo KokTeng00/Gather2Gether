@@ -16,8 +16,12 @@ ideas in a moderated community forum. One Dart codebase targets Android and iOS.
 - Atomic Join/Tentative/Cancel RSVP updates
 - Cloudflare edge API for event validation and request orchestration
 - Profile and approximate home area (coordinates rounded to about 1 km)
+- Professional profile with avatar, community activity, real contribution
+  counts, identity editing, and tabbed preference/security/account settings
 - Event reporting and user-blocking database foundations
 - Authenticated forum posts, replies, reports, block filtering, and abuse limits
+- Privacy-safe community JPEGs and public-place tags, backed by private R2
+  storage and authenticated media routes
 - No price fields, payment SDK, or payment collection
 
 ## Architecture
@@ -28,11 +32,13 @@ Flutter (Android / iOS)
         | Supabase Auth for sign-in
         v
 Cloudflare Pages Functions
-  Authenticated event API; no public browser app
+  Authenticated event, forum, profile, and private-media API
         |
         | public publishable key + user JWT
         v
 Supabase Auth + PostgreSQL + PostGIS + RLS + transactional RPCs
+
+Pages Functions -> private Cloudflare R2 user-media bucket
 
 Pages Function -> internal service binding -> model Worker
                                       |
@@ -44,11 +50,13 @@ Terraform
   Supabase project/settings + Cloudflare Pages project
 ```
 
-Cloudflare validates and normalizes event and forum requests, verifies the Supabase user
-session, and forwards the user's JWT. Supabase remains the final authorization
-and transaction boundary. The edge Function has no service-role key. The mobile
-client never receives a database password, JWT signing secret, service-role key,
-Supabase personal token, or Cloudflare token.
+Cloudflare validates and normalizes event, forum, profile, and media requests,
+verifies the Supabase user session, and forwards the user's JWT. Supabase
+remains the final authorization and transaction boundary. The edge Function has
+no service-role key. Media objects stay in a non-public R2 bucket; PostgreSQL
+stores only validated object references. The mobile client never receives a
+database password, JWT signing secret, service-role key, Supabase personal
+token, or Cloudflare token.
 
 Gather Guide performs deterministic, indexed PostGIS/full-text event retrieval
 before its single model call. Event locations use the existing GiST index;
@@ -96,9 +104,11 @@ bash scripts/smoke_test.sh
 
 ## Infrastructure deployment
 
-Terraform owns the dedicated Supabase project and Cloudflare Pages project.
-Database tables and policies remain SQL migrations because schema history is
-safer and easier to review outside Terraform state.
+Terraform owns the dedicated Supabase project, Cloudflare Pages project,
+private R2 media bucket and staging-object lifecycle. It also enforces the
+managed Auth minimum password length. Database tables and policies remain SQL
+migrations because schema history is safer and easier to review outside
+Terraform state.
 
 ```bash
 cp infrastructure/terraform/terraform.tfvars.example \
@@ -113,7 +123,7 @@ The Supabase project has `prevent_destroy = true`. Terraform state contains the
 generated database password, so use an encrypted remote backend with restricted
 access before adding CI/CD or teammates.
 
-Apply database migrations after Terraform creates the project:
+Apply database migrations after Terraform creates the project and R2 bucket:
 
 ```bash
 export SUPABASE_ACCESS_TOKEN="..."
@@ -126,7 +136,8 @@ npx supabase@latest db push
 ```
 
 Deploy the private model Worker first, then the `/functions` edge API. Cloudflare
-requires the service-binding target to exist before Pages is deployed:
+requires the service-binding target and the Terraform-managed `USER_MEDIA` R2
+bucket to exist before Pages is deployed:
 
 ```bash
 npm exec --yes --package=node@22 --package=wrangler@latest -- \

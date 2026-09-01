@@ -23,3 +23,8 @@ output "cloudflare_edge_api_url" {
   description = "Public Cloudflare Pages Functions API base URL."
   value       = "https://${cloudflare_pages_project.web.subdomain}/api/v1"
 }
+
+output "cloudflare_user_media_bucket_name" {
+  description = "Private R2 bucket bound to the edge API as USER_MEDIA."
+  value       = cloudflare_r2_bucket.user_media.name
+}

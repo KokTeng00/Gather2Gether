@@ -1,45 +1,70 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/theme/app_theme.dart';
+import 'package:gather2gether/features/forum/data/forum_repository.dart';
+import 'package:gather2gether/features/forum/domain/forum_post.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
+import 'package:gather2gether/features/profile/domain/profile_stats.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/profile_screen.dart';
 
-class _FakeProfileRepository implements ProfileRepository {
-  bool profileUpdated = false;
-  final assistantUpdates = <bool>[];
+class _FakeProfileRepository extends ProfileRepository {
+  _FakeProfileRepository()
+    : profile = const UserProfile(
+        displayName: 'Maya Chen',
+        username: 'maya_chen',
+        bio: 'Coffee walks, local art, and welcoming new neighbours.',
+        city: 'Berlin',
+        preferredRadiusKm: 10,
+        approximateLatitude: 52.52,
+        approximateLongitude: 13.4,
+        assistantEnabled: true,
+      );
+
+  UserProfile profile;
+  int identityUpdates = 0;
 
   @override
-  Future<UserProfile> fetchOwnProfile() async => const UserProfile(
-    displayName: 'Maya Chen',
-    city: 'Berlin',
-    preferredRadiusKm: 12,
-    approximateLatitude: 52.52,
-    approximateLongitude: 13.4,
-    assistantEnabled: true,
-  );
+  Future<UserProfile> fetchOwnProfile() async => profile;
 
   @override
-  Future<void> updateProfile({
+  Future<ProfileStats> fetchStats() async =>
+      const ProfileStats(postsCount: 12, hostedCount: 4, goingCount: 7);
+
+  @override
+  Future<UserProfile> updateIdentity({
     required String displayName,
+    required String username,
+    required String bio,
     required String city,
-    required double preferredRadiusKm,
-    double? latitude,
-    double? longitude,
   }) async {
-    profileUpdated = true;
+    identityUpdates++;
+    profile = profile.copyWith(
+      displayName: displayName.trim(),
+      username: username.trim(),
+      bio: bio.trim(),
+      city: city.trim(),
+    );
+    return profile;
   }
+}
+
+class _EmptyForumRepository extends ForumRepository {
+  _EmptyForumRepository()
+    : super(
+        accessTokenProvider: () => 'access-token',
+        edgeApiUrl: 'https://example.test/api/v1',
+      );
 
   @override
-  Future<void> updateAssistantEnabled(bool enabled) async {
-    assistantUpdates.add(enabled);
-  }
+  Future<List<ForumPost>> listOwnPosts() async => const [];
 }
 
 Future<_FakeProfileRepository> _pumpProfile(
   WidgetTester tester, {
   ThemeData? theme,
   double textScale = 1,
+  ValueChanged<UserProfile>? onProfileChanged,
 }) async {
   tester.view.physicalSize = const Size(320, 568);
   tester.view.devicePixelRatio = 1;
@@ -59,8 +84,11 @@ Future<_FakeProfileRepository> _pumpProfile(
           body: ProfileScreen(
             assistantEnabled: true,
             onAssistantEnabledChanged: (_) {},
+            onProfileChanged: onProfileChanged,
             repository: repository,
             emailOverride: 'maya@example.com',
+            avatarHeadersOverride: const {},
+            forumRepository: _EmptyForumRepository(),
             onSignOut: () async {},
           ),
         ),
@@ -72,44 +100,79 @@ Future<_FakeProfileRepository> _pumpProfile(
 }
 
 void main() {
-  testWidgets('profile stays usable on a compact large-text screen', (
+  testWidgets('professional overview stays usable with compact large text', (
     tester,
   ) async {
     await _pumpProfile(tester, theme: AppTheme.dark, textScale: 1.6);
 
-    expect(find.text('Maya Chen'), findsNWidgets(2));
-    expect(find.text('12 km'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(find.text('Maya Chen'), findsOneWidget);
+    expect(find.text('@maya_chen'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('7'), findsOneWidget);
+    expect(find.text('No community posts yet'), findsOneWidget);
+    expect(find.byTooltip('Profile settings'), findsOneWidget);
+    expect(find.byKey(const Key('profile-social-header')), findsOneWidget);
+    expect(find.byKey(const Key('profile-avatar')), findsOneWidget);
+    expect(find.byKey(const Key('profile-inline-stats')), findsOneWidget);
+    expect(find.byKey(const Key('profile-edit-action')), findsOneWidget);
+    expect(find.byKey(const Key('profile-posts-tab')), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Sign Out'));
-    await tester.pumpAndSettle();
-    expect(find.text('Sign Out'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('city length is validated before saving', (tester) async {
-    final repository = await _pumpProfile(tester);
-    await tester.enterText(
-      find.byType(TextFormField).at(1),
-      List.filled(121, 'x').join(),
+    final header = tester.getRect(
+      find.byKey(const Key('profile-social-header')),
     );
-    final form = tester.state<FormState>(find.byType(Form));
-    expect(form.validate(), isFalse);
-    await tester.pump();
-
-    expect(find.text('Use 120 characters or fewer.'), findsOneWidget);
-    expect(repository.profileUpdated, isFalse);
+    final avatar = tester.getRect(find.byKey(const Key('profile-avatar')));
+    final stats = tester.getRect(find.byKey(const Key('profile-inline-stats')));
+    final edit = tester.getRect(find.byKey(const Key('profile-edit-action')));
+    final postsTab = tester.getRect(find.byKey(const Key('profile-posts-tab')));
+    expect(header.top, greaterThanOrEqualTo(0));
+    expect(avatar.top, greaterThan(header.top));
+    expect((avatar.center.dy - stats.center.dy).abs(), lessThan(2));
+    expect(edit.top, greaterThan(avatar.bottom));
+    expect(postsTab.top, greaterThan(edit.bottom));
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Gather Guide exposes one accessible toggle action', (
-    tester,
-  ) async {
-    final repository = await _pumpProfile(tester);
-    await tester.ensureVisible(find.text('Gather Guide'));
+  testWidgets('edit profile validates and saves identity', (tester) async {
+    final changed = <UserProfile>[];
+    final repository = await _pumpProfile(
+      tester,
+      onProfileChanged: changed.add,
+    );
+
+    await tester.tap(find.text('Edit profile'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Gather Guide'));
+    expect(find.text('Your identity'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextFormField).at(0), 'Maya C.');
+    await tester.enterText(find.byType(TextFormField).at(1), 'Maya.Dot');
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    expect(
+      find.text('Use lowercase letters, numbers, or underscores.'),
+      findsOneWidget,
+    );
+    expect(repository.identityUpdates, 0);
+
+    await tester.enterText(find.byType(TextFormField).at(1), 'maya_local');
+    await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
 
-    expect(repository.assistantUpdates, [false]);
+    expect(repository.identityUpdates, 1);
+    expect(find.text('Maya C.'), findsOneWidget);
+    expect(find.text('@maya_local'), findsOneWidget);
+    expect(changed.last.username, 'maya_local');
+  });
+
+  testWidgets('settings action opens the profile settings hub', (tester) async {
+    await _pumpProfile(tester);
+    await tester.tap(find.byTooltip('Profile settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.byKey(const Key('profile-settings-hub')), findsOneWidget);
+    expect(find.byKey(const Key('settings-account-row')), findsOneWidget);
+    expect(find.byKey(const Key('settings-preferences-row')), findsOneWidget);
+    expect(find.byKey(const Key('settings-security-row')), findsOneWidget);
   });
 }

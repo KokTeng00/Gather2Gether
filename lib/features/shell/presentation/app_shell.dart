@@ -21,6 +21,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
   int _discoverRevision = 0;
+  int _profileRevision = 0;
   final _profiles = ProfileRepository();
   UserProfile? _profile;
   bool _assistantEnabled = true;
@@ -181,9 +182,17 @@ class _AppShellState extends State<AppShell> {
                   ),
                   const ForumScreen(),
                   ProfileScreen(
+                    key: ValueKey(_profileRevision),
                     assistantEnabled: _assistantEnabled,
                     onAssistantEnabledChanged: (enabled) {
                       setState(() => _assistantEnabled = enabled);
+                    },
+                    onProfileChanged: (profile) {
+                      setState(() {
+                        _profile = profile;
+                        _assistantEnabled = profile.assistantEnabled;
+                        _discoverRevision++;
+                      });
                     },
                   ),
                 ],
@@ -205,8 +214,16 @@ class _AppShellState extends State<AppShell> {
       bottomNavigationBar: FrostedContainer(
         child: NavigationBar(
           selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) =>
-              setState(() => _selectedIndex = index),
+          onDestinationSelected: (index) {
+            setState(() {
+              if (index == 2 && _selectedIndex != 2) {
+                // Refresh contribution counts and the own-post grid whenever
+                // the member returns after posting in Community.
+                _profileRevision++;
+              }
+              _selectedIndex = index;
+            });
+          },
           destinations: const [
             NavigationDestination(
               icon: Icon(CupertinoIcons.location),

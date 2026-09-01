@@ -5,17 +5,21 @@ import 'package:gather2gether/features/forum/data/forum_repository.dart';
 import 'package:gather2gether/features/forum/domain/forum_post.dart';
 import 'package:gather2gether/features/forum/presentation/create_forum_post_screen.dart';
 import 'package:gather2gether/features/forum/presentation/forum_format.dart';
+import 'package:gather2gether/features/forum/presentation/forum_post_attachments.dart';
 import 'package:gather2gether/features/forum/presentation/forum_post_screen.dart';
 
 class ForumScreen extends StatefulWidget {
-  const ForumScreen({super.key});
+  const ForumScreen({super.key, ForumRepository? repository})
+    : _repository = repository;
+
+  final ForumRepository? _repository;
 
   @override
   State<ForumScreen> createState() => _ForumScreenState();
 }
 
 class _ForumScreenState extends State<ForumScreen> {
-  final _repository = ForumRepository();
+  late final ForumRepository _repository;
   List<ForumPost> _posts = const [];
   bool _loading = true;
   String? _error;
@@ -23,6 +27,7 @@ class _ForumScreenState extends State<ForumScreen> {
   @override
   void initState() {
     super.initState();
+    _repository = widget._repository ?? ForumRepository();
     _load();
   }
 
@@ -49,19 +54,24 @@ class _ForumScreenState extends State<ForumScreen> {
     final id = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (_) => const CreateForumPostScreen(),
+        builder: (_) => CreateForumPostScreen(repository: _repository),
       ),
     );
     if (id == null || !mounted) return;
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => ForumPostScreen(postId: id)),
+      MaterialPageRoute(
+        builder: (_) => ForumPostScreen(postId: id, repository: _repository),
+      ),
     );
     await _load();
   }
 
   Future<void> _open(ForumPost post) async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => ForumPostScreen(postId: post.id)),
+      MaterialPageRoute(
+        builder: (_) =>
+            ForumPostScreen(postId: post.id, repository: _repository),
+      ),
     );
     await _load();
   }
@@ -171,6 +181,7 @@ class _ForumScreenState extends State<ForumScreen> {
                   separatorBuilder: (_, _) => const SizedBox(height: 12),
                   itemBuilder: (_, index) => _PostRow(
                     post: _posts[index],
+                    repository: _repository,
                     onTap: () => _open(_posts[index]),
                   ),
                 ),
@@ -184,9 +195,14 @@ class _ForumScreenState extends State<ForumScreen> {
 }
 
 class _PostRow extends StatelessWidget {
-  const _PostRow({required this.post, required this.onTap});
+  const _PostRow({
+    required this.post,
+    required this.repository,
+    required this.onTap,
+  });
 
   final ForumPost post;
+  final ForumRepository repository;
   final VoidCallback onTap;
 
   @override
@@ -257,6 +273,16 @@ class _PostRow extends StatelessWidget {
               ),
             ],
           ),
+          if (post.hasImage) ...[
+            const SizedBox(height: 12),
+            ForumPostImage(
+              postId: post.id,
+              title: post.title,
+              repository: repository,
+              aspectRatio: 16 / 9,
+              borderRadius: 14,
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             post.title,
@@ -275,6 +301,14 @@ class _PostRow extends StatelessWidget {
               context,
             ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
           ),
+          if (post.hasPlace) ...[
+            const SizedBox(height: 11),
+            ForumPlaceCard(
+              name: post.placeName!,
+              address: post.placeAddress!,
+              compact: true,
+            ),
+          ],
           const SizedBox(height: 13),
           Row(
             children: [

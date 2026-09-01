@@ -11,6 +11,9 @@ class ForumPost {
     required this.lastActivityAt,
     required this.commentCount,
     required this.viewerIsAuthor,
+    this.hasImage = false,
+    this.placeName,
+    this.placeAddress,
   });
 
   factory ForumPost.fromJson(Map<String, dynamic> json) {
@@ -29,7 +32,15 @@ class ForumPost {
       ).toLocal(),
       commentCount: count is int ? count : int.parse('$count'),
       viewerIsAuthor: json['viewer_is_author'] == true,
+      hasImage: json['has_image'] == true,
+      placeName: _optionalString(json['place_name']),
+      placeAddress: _optionalString(json['place_address']),
     );
+  }
+
+  static String? _optionalString(Object? value) {
+    if (value is! String || value.trim().isEmpty) return null;
+    return value.trim();
   }
 
   final String id;
@@ -43,6 +54,11 @@ class ForumPost {
   final DateTime lastActivityAt;
   final int commentCount;
   final bool viewerIsAuthor;
+  final bool hasImage;
+  final String? placeName;
+  final String? placeAddress;
 
   bool get isLocked => status == 'locked';
+
+  bool get hasPlace => placeName != null && placeAddress != null;
 }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:gather2gether/config/app_config.dart';
+import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/features/forum/domain/forum_comment.dart';
 import 'package:gather2gether/features/forum/domain/forum_post.dart';
 import 'package:http/http.dart' as http;
@@ -42,7 +43,20 @@ class ForumRepository {
   final String _edgeApiUrl;
 
   Future<List<ForumPost>> listPosts() async {
-    final payload = _map(await _request('GET', 'forum/posts'));
+    return _postList(await _request('GET', 'forum/posts'));
+  }
+
+  Future<List<ForumPost>> listOwnPosts() async {
+    final posts = _postList(await _request('GET', 'forum/posts?scope=mine'));
+    // Older edge deployments ignore the scope query and return the regular
+    // feed. viewer_is_author has been part of that contract from the start, so
+    // this keeps staged mobile/edge rollouts safe without showing other users'
+    // posts on the signed-in member's profile.
+    return posts.where((post) => post.viewerIsAuthor).toList(growable: false);
+  }
+
+  List<ForumPost> _postList(Object? response) {
+    final payload = _map(response);
     final rows = payload['data'];
     if (rows is! List<dynamic>) throw _invalidResponse('post data');
     return rows
@@ -68,7 +82,21 @@ class ForumRepository {
     required String title,
     required String body,
     required String category,
+    PreparedImage? image,
+    String? placeName,
+    String? placeAddress,
   }) async {
+    final normalizedPlaceName = _trimmedOrNull(placeName);
+    final normalizedPlaceAddress = _trimmedOrNull(placeAddress);
+    if ((normalizedPlaceName == null) != (normalizedPlaceAddress == null)) {
+      throw const ForumApiException(
+        statusCode: 400,
+        code: 'forum_validation',
+        message: 'Add both a public place name and address.',
+      );
+    }
+
+    final imageToken = image == null ? null : await _uploadImage(image);
     final payload = _map(
       await _request(
         'POST',
@@ -77,6 +105,9 @@ class ForumRepository {
           'title': title.trim(),
           'body': body.trim(),
           'category': category,
+          'image_token': imageToken,
+          'place_name': normalizedPlaceName,
+          'place_address': normalizedPlaceAddress,
         },
       ),
     );
@@ -106,20 +137,49 @@ class ForumRepository {
     body: {'reason': reason},
   );
 
-  Future<Object?> _request(String method, String path, {Object? body}) async {
+  String mediaUrl(String postId) =>
+      _uri('forum/posts/${Uri.encodeComponent(postId)}/media').toString();
+
+  Map<String, String> mediaHeaders() {
     final token = _accessTokenProvider();
-    if (token == null || token.isEmpty) {
+    return {
+      'Accept': PreparedImage.jpegContentType,
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  Future<String> _uploadImage(PreparedImage image) async {
+    if (image.bytes.isEmpty || image.bytes.length > PreparedImage.maxBytes) {
       throw const ForumApiException(
-        statusCode: 401,
-        code: 'authentication_required',
-        message: 'Sign in is required.',
+        statusCode: 400,
+        code: 'invalid_forum_image',
+        message: 'Choose a JPEG photo under 5 MB.',
       );
     }
 
-    final base = _edgeApiUrl.endsWith('/')
-        ? _edgeApiUrl.substring(0, _edgeApiUrl.length - 1)
-        : _edgeApiUrl;
-    final uri = Uri.parse('$base/$path');
+    final token = _requiredAccessToken();
+    final response = await _httpClient
+        .post(
+          _uri('forum/media'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Accept': 'application/json',
+            'Content-Type': image.contentType,
+          },
+          body: image.bytes,
+        )
+        .timeout(_timeout);
+    final payload = _map(_responsePayload(response));
+    final uploadToken = payload['token'];
+    if (uploadToken is! String || uploadToken.isEmpty) {
+      throw _invalidResponse('image token');
+    }
+    return uploadToken;
+  }
+
+  Future<Object?> _request(String method, String path, {Object? body}) async {
+    final token = _requiredAccessToken();
+    final uri = _uri(path);
     final headers = {
       'Authorization': 'Bearer $token',
       'Accept': 'application/json',
@@ -135,6 +195,10 @@ class ForumRepository {
       ),
     };
     final response = await future.timeout(_timeout);
+    return _responsePayload(response);
+  }
+
+  Object? _responsePayload(http.Response response) {
     Object? payload;
     if (response.body.isNotEmpty) {
       try {
@@ -159,6 +223,30 @@ class ForumRepository {
       );
     }
     return payload;
+  }
+
+  String _requiredAccessToken() {
+    final token = _accessTokenProvider();
+    if (token == null || token.isEmpty) {
+      throw const ForumApiException(
+        statusCode: 401,
+        code: 'authentication_required',
+        message: 'Sign in is required.',
+      );
+    }
+    return token;
+  }
+
+  Uri _uri(String path) {
+    final base = _edgeApiUrl.endsWith('/')
+        ? _edgeApiUrl.substring(0, _edgeApiUrl.length - 1)
+        : _edgeApiUrl;
+    return Uri.parse('$base/$path');
+  }
+
+  String? _trimmedOrNull(String? value) {
+    final trimmed = value?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   String _id(Map<String, dynamic> payload, String kind) {

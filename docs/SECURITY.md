@@ -14,6 +14,16 @@
 - Forum tables deny direct client access. Fixed-signature RPCs enforce post and
   reply length, per-user database rate limits, locked discussions, mutual block
   filtering, duplicate-report prevention, and a private moderation queue.
+- Community and profile JPEGs live in a private Cloudflare R2 bucket. The
+  database exposes only a `has_image` marker to forum feeds, and authenticated
+  RPCs authorize each object read before the edge API streams it.
+- On-device media preparation re-encodes to JPEG, strips EXIF/GPS metadata,
+  caps dimensions, and enforces a 5 MiB limit. The edge API independently checks
+  declared and actual size plus JPEG signatures before storing an object.
+- Forum drafts use one overwriteable staging object per user, limiting abandoned
+  storage. Terraform expires the `staging/` prefix after 24 hours as a fallback.
+  Place tags require a paired public-place name and address, and the composer
+  warns users never to post a home or private address.
 - The Cloudflare Function forwards the user's JWT and publishable key. It has no
   service-role key and cannot bypass Supabase RLS.
 - Anonymous users cannot read profiles, events, RSVPs, reports, or blocks.
@@ -28,6 +38,8 @@
   private model Worker. Pages reaches it through a service binding; neither
   service logs, returns, or sends the key to the mobile client.
 - Auth sessions use Android Keystore encryption and iOS Keychain.
+- Password changes verify the current email/password session before updating;
+  Terraform manages a 10-character minimum for new passwords.
 - Android cloud backup is disabled for encrypted auth material.
 - Cloudflare serves HSTS, CSP, anti-framing, MIME-sniffing, referrer, and
   permissions-policy headers.
@@ -85,6 +97,8 @@ project's database password or JWT secret.
 - Configure custom SMTP and verify confirmation/reset email flows.
 - Enable Supabase CAPTCHA and review Auth rate limits.
 - Add an admin moderation UI with MFA-protected admin accounts.
+- Add image safety scanning and an image-aware moderation workflow before
+  opening photo posting to a large public audience.
 - Add production error monitoring with PII scrubbing and retention limits.
 - Publish privacy, safety, acceptable-use, and data-deletion policies.
 - Perform dependency, RLS, and abuse-case reviews before each release.

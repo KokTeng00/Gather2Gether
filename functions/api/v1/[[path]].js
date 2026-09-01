@@ -1,4 +1,5 @@
 const MAX_BODY_BYTES = 32 * 1024;
+const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 const ASSISTANT_HISTORY_LIMIT = 24;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -64,6 +65,82 @@ export async function handleApiRequest(request, env) {
 
     assertEnvironment(env);
     const identity = await authenticate(request, env);
+
+    if (segments.join('/') === 'profile/avatar') {
+      assertMediaEnvironment(env);
+
+      if (request.method === 'GET') {
+        const imageKey = await supabaseRpc(
+          env,
+          identity.authorization,
+          'get_own_profile_avatar_image_key',
+          {},
+        );
+        if (imageKey === null) {
+          throw new ApiError(404, 'profile_avatar_not_found', 'Profile photo was not found.');
+        }
+        if (!isOwnedMediaKey(imageKey, 'avatars', identity.userId)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid media reference.');
+        }
+        const object = await getMediaObject(env.USER_MEDIA, imageKey);
+        if (object === null) {
+          throw new ApiError(404, 'profile_avatar_not_found', 'Profile photo was not found.');
+        }
+        return mediaResponse(object, requestId, cors);
+      }
+
+      if (request.method === 'POST') {
+        const imageKey = `avatars/${identity.userId}/${crypto.randomUUID()}.jpg`;
+        await putUploadedJpeg(env.USER_MEDIA, imageKey, request, {
+          owner: identity.userId,
+          purpose: 'profile-avatar',
+        });
+
+        let oldImageKey;
+        try {
+          oldImageKey = await supabaseRpc(
+            env,
+            identity.authorization,
+            'set_profile_avatar',
+            {p_image_key: imageKey},
+          );
+          if (
+            oldImageKey !== null &&
+            !isOwnedMediaKey(oldImageKey, 'avatars', identity.userId)
+          ) {
+            throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid media reference.');
+          }
+        } catch (error) {
+          if (isDefiniteClientRejection(error)) {
+            await deleteMediaObject(env.USER_MEDIA, imageKey);
+          }
+          throw error;
+        }
+        if (oldImageKey !== null && oldImageKey !== imageKey) {
+          await deleteMediaObject(env.USER_MEDIA, oldImageKey);
+        }
+        return jsonResponse({updated: true}, 200, requestId, cors);
+      }
+
+      if (request.method === 'DELETE') {
+        const oldImageKey = await supabaseRpc(
+          env,
+          identity.authorization,
+          'set_profile_avatar',
+          {p_image_key: null},
+        );
+        if (
+          oldImageKey !== null &&
+          !isOwnedMediaKey(oldImageKey, 'avatars', identity.userId)
+        ) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid media reference.');
+        }
+        if (oldImageKey !== null) {
+          await deleteMediaObject(env.USER_MEDIA, oldImageKey);
+        }
+        return jsonResponse({deleted: oldImageKey !== null}, 200, requestId, cors);
+      }
+    }
 
     if (request.method === 'GET' && segments.join('/') === 'assistant/history') {
       const messages = await supabaseRpc(
@@ -174,11 +251,40 @@ export async function handleApiRequest(request, env) {
       }
     }
 
-    if (request.method === 'GET' && segments.join('/') === 'forum/posts') {
+    if (request.method === 'POST' && segments.join('/') === 'forum/media') {
+      assertMediaEnvironment(env);
+      const token = crypto.randomUUID();
+      const imageKey = `staging/forum/${identity.userId}/current.jpg`;
+      await putUploadedJpeg(env.USER_MEDIA, imageKey, request, {
+        owner: identity.userId,
+        purpose: 'forum-staging',
+        token,
+      });
+      return jsonResponse({token}, 201, requestId, cors);
+    }
+
+    if (request.method === 'GET' && segments.join('/') === 'forum/posts/mine') {
       const posts = await supabaseRpc(
         env,
         identity.authorization,
-        'list_forum_posts',
+        'list_own_forum_posts',
+        {p_limit: 30, p_before: null},
+      );
+      if (!Array.isArray(posts)) {
+        throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid forum data.');
+      }
+      return jsonResponse({data: posts}, 200, requestId, cors);
+    }
+
+    if (request.method === 'GET' && segments.join('/') === 'forum/posts') {
+      const scope = url.searchParams.get('scope');
+      if (scope !== null && scope !== 'mine') {
+        throw new ApiError(400, 'invalid_parameter', 'scope is invalid.');
+      }
+      const posts = await supabaseRpc(
+        env,
+        identity.authorization,
+        scope === 'mine' ? 'list_own_forum_posts' : 'list_forum_posts',
         {p_limit: 30, p_before: null},
       );
       if (!Array.isArray(posts)) {
@@ -189,16 +295,57 @@ export async function handleApiRequest(request, env) {
 
     if (request.method === 'POST' && segments.join('/') === 'forum/posts') {
       const input = validateCreateForumPost(await jsonBody(request));
-      const postId = await supabaseRpc(
-        env,
-        identity.authorization,
-        'create_forum_post',
-        input,
-      );
-      if (typeof postId !== 'string' || !UUID_PATTERN.test(postId)) {
-        throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid post identifier.');
+      let imageKey = null;
+      if (input.imageToken !== null) {
+        assertMediaEnvironment(env);
+        const stagingKey = `staging/forum/${identity.userId}/current.jpg`;
+        const staged = await getMediaObject(env.USER_MEDIA, stagingKey);
+        if (
+          staged === null ||
+          staged.customMetadata?.owner !== identity.userId ||
+          staged.customMetadata?.purpose !== 'forum-staging' ||
+          staged.customMetadata?.token !== input.imageToken ||
+          !Number.isInteger(staged.size) ||
+          staged.size < 4 ||
+          staged.size > MAX_MEDIA_BYTES
+        ) {
+          throw new ApiError(400, 'invalid_image_token', 'The selected image is unavailable. Upload it again.');
+        }
+        imageKey = `posts/${identity.userId}/${crypto.randomUUID()}.jpg`;
+        await putMediaObject(env.USER_MEDIA, imageKey, staged.body, {
+          owner: identity.userId,
+          purpose: 'forum-post',
+        }, staged.size);
+        // Keep the single bounded staging object. Deleting it here could erase a
+        // newer draft that concurrently overwrote current.jpg after this GET.
       }
-      return jsonResponse({id: postId}, 201, requestId, cors);
+
+      try {
+        const postId = await supabaseRpc(
+          env,
+          identity.authorization,
+          'create_forum_post',
+          {
+            p_title: input.title,
+            p_body: input.body,
+            p_category: input.category,
+            p_image_key: imageKey,
+            p_place_name: input.placeName,
+            p_place_address: input.placeAddress,
+          },
+        );
+        if (typeof postId !== 'string' || !UUID_PATTERN.test(postId)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid post identifier.');
+        }
+        return jsonResponse({id: postId}, 201, requestId, cors);
+      } catch (error) {
+        // A 5xx/fetch failure is commit-ambiguous: keep the final object because
+        // PostgreSQL may have committed the row before the response was lost.
+        if (imageKey !== null && isDefiniteClientRejection(error)) {
+          await deleteMediaObject(env.USER_MEDIA, imageKey);
+        }
+        throw error;
+      }
     }
 
     if (segments.length >= 3 && segments[0] === 'forum' && segments[1] === 'posts') {
@@ -215,6 +362,27 @@ export async function handleApiRequest(request, env) {
           throw new ApiError(404, 'forum_post_not_found', 'Discussion was not found.');
         }
         return jsonResponse({data: rows[0]}, 200, requestId, cors);
+      }
+
+      if (request.method === 'GET' && segments.length === 4 && segments[3] === 'media') {
+        assertMediaEnvironment(env);
+        const imageKey = await supabaseRpc(
+          env,
+          identity.authorization,
+          'get_forum_post_image_key',
+          {p_post_id: postId},
+        );
+        if (imageKey === null) {
+          throw new ApiError(404, 'forum_media_not_found', 'Discussion image was not found.');
+        }
+        if (!isMediaKey(imageKey, 'posts')) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid media reference.');
+        }
+        const object = await getMediaObject(env.USER_MEDIA, imageKey);
+        if (object === null) {
+          throw new ApiError(404, 'forum_media_not_found', 'Discussion image was not found.');
+        }
+        return mediaResponse(object, requestId, cors);
       }
 
       if (request.method === 'GET' && segments.length === 4 && segments[3] === 'comments') {
@@ -386,6 +554,18 @@ function assertEnvironment(env) {
   }
 }
 
+function assertMediaEnvironment(env) {
+  const bucket = env.USER_MEDIA;
+  if (
+    !bucket ||
+    typeof bucket.get !== 'function' ||
+    typeof bucket.put !== 'function' ||
+    typeof bucket.delete !== 'function'
+  ) {
+    throw new ApiError(503, 'media_not_configured', 'Media storage is not configured.');
+  }
+}
+
 async function authenticate(request, env) {
   const authorization = request.headers.get('Authorization') ?? '';
   if (!/^Bearer\s+\S+$/.test(authorization)) {
@@ -482,6 +662,7 @@ function mappedSupabaseError(status, payload) {
     forum_post_unavailable: [404, 'forum_post_not_found', 'Discussion was not found.'],
     forum_comment_unavailable: [404, 'forum_comment_not_found', 'Comment was not found.'],
     forum_post_locked: [409, 'forum_post_locked', 'This discussion is locked.'],
+    profile_avatar_validation: [400, 'invalid_media', 'Profile photo is invalid.'],
     assistant_validation: [400, 'assistant_validation', 'Your message is invalid.'],
     assistant_disabled: [403, 'assistant_disabled', 'The assistant is disabled in your settings.'],
     assistant_rate_limited: [429, 'assistant_rate_limited', 'Please wait a moment before sending another message.'],
@@ -561,14 +742,26 @@ function validateCreateEvent(body) {
 }
 
 function validateCreateForumPost(body) {
-  exactKeys(body, ['title', 'body', 'category']);
+  exactOptionalKeys(
+    body,
+    ['title', 'body', 'category'],
+    ['image_token', 'place_name', 'place_address'],
+  );
   const title = stringParameter(body.title, 'title', 5, 120);
   const postBody = stringParameter(body.body, 'body', 10, 4000);
   const category = stringParameter(body.category, 'category', 1, 40);
   if (!FORUM_CATEGORIES.has(category)) {
     throw new ApiError(400, 'forum_validation', 'Discussion category is invalid.');
   }
-  return {p_title: title, p_body: postBody, p_category: category};
+  const imageToken = body.image_token === undefined || body.image_token === null
+    ? null
+    : uuidParameter(body.image_token, 'image_token');
+  const placeName = optionalNullableStringParameter(body, 'place_name', 2, 120);
+  const placeAddress = optionalNullableStringParameter(body, 'place_address', 3, 300);
+  if ((placeName === null) !== (placeAddress === null)) {
+    throw new ApiError(400, 'invalid_parameter', 'Place name and address must be provided together.');
+  }
+  return {title, body: postBody, category, imageToken, placeName, placeAddress};
 }
 
 function validateForumReport(body) {
@@ -597,6 +790,22 @@ function exactKeys(value, expected) {
   if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
     throw new ApiError(400, 'unexpected_fields', 'Request contains missing or unexpected fields.');
   }
+}
+
+function exactOptionalKeys(value, required, optional) {
+  const actual = Object.keys(value);
+  const allowed = new Set([...required, ...optional]);
+  if (
+    required.some((key) => !Object.hasOwn(value, key)) ||
+    actual.some((key) => !allowed.has(key))
+  ) {
+    throw new ApiError(400, 'unexpected_fields', 'Request contains missing or unexpected fields.');
+  }
+}
+
+function optionalNullableStringParameter(value, name, minimum, maximum) {
+  if (!Object.hasOwn(value, name) || value[name] === null) return null;
+  return stringParameter(value[name], name, minimum, maximum);
 }
 
 function stringParameter(value, name, minimum, maximum) {
@@ -636,6 +845,179 @@ function uuidParameter(value, name) {
     throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
   }
   return value;
+}
+
+function jpegExpectedLength(request) {
+  const contentType = (request.headers.get('Content-Type') ?? '')
+    .split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+  if (contentType !== 'image/jpeg') {
+    throw new ApiError(415, 'jpeg_required', 'Media must be a JPEG image.');
+  }
+
+  const rawLength = request.headers.get('Content-Length');
+  if (rawLength === null) {
+    throw new ApiError(411, 'content_length_required', 'Media size is required.');
+  }
+  const contentLength = Number(rawLength);
+  if (!Number.isInteger(contentLength) || contentLength < 1) {
+    throw new ApiError(400, 'invalid_media', 'Media is empty or invalid.');
+  }
+  if (contentLength > MAX_MEDIA_BYTES) {
+    throw new ApiError(413, 'media_too_large', 'Media must be 5 MiB or smaller.');
+  }
+  if (request.body === null) {
+    throw new ApiError(400, 'invalid_media', 'Media is empty or invalid.');
+  }
+  return contentLength;
+}
+
+async function putUploadedJpeg(bucket, key, request, customMetadata) {
+  const expectedLength = jpegExpectedLength(request);
+  const options = {
+    httpMetadata: {contentType: 'image/jpeg'},
+    customMetadata,
+  };
+
+  if (typeof FixedLengthStream === 'function') {
+    const fixedLength = new FixedLengthStream(expectedLength);
+    const validation = new TransformStream(jpegValidationTransformer(expectedLength));
+    const pump = request.body.pipeThrough(validation).pipeTo(fixedLength.writable);
+    const put = bucket.put(key, fixedLength.readable, options);
+    const [pumpResult, putResult] = await Promise.allSettled([pump, put]);
+    if (pumpResult.status === 'rejected' || putResult.status === 'rejected') {
+      await deleteMediaObject(bucket, key);
+      if (pumpResult.status === 'rejected' && pumpResult.reason instanceof ApiError) {
+        throw pumpResult.reason;
+      }
+      throw new ApiError(503, 'media_unavailable', 'Media storage is temporarily unavailable.');
+    }
+    return;
+  }
+
+  // Node's test runtime does not expose Cloudflare's FixedLengthStream. Keep
+  // equivalent actual-byte validation here; production takes the streaming path.
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  validateJpegBytes(bytes, expectedLength);
+  try {
+    await bucket.put(key, bytes, options);
+  } catch (_) {
+    throw new ApiError(503, 'media_unavailable', 'Media storage is temporarily unavailable.');
+  }
+}
+
+function jpegValidationTransformer(expectedLength) {
+  let byteLength = 0;
+  const first = [];
+  let penultimate = -1;
+  let last = -1;
+
+  return {
+    transform(chunk, controller) {
+      const bytes = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+      byteLength += bytes.byteLength;
+      if (byteLength > MAX_MEDIA_BYTES || byteLength > expectedLength) {
+        throw new ApiError(413, 'media_too_large', 'Media must be 5 MiB or smaller.');
+      }
+      for (const byte of bytes) {
+        if (first.length < 3) first.push(byte);
+        penultimate = last;
+        last = byte;
+      }
+      controller.enqueue(bytes);
+    },
+    flush() {
+      if (
+        byteLength !== expectedLength ||
+        byteLength < 4 ||
+        first[0] !== 0xff ||
+        first[1] !== 0xd8 ||
+        first[2] !== 0xff ||
+        penultimate !== 0xff ||
+        last !== 0xd9
+      ) {
+        throw new ApiError(400, 'invalid_media', 'Media is not a valid JPEG image.');
+      }
+    },
+  };
+}
+
+function validateJpegBytes(bytes, expectedLength) {
+  if (bytes.byteLength > MAX_MEDIA_BYTES || bytes.byteLength > expectedLength) {
+    throw new ApiError(413, 'media_too_large', 'Media must be 5 MiB or smaller.');
+  }
+  if (
+    bytes.byteLength !== expectedLength ||
+    bytes.byteLength < 4 ||
+    bytes[0] !== 0xff ||
+    bytes[1] !== 0xd8 ||
+    bytes[2] !== 0xff ||
+    bytes.at(-2) !== 0xff ||
+    bytes.at(-1) !== 0xd9
+  ) {
+    throw new ApiError(400, 'invalid_media', 'Media is not a valid JPEG image.');
+  }
+}
+
+async function putMediaObject(bucket, key, body, customMetadata, knownLength = null) {
+  const options = {
+    httpMetadata: {contentType: 'image/jpeg'},
+    customMetadata,
+  };
+  try {
+    if (
+      typeof FixedLengthStream === 'function' &&
+      Number.isInteger(knownLength) &&
+      knownLength >= 0 &&
+      typeof body?.pipeTo === 'function'
+    ) {
+      const fixedLength = new FixedLengthStream(knownLength);
+      const pump = body.pipeTo(fixedLength.writable);
+      const put = bucket.put(key, fixedLength.readable, options);
+      const [pumpResult, putResult] = await Promise.allSettled([pump, put]);
+      if (pumpResult.status === 'rejected' || putResult.status === 'rejected') {
+        throw new Error('R2 stream copy failed.');
+      }
+      return;
+    }
+    await bucket.put(key, body, options);
+  } catch (_) {
+    await deleteMediaObject(bucket, key);
+    throw new ApiError(503, 'media_unavailable', 'Media storage is temporarily unavailable.');
+  }
+}
+
+async function getMediaObject(bucket, key) {
+  try {
+    return await bucket.get(key);
+  } catch (_) {
+    throw new ApiError(503, 'media_unavailable', 'Media storage is temporarily unavailable.');
+  }
+}
+
+async function deleteMediaObject(bucket, key) {
+  try {
+    await bucket.delete(key);
+  } catch (_) {
+    // Objects are private and inaccessible without a database reference. Staged
+    // uploads also have a lifecycle fallback, so cleanup failure is non-fatal.
+  }
+}
+
+function isDefiniteClientRejection(error) {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500;
+}
+
+function isMediaKey(value, prefix) {
+  return typeof value === 'string' && new RegExp(
+    `^${prefix}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.jpg$`,
+    'i',
+  ).test(value);
+}
+
+function isOwnedMediaKey(value, prefix, userId) {
+  return isMediaKey(value, prefix) && value.startsWith(`${prefix}/${userId}/`);
 }
 
 function dateParameter(value, name) {
@@ -745,6 +1127,24 @@ function responseHeaders(requestId, cors) {
     'X-Content-Type-Options': 'nosniff',
     'X-Request-Id': requestId,
   };
+}
+
+function mediaResponse(object, requestId, cors) {
+  const headers = {
+    ...cors,
+    'Cache-Control': 'private, no-store',
+    'Content-Type': 'image/jpeg',
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff',
+    'X-Request-Id': requestId,
+  };
+  if (Number.isInteger(object.size) && object.size >= 0) {
+    headers['Content-Length'] = String(object.size);
+  }
+  if (typeof object.httpEtag === 'string' && object.httpEtag.length > 0) {
+    headers.ETag = object.httpEtag;
+  }
+  return new Response(object.body, {status: 200, headers});
 }
 
 function jsonResponse(payload, status, requestId, cors) {

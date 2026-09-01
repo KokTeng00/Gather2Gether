@@ -168,6 +168,9 @@ test('forum post creation forwards normalized, allow-listed fields', async () =>
     p_title: 'Weekend hiking group',
     p_body: 'Who wants to explore a local trail this weekend?',
     p_category: 'Looking for group',
+    p_image_key: null,
+    p_place_name: null,
+    p_place_address: null,
   });
 });
 

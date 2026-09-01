@@ -1,11 +1,22 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/location/location_service.dart';
+import 'package:gather2gether/core/media/app_image_picker.dart';
+import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
-import 'package:gather2gether/core/validation/validators.dart';
+import 'package:gather2gether/features/forum/data/forum_repository.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
+import 'package:gather2gether/features/profile/domain/profile_stats.dart';
+import 'package:gather2gether/features/profile/domain/user_profile.dart';
+import 'package:gather2gether/features/profile/presentation/edit_profile_screen.dart';
+import 'package:gather2gether/features/profile/presentation/profile_community_activity.dart';
+import 'package:gather2gether/features/profile/presentation/profile_settings_screen.dart';
 import 'package:gather2gether/features/profile/presentation/profile_widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+typedef ProfileActivityBuilder =
+    Widget Function(BuildContext context, UserProfile profile);
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -15,6 +26,12 @@ class ProfileScreen extends StatefulWidget {
     this.locationService,
     this.emailOverride,
     this.onSignOut,
+    this.onProfileChanged,
+    this.avatarPicker,
+    this.activityBuilder,
+    this.avatarUrlOverride,
+    this.avatarHeadersOverride,
+    this.forumRepository,
     super.key,
   });
 
@@ -24,179 +41,157 @@ class ProfileScreen extends StatefulWidget {
   final LocationService? locationService;
   final String? emailOverride;
   final Future<void> Function()? onSignOut;
+  final ValueChanged<UserProfile>? onProfileChanged;
+  final ProfileAvatarPicker? avatarPicker;
+  final ProfileActivityBuilder? activityBuilder;
+  final String? avatarUrlOverride;
+  final Map<String, String>? avatarHeadersOverride;
+  final ForumRepository? forumRepository;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  static const _radiusOptions = [5.0, 10.0, 25.0, 50.0];
-
-  final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
-  final _cityController = TextEditingController();
   late final ProfileRepository _profiles;
-  late final LocationService _location;
-
-  double _radiusKm = 10;
-  double? _latitude;
-  double? _longitude;
+  late final AppImagePicker _imagePicker;
+  UserProfile? _profile;
+  ProfileStats? _stats;
+  int _activityRevision = 0;
   bool _loading = true;
-  bool _saving = false;
-  bool _locating = false;
-  bool _assistantEnabled = true;
-  bool _assistantSaving = false;
-  bool _locationPendingSave = false;
   String? _loadError;
 
   @override
   void initState() {
     super.initState();
     _profiles = widget.repository ?? ProfileRepository();
-    _location = widget.locationService ?? const LocationService();
-    _assistantEnabled = widget.assistantEnabled;
+    _imagePicker = AppImagePicker();
     _load();
-  }
-
-  @override
-  void didUpdateWidget(ProfileScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.assistantEnabled != widget.assistantEnabled &&
-        !_assistantSaving) {
-      _assistantEnabled = widget.assistantEnabled;
-    }
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _cityController.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
     if (mounted) {
       setState(() {
-        _loading = true;
+        if (_profile == null) _loading = true;
         _loadError = null;
       });
     }
     try {
       final profile = await _profiles.fetchOwnProfile();
+      ProfileStats? stats;
+      try {
+        stats = await _profiles.fetchStats();
+      } catch (_) {
+        // Identity remains useful when aggregate activity is unavailable.
+      }
       if (!mounted) return;
-      _nameController.text = profile.displayName;
-      _cityController.text = profile.city;
-      _radiusKm = profile.preferredRadiusKm;
-      _latitude = profile.approximateLatitude;
-      _longitude = profile.approximateLongitude;
-      _assistantEnabled = profile.assistantEnabled;
-      _locationPendingSave = false;
+      setState(() {
+        _profile = profile;
+        _stats = stats;
+        _activityRevision++;
+      });
       widget.onAssistantEnabledChanged(profile.assistantEnabled);
     } catch (_) {
-      _loadError = 'We could not load your profile details.';
+      if (mounted) {
+        setState(() => _loadError = 'We could not load your profile details.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _updateLocation() async {
-    if (_locating || _saving) return;
-    setState(() => _locating = true);
-    try {
-      final position = await _location.currentPosition();
-      if (mounted) {
-        setState(() {
-          _latitude = position.latitude;
-          _longitude = position.longitude;
-          _locationPendingSave = true;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Area updated. Tap Save Changes to keep it.'),
-          ),
-        );
-      }
-    } on LocationFailure catch (failure) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(failure.message),
-          action: failure.canOpenSettings
-              ? SnackBarAction(
-                  label: 'Settings',
-                  onPressed: _location.openSettings,
-                )
-              : null,
-        ),
-      );
-    } catch (_) {
-      _showError('Could not update your home area. Please try again.');
-    } finally {
-      if (mounted) setState(() => _locating = false);
-    }
-  }
-
-  Future<void> _save() async {
-    if (_locating) return;
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    FocusScope.of(context).unfocus();
-    setState(() => _saving = true);
-    try {
-      await _profiles.updateProfile(
-        displayName: _nameController.text,
-        city: _cityController.text,
-        preferredRadiusKm: _radiusKm,
-        latitude: _latitude,
-        longitude: _longitude,
-      );
-      if (mounted) {
-        setState(() => _locationPendingSave = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Profile saved.')));
-      }
-    } catch (_) {
-      _showError('Could not save your profile.');
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  Future<void> _setAssistantEnabled(bool enabled) async {
-    if (_assistantSaving) return;
-    final previous = _assistantEnabled;
-    setState(() {
-      _assistantEnabled = enabled;
-      _assistantSaving = true;
-    });
-    widget.onAssistantEnabledChanged(enabled);
-    try {
-      await _profiles.updateAssistantEnabled(enabled);
-    } catch (_) {
-      if (mounted) {
-        setState(() => _assistantEnabled = previous);
-        widget.onAssistantEnabledChanged(previous);
-        _showError('Could not update Gather Guide settings.');
-      }
-    } finally {
-      if (mounted) setState(() => _assistantSaving = false);
-    }
-  }
-
-  void _showError(String message) {
+  void _profileChanged(UserProfile profile) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    setState(() => _profile = profile);
+    widget.onAssistantEnabledChanged(profile.assistantEnabled);
+    widget.onProfileChanged?.call(profile);
   }
 
-  Future<void> _signOut() async {
-    final callback = widget.onSignOut;
-    if (callback != null) {
-      await callback();
-      return;
-    }
-    await Supabase.instance.client.auth.signOut();
+  Future<void> _openEdit() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await Navigator.of(context).push<UserProfile>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => EditProfileScreen(
+          profile: profile,
+          repository: _profiles,
+          avatarPicker: widget.avatarPicker ?? _pickAvatar,
+          avatarUrlBuilder: _avatarUrlFor,
+          avatarHeaders: _avatarHeadersFor(profile),
+          onProfileChanged: _profileChanged,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSettings() async {
+    final profile = _profile;
+    if (profile == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => ProfileSettingsScreen(
+          profile: profile,
+          repository: _profiles,
+          locationService: widget.locationService,
+          emailOverride: widget.emailOverride,
+          onSignOut: widget.onSignOut,
+          onAssistantEnabledChanged: widget.onAssistantEnabledChanged,
+          onProfileChanged: _profileChanged,
+        ),
+      ),
+    );
+  }
+
+  String? _avatarUrlFor(UserProfile profile) {
+    if (!profile.hasAvatar) return null;
+    final override = widget.avatarUrlOverride;
+    if (override != null) return override;
+    final base = AppConfig.edgeApiUrl.endsWith('/')
+        ? AppConfig.edgeApiUrl.substring(0, AppConfig.edgeApiUrl.length - 1)
+        : AppConfig.edgeApiUrl;
+    final version = Uri.encodeQueryComponent(profile.avatarImageKey!);
+    return '$base/profile/avatar?v=$version';
+  }
+
+  Map<String, String>? _avatarHeadersFor(UserProfile profile) {
+    final override = widget.avatarHeadersOverride;
+    if (override != null) return override;
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
+    return token == null || token.isEmpty
+        ? null
+        : {'Authorization': 'Bearer $token'};
+  }
+
+  Future<PreparedImage?> _pickAvatar() async {
+    final source = await showModalBottomSheet<AppImageSource>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.photo_fill_on_rectangle_fill),
+              title: const Text('Choose from photos'),
+              onTap: () => Navigator.pop(context, AppImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.camera_fill),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(context, AppImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.xmark),
+              title: const Text('Cancel'),
+              onTap: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      ),
+    );
+    return source == null ? null : _imagePicker.pickImage(source);
   }
 
   @override
@@ -206,159 +201,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Center(child: CupertinoActivityIndicator(radius: 14)),
       );
     }
-    if (_loadError != null) {
+    if (_loadError != null || _profile == null) {
       return SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 36),
           children: [
             const AppPageHeader(
-              title: 'Profile',
-              subtitle: 'Your local identity and preferences.',
+              title: 'You',
+              subtitle: 'Your Gather2Gether profile.',
             ),
             const SizedBox(height: 28),
-            ProfileLoadError(message: _loadError!, onRetry: _load),
+            ProfileLoadError(
+              message: _loadError ?? 'Your profile is unavailable.',
+              onRetry: _load,
+            ),
           ],
         ),
       );
     }
-    final email =
-        widget.emailOverride ??
-        Supabase.instance.client.auth.currentUser?.email ??
-        '';
-    final initial = _nameController.text.trim().isEmpty
-        ? '?'
-        : String.fromCharCode(
-            _nameController.text.trim().runes.first,
-          ).toUpperCase();
-    final colors = Theme.of(context).colorScheme;
-    final compact = MediaQuery.sizeOf(context).width < 360;
 
+    final profile = _profile!;
+    final activity = widget.activityBuilder?.call(context, profile);
     return SafeArea(
-      child: Form(
-        key: _formKey,
-        child: ListView(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          padding: EdgeInsets.zero,
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 640),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    compact ? 16 : 20,
-                    24,
-                    compact ? 16 : 20,
-                    36,
-                  ),
+      child: RefreshIndicator.adaptive(
+        onRefresh: _load,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const AppPageHeader(
-                        title: 'Profile',
-                        subtitle: 'Your local identity and preferences.',
-                      ),
-                      const SizedBox(height: 20),
-                      ProfileIdentityCard(
-                        initial: initial,
-                        name: _nameController.text.trim(),
-                        email: email,
-                        city: _cityController.text.trim(),
-                        radiusKm: _radiusKm,
-                      ),
-                      const SizedBox(height: 24),
-                      const ProfileSectionHeader(
-                        title: 'Personal details',
-                        subtitle: 'How people in the community will know you.',
-                      ),
-                      const SizedBox(height: 11),
-                      TextFormField(
-                        controller: _nameController,
-                        enabled: !_saving,
-                        textCapitalization: TextCapitalization.words,
-                        textInputAction: TextInputAction.next,
-                        autofillHints: const [AutofillHints.name],
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          labelText: 'Display name',
-                          prefixIcon: Icon(CupertinoIcons.person),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 2, 8, 0),
+                        child: ProfileSocialAppBar(
+                          username: profile.username,
+                          onSettings: _openSettings,
                         ),
-                        validator: (value) =>
-                            Validators.requiredText(value, maxLength: 80),
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _cityController,
-                        enabled: !_saving,
-                        textCapitalization: TextCapitalization.words,
-                        textInputAction: TextInputAction.done,
-                        onChanged: (_) => setState(() {}),
-                        decoration: const InputDecoration(
-                          labelText: 'City (optional)',
-                          prefixIcon: Icon(CupertinoIcons.building_2_fill),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 22),
+                        child: ProfileOverviewHero(
+                          profile: profile,
+                          stats: _stats,
+                          avatarUrl: _avatarUrlFor(profile),
+                          avatarHeaders: _avatarHeadersFor(profile),
+                          onEdit: _openEdit,
                         ),
-                        validator: (value) {
-                          if ((value?.trim().length ?? 0) > 120) {
-                            return 'Use 120 characters or fewer.';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      const ProfileSectionHeader(
-                        title: 'Nearby preferences',
-                        subtitle: 'Tune the area used to find local plans.',
-                      ),
-                      const SizedBox(height: 11),
-                      ProfileNearbyPreferencesCard(
-                        radiusKm: _radiusKm,
-                        radiusOptions: _radiusOptions,
-                        city: _cityController.text.trim(),
-                        hasLocation: _latitude != null && _longitude != null,
-                        locationPendingSave: _locationPendingSave,
-                        locating: _locating,
-                        disabled: _saving,
-                        onRadiusChanged: (value) =>
-                            setState(() => _radiusKm = value),
-                        onLocationPressed: _updateLocation,
-                      ),
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: _saving || _locating ? null : _save,
-                        icon: _saving
-                            ? CupertinoActivityIndicator(
-                                color: colors.onPrimary,
-                              )
-                            : const Icon(CupertinoIcons.checkmark_alt),
-                        label: Text(_saving ? 'Saving…' : 'Save Changes'),
-                      ),
-                      const SizedBox(height: 26),
-                      const ProfileSectionHeader(
-                        title: 'App preferences',
-                        subtitle: 'Settings that save immediately.',
-                      ),
-                      const SizedBox(height: 11),
-                      ProfileGuidePreferenceCard(
-                        enabled: _assistantEnabled,
-                        saving: _assistantSaving,
-                        onChanged: _setAssistantEnabled,
-                      ),
-                      const SizedBox(height: 20),
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          foregroundColor: colors.error,
-                          minimumSize: const Size.fromHeight(48),
-                        ),
-                        onPressed: _saving || _locating || _assistantSaving
-                            ? null
-                            : _signOut,
-                        icon: const Icon(CupertinoIcons.square_arrow_right),
-                        label: const Text('Sign Out'),
                       ),
                     ],
                   ),
                 ),
               ),
             ),
+            SliverToBoxAdapter(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: const ProfilePostsTabHeader(),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child:
+                      activity ??
+                      ProfileCommunityActivity(
+                        key: ValueKey('profile-activity-$_activityRevision'),
+                        repository: widget.forumRepository,
+                      ),
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 36)),
           ],
         ),
       ),

@@ -2,13 +2,19 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "gather2gether",
   "pages_build_output_dir": "./cloudflare/public",
-  "compatibility_date": "2026-08-23",
+  "compatibility_date": "2026-08-31",
   "compatibility_flags": ["nodejs_compat"],
   "placement": {"mode": "smart"},
   "services": [
     {
       "binding": "ASSISTANT_MODEL",
       "service": "gather2gether-assistant-model"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "USER_MEDIA",
+      "bucket_name": "gather2gether-production-user-media"
     }
   ],
   "vars": {
