@@ -261,23 +261,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       ),
                     ),
                     const Divider(indent: 52),
-                    DropdownButtonFormField<String>(
-                      initialValue: _category,
-                      decoration: _fieldDecoration(
-                        'Category',
-                        CupertinoIcons.square_grid_2x2,
-                      ),
-                      items: eventCategories
-                          .map(
-                            (category) => DropdownMenuItem(
-                              value: category,
-                              child: Text(category),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) {
-                        if (value != null) setState(() => _category = value);
-                      },
+                    AppChoiceField(
+                      key: const Key('event-category-field'),
+                      value: _category,
+                      options: eventCategories,
+                      enabled: !_submitting,
+                      onChanged: (value) => setState(() => _category = value),
                     ),
                     const Divider(indent: 52),
                     TextFormField(

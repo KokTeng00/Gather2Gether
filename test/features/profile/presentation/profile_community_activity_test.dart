@@ -9,7 +9,7 @@ import 'package:gather2gether/features/forum/presentation/forum_post_attachments
 import 'package:gather2gether/features/profile/presentation/profile_community_activity.dart';
 
 void main() {
-  testWidgets('shows a three-column own-post grid with authenticated media', (
+  testWidgets('shows a vertical own-post list with authenticated media', (
     tester,
   ) async {
     final pending = Completer<List<ForumPost>>();
@@ -25,7 +25,7 @@ void main() {
     ]);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('profile-activity-grid')), findsOneWidget);
+    expect(find.byKey(const Key('profile-activity-list')), findsOneWidget);
     expect(find.byType(ForumPostImage), findsOneWidget);
     expect(
       find.byKey(const ValueKey('profile-post-photo-post')),
@@ -47,8 +47,9 @@ void main() {
       find.byKey(const ValueKey('profile-post-place-post')),
     );
     expect(first.left, 0);
-    expect(last.right, closeTo(360, 0.01));
-    expect(first.width, closeTo((360 - 4) / 3, 0.01));
+    expect(first.right, closeTo(360, 0.01));
+    expect(last.width, closeTo(first.width, 0.01));
+    expect(last.top, greaterThan(first.bottom));
   });
 
   testWidgets('empty and error states remain actionable', (tester) async {

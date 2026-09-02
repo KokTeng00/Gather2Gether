@@ -39,6 +39,33 @@ void main() {
     expect(posts.single.hasPlace, isFalse);
   });
 
+  test('semantic community search sends a trimmed interest query', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/v1/forum/posts');
+      expect(request.url.queryParameters, {
+        'interest': 'people learning new skills',
+      });
+      return http.Response(
+        jsonEncode({
+          'data': [forumPostJson(postId)],
+        }),
+        200,
+      );
+    });
+    final repository = ForumRepository(
+      httpClient: client,
+      accessTokenProvider: () => 'access-token',
+      edgeApiUrl: apiUrl,
+    );
+
+    final posts = await repository.searchPosts(
+      '  people learning new skills  ',
+    );
+
+    expect(posts.single.id, postId);
+  });
+
   test(
     'own discussion list scopes the collection and filters legacy feed rows',
     () async {

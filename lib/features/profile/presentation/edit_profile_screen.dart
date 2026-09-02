@@ -1,11 +1,15 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/config/app_config.dart';
+import 'package:gather2gether/core/media/app_image_picker.dart';
 import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/core/validation/validators.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/profile_widgets.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 typedef ProfileAvatarPicker = Future<PreparedImage?> Function();
 
@@ -37,6 +41,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _username;
   late final TextEditingController _bio;
   late final TextEditingController _city;
+  late final AppImagePicker _imagePicker;
   late UserProfile _profile;
   bool _saving = false;
   bool _updatingAvatar = false;
@@ -49,6 +54,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _username = TextEditingController(text: _profile.username);
     _bio = TextEditingController(text: _profile.bio);
     _city = TextEditingController(text: _profile.city);
+    _imagePicker = AppImagePicker();
   }
 
   @override
@@ -75,9 +81,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (!mounted) return;
       widget.onProfileChanged?.call(updated);
       Navigator.of(context).pop(updated);
-    } catch (_) {
+    } catch (error) {
       _showError(
-        'Could not save your profile. Check the username and try again.',
+        error is ProfileApiException
+            ? error.message
+            : 'Could not save your profile. Please try again.',
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -85,10 +93,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _changeAvatar() async {
-    final picker = widget.avatarPicker;
-    if (picker == null || _updatingAvatar || _saving) return;
+    if (_updatingAvatar || _saving) return;
     try {
-      final image = await picker();
+      final image = await (widget.avatarPicker ?? _pickAvatar)();
       if (image == null || !mounted) return;
       setState(() => _updatingAvatar = true);
       await widget.repository.uploadAvatar(image);
@@ -99,10 +106,65 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Profile photo updated.')));
-    } catch (_) {
-      _showError('Could not update your profile photo.');
+    } catch (error) {
+      _showError(
+        error is AppImagePickException
+            ? error.message
+            : 'Profile photos are temporarily unavailable. Please try again soon.',
+      );
     } finally {
       if (mounted) setState(() => _updatingAvatar = false);
+    }
+  }
+
+  Future<PreparedImage?> _pickAvatar() async {
+    final source = await showModalBottomSheet<AppImageSource>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(CupertinoIcons.photo_on_rectangle),
+              title: const Text('Choose from photos'),
+              onTap: () => Navigator.pop(context, AppImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.camera),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(context, AppImageSource.camera),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return null;
+    return _imagePicker.pickImage(source);
+  }
+
+  String? _avatarUrlFor(UserProfile profile) {
+    final builder = widget.avatarUrlBuilder;
+    if (builder != null) return builder(profile);
+    if (!profile.hasAvatar) return null;
+    final base = AppConfig.edgeApiUrl.endsWith('/')
+        ? AppConfig.edgeApiUrl.substring(0, AppConfig.edgeApiUrl.length - 1)
+        : AppConfig.edgeApiUrl;
+    final version = Uri.encodeQueryComponent(profile.avatarImageKey!);
+    return '$base/profile/avatar?v=$version';
+  }
+
+  Map<String, String>? _avatarHeaders() {
+    final override = widget.avatarHeaders;
+    if (override != null) return override;
+    if (!_profile.hasAvatar) return null;
+    try {
+      final token = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (token == null || token.isEmpty) return null;
+      return {'Authorization': 'Bearer $token'};
+    } catch (_) {
+      return null;
     }
   }
 
@@ -161,12 +223,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final avatarUrl = widget.avatarUrlBuilder?.call(_profile);
+    final avatarUrl = _avatarUrlFor(_profile);
+    final nextUsernameChange = _profile.nextUsernameChangeAt;
+    final usernameLocked = !_profile.canChangeUsernameAt(DateTime.now());
+    final usernameGuidance = usernameLocked && nextUsernameChange != null
+        ? 'You can change it again on '
+              '${DateFormat.yMMMMd().format(nextUsernameChange)}.'
+        : 'Usernames can be changed once every 3 months.';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Edit profile'),
+        title: const Text('Edit public profile'),
         actions: [
           TextButton(
+            key: const Key('save-profile-button'),
             onPressed: _saving || _updatingAvatar ? null : _save,
             child: Text(_saving ? 'Saving…' : 'Save'),
           ),
@@ -198,7 +267,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 ProfileAvatar(
                                   profile: _profile,
                                   imageUrl: avatarUrl,
-                                  headers: widget.avatarHeaders,
+                                  headers: _avatarHeaders(),
                                   size: 96,
                                 ),
                                 if (_updatingAvatar)
@@ -217,20 +286,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   ),
                               ],
                             ),
-                            if (widget.avatarPicker != null) ...[
-                              const SizedBox(height: 12),
-                              TextButton.icon(
-                                onPressed: _updatingAvatar || _saving
-                                    ? null
-                                    : _changeAvatar,
-                                icon: const Icon(CupertinoIcons.camera_fill),
-                                label: Text(
-                                  _profile.hasAvatar
-                                      ? 'Change photo'
-                                      : 'Add photo',
-                                ),
+                            const SizedBox(height: 12),
+                            TextButton.icon(
+                              key: const Key('profile-photo-action'),
+                              onPressed: _updatingAvatar || _saving
+                                  ? null
+                                  : _changeAvatar,
+                              icon: const Icon(CupertinoIcons.camera_fill),
+                              label: Text(
+                                _profile.hasAvatar
+                                    ? 'Change photo'
+                                    : 'Add photo',
                               ),
-                            ],
+                            ),
                             if (_profile.hasAvatar) ...[
                               const SizedBox(height: 2),
                               TextButton(
@@ -269,18 +337,46 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
+                        key: const Key('profile-username-field'),
                         controller: _username,
-                        enabled: !_saving,
+                        enabled: !_saving && !usernameLocked,
+                        readOnly: usernameLocked,
+                        showCursor: !usernameLocked,
+                        style: TextStyle(
+                          color: usernameLocked
+                              ? colors.onSurfaceVariant
+                              : colors.onSurface,
+                        ),
                         autocorrect: false,
                         textCapitalization: TextCapitalization.none,
                         textInputAction: TextInputAction.next,
                         maxLength: 30,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Username',
                           hintText: 'maya_chen',
                           prefixText: '@',
-                          prefixIcon: Icon(CupertinoIcons.at),
+                          prefixIcon: Icon(
+                            CupertinoIcons.at,
+                            color: usernameLocked
+                                ? colors.onSurfaceVariant
+                                : null,
+                          ),
+                          suffixIcon: usernameLocked
+                              ? Icon(
+                                  CupertinoIcons.lock_fill,
+                                  size: 18,
+                                  color: colors.onSurfaceVariant,
+                                )
+                              : null,
+                          filled: usernameLocked,
+                          fillColor: usernameLocked
+                              ? colors.surfaceContainerHighest.withValues(
+                                  alpha: 0.48,
+                                )
+                              : null,
                           counterText: '',
+                          helperText: usernameGuidance,
+                          helperMaxLines: 2,
                         ),
                         validator: _validateUsername,
                       ),
@@ -319,16 +415,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             ? 'Use 120 characters or fewer.'
                             : null,
                       ),
-                      const SizedBox(height: 22),
-                      FilledButton.icon(
-                        onPressed: _saving || _updatingAvatar ? null : _save,
-                        icon: _saving
-                            ? CupertinoActivityIndicator(
-                                color: colors.onPrimary,
-                              )
-                            : const Icon(CupertinoIcons.checkmark_alt),
-                        label: Text(_saving ? 'Saving…' : 'Save profile'),
-                      ),
+                      const SizedBox(height: 8),
                     ],
                   ),
                 ),

@@ -8,6 +8,7 @@ Future<void> _pumpSignIn(
   WidgetTester tester, {
   ThemeData? theme,
   double textScale = 1,
+  Future<bool> Function()? googleSignIn,
 }) async {
   tester.view.physicalSize = const Size(320, 568);
   tester.view.devicePixelRatio = 1;
@@ -22,40 +23,63 @@ Future<void> _pumpSignIn(
           size: const Size(320, 568),
           textScaler: TextScaler.linear(textScale),
         ),
-        child: const SignInScreen(),
+        child: SignInScreen(googleSignIn: googleSignIn),
       ),
     ),
   );
 }
 
 void main() {
-  testWidgets('switches cleanly between sign-in and account creation', (
-    tester,
-  ) async {
+  testWidgets('shows Google as the only authentication option', (tester) async {
     await _pumpSignIn(tester);
 
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.byKey(const Key('google-sign-in-button')), findsOneWidget);
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.text('Create account'), findsNothing);
     expect(find.text('Name'), findsNothing);
-    expect(find.text('Continue'), findsOneWidget);
-
-    await tester.tap(find.text('Create account'));
-    await tester.pump();
-
-    expect(find.text('Join your local community'), findsOneWidget);
-    expect(find.text('Name'), findsOneWidget);
-    expect(find.text('Create Account'), findsOneWidget);
+    expect(find.text('Email'), findsNothing);
+    expect(find.text('Password'), findsNothing);
+    expect(find.text('or use email'), findsNothing);
   });
 
-  testWidgets('keeps password visibility accessible', (tester) async {
-    await _pumpSignIn(tester);
+  testWidgets('starts Google sign-in from the provider button', (tester) async {
+    var signInCalls = 0;
+    await _pumpSignIn(
+      tester,
+      googleSignIn: () async {
+        signInCalls++;
+        return true;
+      },
+    );
 
-    expect(find.byTooltip('Show password'), findsOneWidget);
-    await tester.ensureVisible(find.byTooltip('Show password'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Show password'));
+    await tester.ensureVisible(find.byKey(const Key('google-sign-in-button')));
+    await tester.tap(find.byKey(const Key('google-sign-in-button')));
     await tester.pump();
 
-    expect(find.byTooltip('Hide password'), findsOneWidget);
+    expect(signInCalls, 1);
+  });
+
+  testWidgets('reports when the Google flow cannot be opened', (tester) async {
+    await _pumpSignIn(tester, googleSignIn: () async => false);
+
+    await tester.ensureVisible(find.byKey(const Key('google-sign-in-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('google-sign-in-button')));
+    await tester.pump();
+
+    expect(
+      find.text('Could not open Google sign-in. Please try again.'),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('google-sign-in-button')),
+          )
+          .onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('scrolls without overflow on a compact large-text screen', (
@@ -71,7 +95,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.text('Always free. Your precise location is never stored.'),
+      find.text('Free to join · Precise location stays private'),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);

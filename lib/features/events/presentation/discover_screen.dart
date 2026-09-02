@@ -10,9 +10,14 @@ import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:intl/intl.dart';
 
 class DiscoverScreen extends StatefulWidget {
-  const DiscoverScreen({required this.onCreate, super.key});
+  const DiscoverScreen({
+    required this.onCreate,
+    this.profileRepository,
+    super.key,
+  });
 
   final VoidCallback onCreate;
+  final ProfileRepository? profileRepository;
 
   @override
   State<DiscoverScreen> createState() => _DiscoverScreenState();
@@ -20,8 +25,9 @@ class DiscoverScreen extends StatefulWidget {
 
 class _DiscoverScreenState extends State<DiscoverScreen> {
   final _events = EventRepository();
-  final _profiles = ProfileRepository();
   final _location = const LocationService();
+  final _interestController = TextEditingController();
+  late final ProfileRepository _profiles;
 
   List<EventSummary> _results = const [];
   double? _latitude;
@@ -29,18 +35,28 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   double _radiusKm = 10;
   bool _loading = true;
   bool _showMap = false;
-  String? _error;
+  bool _maintenance = false;
+  String? _locationNotice;
+  String? _interest;
+
+  @override
+  void dispose() {
+    _interestController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
+    _profiles = widget.profileRepository ?? ProfileRepository();
     _loadSavedLocation();
   }
 
   Future<void> _loadSavedLocation() async {
     setState(() {
       _loading = true;
-      _error = null;
+      _maintenance = false;
+      _locationNotice = null;
     });
     try {
       final profile = await _profiles.fetchOwnProfile();
@@ -49,7 +65,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       _longitude = profile.approximateLongitude;
       if (_latitude != null && _longitude != null) await _loadEvents();
     } catch (_) {
-      _error = 'We could not load your saved area.';
+      _maintenance = true;
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -58,7 +74,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   Future<void> _useCurrentLocation() async {
     setState(() {
       _loading = true;
-      _error = null;
+      _maintenance = false;
+      _locationNotice = null;
     });
     try {
       final position = await _location.currentPosition();
@@ -66,11 +83,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       _longitude = position.longitude;
       await _loadEvents();
     } on LocationFailure catch (failure) {
-      _error = failure.message;
+      _locationNotice = 'Location access is needed to show nearby events.';
       if (failure.canOpenSettings && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(failure.message),
+            content: const Text(
+              'Location access is needed to show nearby events.',
+            ),
             action: SnackBarAction(
               label: 'Settings',
               onPressed: _location.openSettings,
@@ -79,7 +98,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         );
       }
     } catch (_) {
-      _error = 'We could not get your location. Please try again.';
+      _maintenance = true;
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -94,16 +113,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         latitude: latitude,
         longitude: longitude,
         radiusKm: _radiusKm,
+        interest: _interest,
       );
       if (mounted) {
         setState(() {
           _results = results;
-          _error = null;
+          _maintenance = false;
         });
       }
     } catch (_) {
       if (mounted) {
-        setState(() => _error = 'Nearby events are temporarily unavailable.');
+        setState(() => _maintenance = true);
       }
     }
   }
@@ -121,6 +141,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     });
     await _loadEvents();
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _applyInterest(String value) async {
+    final normalized = value.trim();
+    setState(() {
+      _interest = normalized.isEmpty ? null : normalized;
+      _loading = true;
+    });
+    FocusScope.of(context).unfocus();
+    await _loadEvents();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _clearInterest() {
+    _interestController.clear();
+    _applyInterest('');
   }
 
   Future<void> _openEvent(EventSummary event) async {
@@ -172,16 +208,42 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 ),
               ),
             ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+              sliver: SliverToBoxAdapter(
+                child: AppInterestSearch(
+                  key: const Key('event-interest-search'),
+                  controller: _interestController,
+                  enabled: !_loading && _latitude != null,
+                  hintText: 'Try “outdoors with a relaxed pace”',
+                  onSubmitted: _applyInterest,
+                  onClear: _clearInterest,
+                ),
+              ),
+            ),
             if (_loading)
               const SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(child: CupertinoActivityIndicator(radius: 14)),
               )
+            else if (_maintenance)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
+                  child: AppMaintenanceState(
+                    key: const Key('discover-maintenance-state'),
+                    onRetry: _latitude == null || _longitude == null
+                        ? _loadSavedLocation
+                        : _refresh,
+                  ),
+                ),
+              )
             else if (_latitude == null || _longitude == null)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: _LocationPrompt(
-                  error: _error,
+                  notice: _locationNotice,
                   onPressed: _useCurrentLocation,
                 ),
               )
@@ -203,11 +265,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      _MapStatus(
-                        count: _results.length,
-                        radiusKm: _radiusKm,
-                        error: _error,
-                      ),
+                      _MapStatus(count: _results.length, radiusKm: _radiusKm),
                     ],
                   ),
                 ),
@@ -215,7 +273,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             else if (_results.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: _EmptyResults(error: _error, onCreate: widget.onCreate),
+                child: _EmptyResults(onCreate: widget.onCreate),
               )
             else ...[
               SliverPadding(
@@ -346,15 +404,10 @@ class _ViewControls extends StatelessWidget {
 }
 
 class _MapStatus extends StatelessWidget {
-  const _MapStatus({
-    required this.count,
-    required this.radiusKm,
-    required this.error,
-  });
+  const _MapStatus({required this.count, required this.radiusKm});
 
   final int count;
   final double radiusKm;
-  final String? error;
 
   @override
   Widget build(BuildContext context) => Container(
@@ -375,8 +428,7 @@ class _MapStatus extends StatelessWidget {
         const SizedBox(width: 9),
         Expanded(
           child: Text(
-            error ??
-                '$count ${count == 1 ? 'event' : 'events'} within ${radiusKm.toInt()} km',
+            '$count ${count == 1 ? 'event' : 'events'} within ${radiusKm.toInt()} km',
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
@@ -469,9 +521,9 @@ class _EventRow extends StatelessWidget {
 }
 
 class _LocationPrompt extends StatelessWidget {
-  const _LocationPrompt({required this.error, required this.onPressed});
+  const _LocationPrompt({required this.notice, required this.onPressed});
 
-  final String? error;
+  final String? notice;
   final VoidCallback onPressed;
 
   @override
@@ -511,12 +563,24 @@ class _LocationPrompt extends StatelessWidget {
               fontSize: 16,
             ),
           ),
-          if (error != null) ...[
-            const SizedBox(height: 10),
-            Text(
-              error!,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+          if (notice != null) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.secondaryContainer.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                notice!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
           const SizedBox(height: 22),
@@ -535,9 +599,8 @@ class _LocationPrompt extends StatelessWidget {
 }
 
 class _EmptyResults extends StatelessWidget {
-  const _EmptyResults({required this.error, required this.onCreate});
+  const _EmptyResults({required this.onCreate});
 
-  final String? error;
   final VoidCallback onCreate;
 
   @override
@@ -550,7 +613,7 @@ class _EmptyResults extends StatelessWidget {
           const Icon(CupertinoIcons.calendar_badge_plus, size: 54),
           const SizedBox(height: 16),
           Text(
-            error ?? 'Nothing planned nearby—yet.',
+            'Nothing planned nearby—yet.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall,
           ),

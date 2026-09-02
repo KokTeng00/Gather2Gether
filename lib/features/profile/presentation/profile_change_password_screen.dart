@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/core/validation/validators.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 
@@ -110,130 +109,104 @@ class _ProfileChangePasswordScreenState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        AppSurface(
-                          color: colors.primaryContainer.withValues(alpha: 0.7),
-                          borderColor: colors.primary.withValues(alpha: 0.16),
-                          borderRadius: 22,
-                          padding: const EdgeInsets.all(18),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 44,
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: colors.primary,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: Icon(
-                                  CupertinoIcons.lock_shield_fill,
-                                  color: colors.onPrimary,
-                                  size: 21,
-                                ),
-                              ),
-                              const SizedBox(width: 13),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Protect your account',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                            color: colors.onPrimaryContainer,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Use at least 10 characters with a letter and a number. A unique password is safest.',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: colors.onPrimaryContainer
-                                                .withValues(alpha: 0.78),
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: Text(
+                            'Choose a password you do not use anywhere else.',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: colors.onSurfaceVariant),
                           ),
                         ),
-                        const SizedBox(height: 18),
-                        AppSurface(
-                          borderRadius: 22,
-                          padding: const EdgeInsets.all(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              TextFormField(
-                                key: const Key('current-password-field'),
-                                controller: _currentPassword,
-                                enabled: !_saving,
-                                obscureText: !_showCurrent,
-                                autofillHints: const [AutofillHints.password],
-                                textInputAction: TextInputAction.next,
-                                decoration: _passwordDecoration(
-                                  label: 'Current password',
-                                  visible: _showCurrent,
-                                  onToggle: () => setState(
-                                    () => _showCurrent = !_showCurrent,
-                                  ),
-                                ),
-                                validator: (value) => (value?.isEmpty ?? true)
-                                    ? 'Enter your current password.'
-                                    : null,
-                              ),
-                              const SizedBox(height: 13),
-                              TextFormField(
-                                key: const Key('new-password-field'),
-                                controller: _newPassword,
-                                enabled: !_saving,
-                                obscureText: !_showNew,
-                                autofillHints: const [
-                                  AutofillHints.newPassword,
-                                ],
-                                textInputAction: TextInputAction.next,
-                                decoration: _passwordDecoration(
-                                  label: 'New password',
-                                  visible: _showNew,
-                                  onToggle: () =>
-                                      setState(() => _showNew = !_showNew),
-                                ),
-                                validator: _validateNewPassword,
-                              ),
-                              const SizedBox(height: 13),
-                              TextFormField(
-                                key: const Key('confirm-password-field'),
-                                controller: _confirmation,
-                                enabled: !_saving,
-                                obscureText: !_showConfirmation,
-                                autofillHints: const [
-                                  AutofillHints.newPassword,
-                                ],
-                                textInputAction: TextInputAction.done,
-                                onFieldSubmitted: (_) => _updatePassword(),
-                                decoration: _passwordDecoration(
-                                  label: 'Confirm new password',
-                                  visible: _showConfirmation,
-                                  icon: CupertinoIcons.checkmark_shield,
-                                  onToggle: () => setState(
-                                    () =>
-                                        _showConfirmation = !_showConfirmation,
-                                  ),
-                                ),
-                                validator: (value) => value != _newPassword.text
-                                    ? 'Passwords do not match.'
-                                    : null,
-                              ),
-                            ],
+                        const SizedBox(height: 24),
+                        Text(
+                          'Current password',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 9),
+                        TextFormField(
+                          key: const Key('current-password-field'),
+                          controller: _currentPassword,
+                          enabled: !_saving,
+                          obscureText: !_showCurrent,
+                          autofillHints: const [AutofillHints.password],
+                          textInputAction: TextInputAction.next,
+                          decoration: _passwordDecoration(
+                            label: 'Enter current password',
+                            visible: _showCurrent,
+                            onToggle: () =>
+                                setState(() => _showCurrent = !_showCurrent),
                           ),
+                          validator: (value) => (value?.isEmpty ?? true)
+                              ? 'Enter your current password.'
+                              : null,
+                        ),
+                        const SizedBox(height: 26),
+                        Text(
+                          'New password',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 9),
+                        TextFormField(
+                          key: const Key('new-password-field'),
+                          controller: _newPassword,
+                          enabled: !_saving,
+                          obscureText: !_showNew,
+                          autofillHints: const [AutofillHints.newPassword],
+                          textInputAction: TextInputAction.next,
+                          onChanged: (_) => setState(() {}),
+                          decoration: _passwordDecoration(
+                            label: 'Enter new password',
+                            visible: _showNew,
+                            onToggle: () =>
+                                setState(() => _showNew = !_showNew),
+                          ),
+                          validator: _validateNewPassword,
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          children: [
+                            _PasswordRule(
+                              label: '10+ characters',
+                              met: _newPassword.text.length >= 10,
+                            ),
+                            _PasswordRule(
+                              label: 'One letter',
+                              met: RegExp(
+                                '[A-Za-z]',
+                              ).hasMatch(_newPassword.text),
+                            ),
+                            _PasswordRule(
+                              label: 'One number',
+                              met: RegExp(r'\d').hasMatch(_newPassword.text),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 18),
+                        TextFormField(
+                          key: const Key('confirm-password-field'),
+                          controller: _confirmation,
+                          enabled: !_saving,
+                          obscureText: !_showConfirmation,
+                          autofillHints: const [AutofillHints.newPassword],
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _updatePassword(),
+                          decoration: _passwordDecoration(
+                            label: 'Confirm new password',
+                            visible: _showConfirmation,
+                            icon: CupertinoIcons.checkmark_shield,
+                            onToggle: () => setState(
+                              () => _showConfirmation = !_showConfirmation,
+                            ),
+                          ),
+                          validator: (value) => value != _newPassword.text
+                              ? 'Passwords do not match.'
+                              : null,
+                        ),
+                        const SizedBox(height: 26),
                         FilledButton.icon(
                           key: const Key('update-password-button'),
                           onPressed: _saving ? null : _updatePassword,
@@ -243,15 +216,27 @@ class _ProfileChangePasswordScreenState
                                 )
                               : const Icon(CupertinoIcons.lock_rotation),
                           label: Text(
-                            _saving ? 'Updating password…' : 'Update password',
+                            _saving ? 'Changing password…' : 'Change password',
                           ),
                         ),
-                        const SizedBox(height: 14),
-                        Text(
-                          'Changing your password may require you to sign in again on other devices.',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: colors.onSurfaceVariant),
+                        const SizedBox(height: 16),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              CupertinoIcons.info_circle,
+                              size: 16,
+                              color: colors.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'You may need to sign in again on your other devices.',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: colors.onSurfaceVariant),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -262,6 +247,34 @@ class _ProfileChangePasswordScreenState
           ),
         ),
       ),
+    );
+  }
+}
+
+class _PasswordRule extends StatelessWidget {
+  const _PasswordRule({required this.label, required this.met});
+
+  final String label;
+  final bool met;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final color = met ? colors.primary : colors.onSurfaceVariant;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          met ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+          size: 15,
+          color: color,
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
+        ),
+      ],
     );
   }
 }

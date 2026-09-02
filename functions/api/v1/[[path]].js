@@ -36,10 +36,14 @@ class ApiError extends Error {
 }
 
 export async function onRequest(context) {
-  return handleApiRequest(context.request, context.env);
+  return handleApiRequest(
+    context.request,
+    context.env,
+    (task) => context.waitUntil(task),
+  );
 }
 
-export async function handleApiRequest(request, env) {
+export async function handleApiRequest(request, env, defer = null) {
   const requestId = crypto.randomUUID();
   const cors = {};
 
@@ -139,6 +143,59 @@ export async function handleApiRequest(request, env) {
           await deleteMediaObject(env.USER_MEDIA, oldImageKey);
         }
         return jsonResponse({deleted: oldImageKey !== null}, 200, requestId, cors);
+      }
+    }
+
+    if (segments.length >= 2 && segments[0] === 'profiles') {
+      const profileId = uuidParameter(segments[1], 'profile_id');
+
+      if (request.method === 'GET' && segments.length === 2) {
+        const rows = await supabaseRpc(
+          env,
+          identity.authorization,
+          'get_public_profile',
+          {p_profile_id: profileId},
+        );
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new ApiError(404, 'profile_not_found', 'Profile was not found.');
+        }
+        return jsonResponse({data: rows[0]}, 200, requestId, cors);
+      }
+
+      if (request.method === 'GET' && segments.length === 3 && segments[2] === 'avatar') {
+        assertMediaEnvironment(env);
+        const imageKey = await supabaseRpc(
+          env,
+          identity.authorization,
+          'get_public_profile_avatar_image_key',
+          {p_profile_id: profileId},
+        );
+        if (imageKey === null) {
+          throw new ApiError(404, 'profile_avatar_not_found', 'Profile photo was not found.');
+        }
+        if (!isOwnedMediaKey(imageKey, 'avatars', profileId)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid media reference.');
+        }
+        const object = await getMediaObject(env.USER_MEDIA, imageKey);
+        if (object === null) {
+          throw new ApiError(404, 'profile_avatar_not_found', 'Profile photo was not found.');
+        }
+        return mediaResponse(object, requestId, cors);
+      }
+
+      if (
+        (request.method === 'PUT' || request.method === 'DELETE') &&
+        segments.length === 3 &&
+        segments[2] === 'follow'
+      ) {
+        const following = request.method === 'PUT';
+        await supabaseRpc(
+          env,
+          identity.authorization,
+          'set_profile_follow',
+          {p_profile_id: profileId, p_following: following},
+        );
+        return jsonResponse({following}, 200, requestId, cors);
       }
     }
 
@@ -281,11 +338,24 @@ export async function handleApiRequest(request, env) {
       if (scope !== null && scope !== 'mine') {
         throw new ApiError(400, 'invalid_parameter', 'scope is invalid.');
       }
+      const interest = optionalSearchParameter(url.searchParams.get('interest'), 'interest', 240);
+      if (scope === 'mine' && interest !== null) {
+        throw new ApiError(400, 'invalid_parameter', 'interest is unavailable for your own posts.');
+      }
+      const embedding = interest === null
+        ? null
+        : await generateEmbedding(env, identity.authorization, interest);
       const posts = await supabaseRpc(
         env,
         identity.authorization,
-        scope === 'mine' ? 'list_own_forum_posts' : 'list_forum_posts',
-        {p_limit: 30, p_before: null},
+        scope === 'mine'
+          ? 'list_own_forum_posts'
+          : embedding === null
+            ? 'list_forum_posts'
+            : 'recommend_forum_posts',
+        embedding === null
+          ? {p_limit: 30, p_before: null}
+          : {p_query_embedding: embedding, p_limit: 30},
       );
       if (!Array.isArray(posts)) {
         throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid forum data.');
@@ -337,6 +407,16 @@ export async function handleApiRequest(request, env) {
         if (typeof postId !== 'string' || !UUID_PATTERN.test(postId)) {
           throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid post identifier.');
         }
+        defer?.(
+          indexCreatedContent({
+            env,
+            authorization: identity.authorization,
+            rpc: 'set_forum_post_embedding',
+            idField: 'p_post_id',
+            id: postId,
+            input: semanticContent(input.category, input.title, input.body, input.placeName),
+          }),
+        );
         return jsonResponse({id: postId}, 201, requestId, cors);
       } catch (error) {
         // A 5xx/fetch failure is commit-ambiguous: keep the final object because
@@ -448,15 +528,27 @@ export async function handleApiRequest(request, env) {
       const latitude = numberParameter(url.searchParams.get('latitude'), 'latitude', -90, 90);
       const longitude = numberParameter(url.searchParams.get('longitude'), 'longitude', -180, 180);
       const radiusKm = numberParameter(url.searchParams.get('radius_km'), 'radius_km', 1, 100);
+      const interest = optionalSearchParameter(url.searchParams.get('interest'), 'interest', 240);
+      const embedding = interest === null
+        ? null
+        : await generateEmbedding(env, identity.authorization, interest);
       const events = await supabaseRpc(
         env,
         identity.authorization,
-        'nearby_events',
-        {
-          p_latitude: latitude,
-          p_longitude: longitude,
-          p_radius_km: radiusKm,
-        },
+        embedding === null ? 'nearby_events' : 'recommend_nearby_events',
+        embedding === null
+          ? {
+              p_latitude: latitude,
+              p_longitude: longitude,
+              p_radius_km: radiusKm,
+            }
+          : {
+              p_latitude: latitude,
+              p_longitude: longitude,
+              p_radius_km: radiusKm,
+              p_query_embedding: embedding,
+              p_limit: 30,
+            },
       );
       return jsonResponse({data: events}, 200, requestId, cors);
     }
@@ -472,6 +564,21 @@ export async function handleApiRequest(request, env) {
       if (typeof eventId !== 'string' || !UUID_PATTERN.test(eventId)) {
         throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid event identifier.');
       }
+      defer?.(
+        indexCreatedContent({
+          env,
+          authorization: identity.authorization,
+          rpc: 'set_event_embedding',
+          idField: 'p_event_id',
+          id: eventId,
+          input: semanticContent(
+            input.p_category,
+            input.p_title,
+            input.p_description,
+            input.p_venue_name,
+          ),
+        }),
+      );
       return jsonResponse({id: eventId}, 201, requestId, cors);
     }
 
@@ -808,6 +915,16 @@ function optionalNullableStringParameter(value, name, minimum, maximum) {
   return stringParameter(value[name], name, minimum, maximum);
 }
 
+function optionalSearchParameter(value, name, maximum) {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > maximum) {
+    throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
+  }
+  return trimmed;
+}
+
 function stringParameter(value, name, minimum, maximum) {
   if (typeof value !== 'string') {
     throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
@@ -1104,6 +1221,60 @@ async function openRouterChat({
     throw new ApiError(502, 'invalid_model_response', 'The assistant returned an invalid response.');
   }
   return answer.trim();
+}
+
+function semanticContent(...parts) {
+  return parts
+    .filter((value) => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => value.trim())
+    .join('. ')
+    .slice(0, 4000);
+}
+
+async function generateEmbedding(env, authorization, input) {
+  let response;
+  try {
+    response = await fetch(`${trimSlash(env.SUPABASE_URL)}/functions/v1/embed`, {
+      method: 'POST',
+      headers: supabaseHeaders(env, authorization),
+      body: JSON.stringify({input}),
+      signal: AbortSignal.timeout(15000),
+    });
+  } catch (_) {
+    throw new ApiError(503, 'semantic_search_unavailable', 'Interest search is temporarily unavailable.');
+  }
+  if (!response.ok) {
+    throw new ApiError(503, 'semantic_search_unavailable', 'Interest search is temporarily unavailable.');
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (_) {
+    throw new ApiError(502, 'invalid_backend_response', 'The embedding service returned invalid data.');
+  }
+  const embedding = payload?.embedding;
+  if (
+    !Array.isArray(embedding) ||
+    embedding.length !== 384 ||
+    embedding.some((value) => typeof value !== 'number' || !Number.isFinite(value))
+  ) {
+    throw new ApiError(502, 'invalid_backend_response', 'The embedding service returned invalid data.');
+  }
+  return embedding;
+}
+
+async function indexCreatedContent({env, authorization, rpc, idField, id, input}) {
+  try {
+    const embedding = await generateEmbedding(env, authorization, input);
+    await supabaseRpc(env, authorization, rpc, {
+      [idField]: id,
+      p_embedding: embedding,
+    });
+  } catch (_) {
+    // Search indexing is best-effort. Publishing must not fail if inference is
+    // briefly unavailable; a later backfill can safely fill the NULL vector.
+  }
 }
 
 function supabaseHeaders(env, authorization) {

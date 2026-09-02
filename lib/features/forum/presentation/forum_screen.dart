@@ -20,9 +20,17 @@ class ForumScreen extends StatefulWidget {
 
 class _ForumScreenState extends State<ForumScreen> {
   late final ForumRepository _repository;
+  final _interestController = TextEditingController();
   List<ForumPost> _posts = const [];
   bool _loading = true;
   String? _error;
+  String? _interest;
+
+  @override
+  void dispose() {
+    _interestController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -34,7 +42,9 @@ class _ForumScreenState extends State<ForumScreen> {
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
-      final posts = await _repository.listPosts();
+      final posts = _interest == null
+          ? await _repository.listPosts()
+          : await _repository.searchPosts(_interest!);
       if (mounted) {
         setState(() {
           _posts = posts;
@@ -64,6 +74,18 @@ class _ForumScreenState extends State<ForumScreen> {
       ),
     );
     await _load();
+  }
+
+  Future<void> _applyInterest(String value) async {
+    final normalized = value.trim();
+    setState(() => _interest = normalized.isEmpty ? null : normalized);
+    FocusScope.of(context).unfocus();
+    await _load();
+  }
+
+  void _clearInterest() {
+    _interestController.clear();
+    _applyInterest('');
   }
 
   Future<void> _open(ForumPost post) async {
@@ -109,6 +131,19 @@ class _ForumScreenState extends State<ForumScreen> {
                   title: 'A space for good neighbours',
                   subtitle: 'Be kind · Keep personal details private',
                   icon: CupertinoIcons.person_3_fill,
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
+              sliver: SliverToBoxAdapter(
+                child: AppInterestSearch(
+                  key: const Key('forum-interest-search'),
+                  controller: _interestController,
+                  enabled: !_loading,
+                  hintText: 'Try “people learning something new”',
+                  onSubmitted: _applyInterest,
+                  onClear: _clearInterest,
                 ),
               ),
             ),

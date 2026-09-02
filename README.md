@@ -6,7 +6,7 @@ ideas in a moderated community forum. One Dart codebase targets Android and iOS.
 
 ## MVP features
 
-- Email/password account creation and sign-in
+- Google-only account creation and sign-in through Supabase Auth
 - Foreground-only location permission
 - PostGIS nearby-event search at 5, 10, 25, or 50 km
 - Draggable Gather Guide with private chat history, nearby-event questions, app
@@ -84,6 +84,39 @@ Only the public Supabase URL, publishable key, and Cloudflare edge API URL belon
 in `.env.json`. The file is ignored to prevent accidental environment drift
 between developers.
 
+### Google sign-in setup
+
+Create a **Web application** OAuth client in Google Auth Platform. Configure the
+consent screen with the `openid`, email, and profile scopes, then add the
+Supabase callback URL shown on the Supabase Google provider page as an authorized
+redirect URI. For a hosted project it has this form:
+
+```text
+https://PROJECT_REF.supabase.co/auth/v1/callback
+```
+
+Put the client ID and secret in the ignored
+`infrastructure/terraform/terraform.tfvars`, then run `terraform apply`.
+Terraform enables the Supabase Google provider and allows the mobile callback
+`gather2gether://login-callback`. Google redirects to Supabase first; Supabase
+then returns to the app, where `supabase_flutter` exchanges the PKCE code and
+stores the resulting Supabase session in the device's secure storage. Email and
+password authentication is disabled; a user's profile is created automatically
+on their first Google sign-in.
+
+For a local Supabase stack, add
+`http://127.0.0.1:54321/auth/v1/callback` to the same Google OAuth client and
+export the credentials before starting Supabase:
+
+```bash
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID="...apps.googleusercontent.com"
+export SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET="..."
+npx supabase@latest start
+```
+
+The Google client secret belongs only in Google/Supabase configuration. Never
+add it to `.env.json`, Dart defines, the Flutter bundle, or source control.
+
 ## Verification
 
 ```bash
@@ -105,10 +138,10 @@ bash scripts/smoke_test.sh
 ## Infrastructure deployment
 
 Terraform owns the dedicated Supabase project, Cloudflare Pages project,
-private R2 media bucket and staging-object lifecycle. It also enforces the
-managed Auth minimum password length. Database tables and policies remain SQL
-migrations because schema history is safer and easier to review outside
-Terraform state.
+private R2 media bucket and staging-object lifecycle. It also enforces
+Google-only authentication and the mobile callback allow-list. Database tables
+and policies remain SQL migrations because schema history is safer and easier
+to review outside Terraform state.
 
 ```bash
 cp infrastructure/terraform/terraform.tfvars.example \
@@ -120,8 +153,8 @@ terraform -chdir=infrastructure/terraform apply
 ```
 
 The Supabase project has `prevent_destroy = true`. Terraform state contains the
-generated database password, so use an encrypted remote backend with restricted
-access before adding CI/CD or teammates.
+generated database password and Google OAuth client secret, so use an encrypted
+remote backend with restricted access before adding CI/CD or teammates.
 
 Apply database migrations after Terraform creates the project and R2 bucket:
 

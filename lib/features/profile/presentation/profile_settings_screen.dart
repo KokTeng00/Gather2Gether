@@ -21,6 +21,7 @@ class ProfileSettingsScreen extends StatefulWidget {
     this.onProfileChanged,
     this.locationService,
     this.emailOverride,
+    this.hasPasswordSignInOverride,
     this.onSignOut,
     super.key,
   });
@@ -31,6 +32,7 @@ class ProfileSettingsScreen extends StatefulWidget {
   final ValueChanged<UserProfile>? onProfileChanged;
   final LocationService? locationService;
   final String? emailOverride;
+  final bool? hasPasswordSignInOverride;
   final Future<void> Function()? onSignOut;
 
   @override
@@ -56,6 +58,18 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
       widget.emailOverride ??
       Supabase.instance.client.auth.currentUser?.email ??
       '';
+
+  bool get _hasPasswordSignIn {
+    final override = widget.hasPasswordSignInOverride;
+    if (override != null) return override;
+
+    final user = Supabase.instance.client.auth.currentUser;
+    final identities = user?.identities;
+    if (identities != null && identities.isNotEmpty) {
+      return identities.any((identity) => identity.provider == 'email');
+    }
+    return user?.appMetadata['provider'] != 'google';
+  }
 
   Future<void> _openAccount() => Navigator.of(context).push<void>(
     MaterialPageRoute(
@@ -83,7 +97,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
 
   Future<void> _openSecurity() => Navigator.of(context).push<void>(
     MaterialPageRoute(
-      builder: (_) => _SecuritySettingsScreen(repository: widget.repository),
+      builder: (_) => _SecuritySettingsScreen(
+        repository: widget.repository,
+        hasPasswordSignIn: _hasPasswordSignIn,
+      ),
     ),
   );
 
@@ -217,7 +234,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                           key: const Key('settings-security-row'),
                           icon: CupertinoIcons.lock_shield_fill,
                           title: 'Security',
-                          description: 'Password and session protection',
+                          description: _hasPasswordSignIn
+                              ? 'Password and session protection'
+                              : 'Google sign-in and session protection',
                           onTap: _openSecurity,
                         ),
                         _SettingsRow(
@@ -595,9 +614,20 @@ class _PreferencesSettingsScreenState
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Preferences & discovery')),
+      appBar: AppBar(
+        title: const Text('Preferences'),
+        actions: [
+          TextButton(
+            key: const Key('save-preferences-button'),
+            onPressed: _saving || _locating || !_hasChanges
+                ? null
+                : _savePreferences,
+            child: Text(_saving ? 'Saving…' : 'Save'),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -611,17 +641,9 @@ class _PreferencesSettingsScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _SettingsPageIntro(
-                      icon: CupertinoIcons.compass_fill,
-                      title: 'Shape your experience',
-                      description:
-                          'Choose how nearby plans are discovered and whether Gather Guide is available.',
-                    ),
-                    const SizedBox(height: 24),
                     const ProfileSectionHeader(
-                      title: 'Nearby discovery',
-                      subtitle:
-                          'Choose how Gather2Gether finds plans around you.',
+                      title: 'Discovery',
+                      subtitle: 'Choose the area used for nearby events.',
                     ),
                     const SizedBox(height: 11),
                     ProfileNearbyPreferencesCard(
@@ -636,31 +658,11 @@ class _PreferencesSettingsScreenState
                           setState(() => _radiusKm = value),
                       onLocationPressed: _updateLocation,
                     ),
-                    const SizedBox(height: 14),
-                    FilledButton.icon(
-                      key: const Key('save-preferences-button'),
-                      onPressed: _saving || _locating || !_hasChanges
-                          ? null
-                          : _savePreferences,
-                      icon: _saving
-                          ? CupertinoActivityIndicator(color: colors.onPrimary)
-                          : const Icon(CupertinoIcons.checkmark_alt),
-                      label: Text(_saving ? 'Saving…' : 'Save preferences'),
-                    ),
-                    if (!_hasChanges && !_saving) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        'Your discovery preferences are up to date.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 26),
                     const ProfileSectionHeader(
                       title: 'Gather Guide',
-                      subtitle: 'Control your private event assistant.',
+                      subtitle:
+                          'Choose whether the private assistant is available.',
                     ),
                     const SizedBox(height: 11),
                     ProfileGuidePreferenceCard(
@@ -680,9 +682,13 @@ class _PreferencesSettingsScreenState
 }
 
 class _SecuritySettingsScreen extends StatelessWidget {
-  const _SecuritySettingsScreen({required this.repository});
+  const _SecuritySettingsScreen({
+    required this.repository,
+    required this.hasPasswordSignIn,
+  });
 
   final ProfileRepository repository;
+  final bool hasPasswordSignIn;
 
   @override
   Widget build(BuildContext context) {
@@ -701,31 +707,41 @@ class _SecuritySettingsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _SettingsPageIntro(
+                    _SettingsPageIntro(
                       icon: CupertinoIcons.lock_shield_fill,
                       title: 'Keep your account secure',
-                      description:
-                          'Manage your password and review how this device protects your session.',
+                      description: hasPasswordSignIn
+                          ? 'Manage your password and review how this device protects your session.'
+                          : 'Review your Google sign-in and how this device protects your session.',
                     ),
                     const SizedBox(height: 24),
                     const _SettingsSectionLabel('Sign-in security'),
                     const SizedBox(height: 8),
                     _SettingsGroup(
                       children: [
-                        _SettingsRow(
-                          key: const Key('settings-change-password-row'),
-                          icon: CupertinoIcons.lock_rotation,
-                          title: 'Change password',
-                          description:
-                              'Choose a strong, unique account password',
-                          onTap: () => Navigator.of(context).push<void>(
-                            MaterialPageRoute(
-                              builder: (_) => ProfileChangePasswordScreen(
-                                repository: repository,
+                        if (hasPasswordSignIn)
+                          _SettingsRow(
+                            key: const Key('settings-change-password-row'),
+                            icon: CupertinoIcons.lock_rotation,
+                            title: 'Change password',
+                            description:
+                                'Choose a strong, unique account password',
+                            onTap: () => Navigator.of(context).push<void>(
+                              MaterialPageRoute(
+                                builder: (_) => ProfileChangePasswordScreen(
+                                  repository: repository,
+                                ),
                               ),
                             ),
+                          )
+                        else
+                          const _SettingsInformationRow(
+                            icon: CupertinoIcons
+                                .person_crop_circle_badge_checkmark,
+                            title: 'Google sign-in',
+                            value:
+                                'Your sign-in password is managed by your Google Account.',
                           ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 18),

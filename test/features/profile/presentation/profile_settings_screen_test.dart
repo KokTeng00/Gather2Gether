@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/theme/app_theme.dart';
@@ -60,7 +61,7 @@ Future<
     ValueNotifier<int> signOuts,
   })
 >
-_pumpSettings(WidgetTester tester) async {
+_pumpSettings(WidgetTester tester, {bool hasPasswordSignIn = true}) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -77,6 +78,7 @@ _pumpSettings(WidgetTester tester) async {
         profile: repository.profile,
         repository: repository,
         emailOverride: 'maya@example.com',
+        hasPasswordSignInOverride: hasPasswordSignIn,
         onProfileChanged: changed.add,
         onAssistantEnabledChanged: (_) {},
         onSignOut: () async => signOuts.value++,
@@ -139,6 +141,7 @@ void main() {
             profile: repository.profile,
             repository: repository,
             emailOverride: 'maya@example.com',
+            hasPasswordSignInOverride: true,
             onAssistantEnabledChanged: (_) {},
             onSignOut: () async {},
           ),
@@ -154,6 +157,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('edit public profile includes profile photo controls', (
+    tester,
+  ) async {
+    await _pumpSettings(tester);
+
+    await tester.tap(find.text('Account & profile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit public profile'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit public profile'), findsOneWidget);
+    expect(find.byKey(const Key('profile-photo-action')), findsOneWidget);
+    expect(find.text('Add photo'), findsOneWidget);
+    expect(find.byKey(const Key('profile-username-field')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('preferences page saves discovery and Gather Guide separately', (
     tester,
   ) async {
@@ -162,15 +182,20 @@ void main() {
     await tester.tap(find.text('Preferences & discovery'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('profile-preferences-list')), findsOneWidget);
+    expect(find.text('Shape your experience'), findsNothing);
+    expect(
+      find.byType(CupertinoSlidingSegmentedControl<double>),
+      findsOneWidget,
+    );
 
-    final initialButton = tester.widget<FilledButton>(
+    final initialButton = tester.widget<TextButton>(
       find.byKey(const Key('save-preferences-button')),
     );
     expect(initialButton.onPressed, isNull);
 
     await tester.tap(find.text('25 km'));
     await tester.pump();
-    final changedButton = tester.widget<FilledButton>(
+    final changedButton = tester.widget<TextButton>(
       find.byKey(const Key('save-preferences-button')),
     );
     expect(changedButton.onPressed, isNotNull);
@@ -213,6 +238,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('change-password-form')), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(3));
+    expect(find.text('Protect your account'), findsNothing);
+    expect(find.text('10+ characters'), findsOneWidget);
+    expect(find.text('One letter'), findsOneWidget);
+    expect(find.text('One number'), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('current-password-field')),
@@ -241,6 +270,24 @@ void main() {
       ('CurrentPassword1', 'NewPassword123'),
     ]);
     expect(find.text('Password updated.'), findsOneWidget);
+  });
+
+  testWidgets('security reflects a Google-only sign-in account', (
+    tester,
+  ) async {
+    await _pumpSettings(tester, hasPasswordSignIn: false);
+
+    expect(find.text('Google sign-in and session protection'), findsOneWidget);
+    await tester.tap(find.text('Security'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Google sign-in'), findsOneWidget);
+    expect(
+      find.text('Your sign-in password is managed by your Google Account.'),
+      findsOneWidget,
+    );
+    expect(find.text('Change password'), findsNothing);
+    expect(find.byKey(const Key('settings-change-password-row')), findsNothing);
   });
 
   testWidgets('privacy information is reachable from the hub', (tester) async {

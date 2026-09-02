@@ -6,7 +6,7 @@ import 'package:gather2gether/features/forum/domain/forum_post.dart';
 import 'package:gather2gether/features/forum/presentation/forum_post_attachments.dart';
 import 'package:gather2gether/features/forum/presentation/forum_post_screen.dart';
 
-/// The signed-in member's community posts, presented as a compact media grid.
+/// The signed-in member's community posts, presented as readable updates.
 class ProfileCommunityActivity extends StatefulWidget {
   const ProfileCommunityActivity({this.repository, super.key});
 
@@ -95,16 +95,12 @@ class _ProfileCommunityActivityState extends State<ProfileCommunityActivity> {
 
     return Semantics(
       label: '${_posts.length} community posts',
-      child: GridView.builder(
-        key: const Key('profile-activity-grid'),
+      child: ListView.separated(
+        key: const Key('profile-activity-list'),
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: _posts.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 2,
-          mainAxisSpacing: 2,
-        ),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           final post = _posts[index];
           return _ActivityTile(
@@ -128,23 +124,53 @@ class _ActivityLoading extends StatelessWidget {
     return Semantics(
       key: const Key('profile-activity-loading'),
       label: 'Loading your community posts',
-      child: GridView.count(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 3,
-        crossAxisSpacing: 2,
-        mainAxisSpacing: 2,
+      child: Column(
         children: [
-          for (var index = 0; index < 6; index++)
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Color.lerp(
-                  colors.surfaceContainerHighest,
-                  colors.surface,
-                  index.isEven ? 0.1 : 0.28,
+          for (var index = 0; index < 3; index++) ...[
+            AppSurface(
+              borderRadius: 18,
+              padding: const EdgeInsets.all(14),
+              child: SizedBox(
+                height: 58,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: colors.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 86,
+                            height: 10,
+                            color: colors.surfaceContainerHighest,
+                          ),
+                          const SizedBox(height: 9),
+                          Container(
+                            height: 13,
+                            color: Color.lerp(
+                              colors.surfaceContainerHighest,
+                              colors.surface,
+                              0.16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
+            if (index != 2) const SizedBox(height: 10),
+          ],
         ],
       ),
     );
@@ -170,47 +196,51 @@ class _ActivityMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(28, 42, 28, 46),
-      child: Column(
+    return AppSurface(
+      borderRadius: 18,
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 64,
-            height: 64,
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: colors.primary.withValues(alpha: 0.55),
-                width: 1.5,
-              ),
+              color: colors.primaryContainer,
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(icon, color: colors.primary, size: 27),
+            child: Icon(icon, color: colors.onPrimaryContainer, size: 21),
           ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colors.onSurfaceVariant,
-              height: 1.4,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+                ),
+                if (actionLabel != null && onAction != null) ...[
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: onAction,
+                    icon: const Icon(CupertinoIcons.refresh, size: 16),
+                    label: Text(actionLabel!),
+                  ),
+                ],
+              ],
             ),
           ),
-          if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: 18),
-            FilledButton.tonalIcon(
-              onPressed: onAction,
-              icon: const Icon(CupertinoIcons.refresh, size: 17),
-              label: Text(actionLabel!),
-            ),
-          ],
         ],
       ),
     );
@@ -235,95 +265,116 @@ class _ActivityTile extends StatelessWidget {
     return Semantics(
       button: true,
       label: 'Open community post: ${post.title}',
-      child: Material(
-        color: visual.background,
-        clipBehavior: Clip.hardEdge,
-        child: InkWell(
-          onTap: onTap,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (post.hasImage)
-                ForumPostImage(
+      child: AppSurface(
+        borderRadius: 18,
+        onTap: onTap,
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            if (!post.hasImage) ...[
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: visual.background,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(visual.icon, color: visual.ink, size: 21),
+              ),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    post.category,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: visual.ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    post.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      height: 1.25,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 4,
+                    children: [
+                      _PostMeta(
+                        icon: CupertinoIcons.chat_bubble,
+                        label:
+                            '${post.commentCount} ${post.commentCount == 1 ? 'reply' : 'replies'}',
+                      ),
+                      if (post.hasPlace)
+                        _PostMeta(
+                          icon: CupertinoIcons.location,
+                          label: post.placeName!,
+                        ),
+                      if (post.isLocked)
+                        const _PostMeta(
+                          icon: CupertinoIcons.lock,
+                          label: 'Closed',
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            if (post.hasImage)
+              SizedBox(
+                width: 100,
+                child: ForumPostImage(
                   postId: post.id,
                   title: post.title,
                   repository: repository,
                   aspectRatio: 1,
-                  borderRadius: 0,
-                )
-              else ...[
-                Positioned(
-                  right: -12,
-                  top: -10,
-                  child: Icon(
-                    visual.icon,
-                    color: visual.ink.withValues(alpha: 0.12),
-                    size: 72,
-                  ),
+                  borderRadius: 14,
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(visual.icon, color: visual.ink, size: 18),
-                      const Spacer(),
-                      Text(
-                        post.title,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: visual.ink,
-                          fontWeight: FontWeight.w800,
-                          height: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              if (post.hasPlace)
-                Positioned(
-                  top: 7,
-                  left: 7,
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: post.hasImage
-                          ? const Color(0xB8000000)
-                          : visual.ink.withValues(alpha: 0.9),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      CupertinoIcons.location_fill,
-                      size: 11,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              if (post.isLocked)
-                Positioned(
-                  top: 7,
-                  right: 7,
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: post.hasImage
-                          ? const Color(0xB8000000)
-                          : visual.ink.withValues(alpha: 0.9),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      CupertinoIcons.lock_fill,
-                      color: Colors.white,
-                      size: 11,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+              )
+            else
+              Icon(
+                CupertinoIcons.chevron_right,
+                size: 15,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+class _PostMeta extends StatelessWidget {
+  const _PostMeta({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
+        ),
+      ],
     );
   }
 }

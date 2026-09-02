@@ -7,29 +7,41 @@ import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/profile_stats.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/profile_screen.dart';
+import 'package:intl/intl.dart';
 
 class _FakeProfileRepository extends ProfileRepository {
-  _FakeProfileRepository()
-    : profile = const UserProfile(
-        displayName: 'Maya Chen',
-        username: 'maya_chen',
-        bio: 'Coffee walks, local art, and welcoming new neighbours.',
-        city: 'Berlin',
-        preferredRadiusKm: 10,
-        approximateLatitude: 52.52,
-        approximateLongitude: 13.4,
-        assistantEnabled: true,
-      );
+  _FakeProfileRepository({UserProfile? initialProfile, this.failFetch = false})
+    : profile =
+          initialProfile ??
+          const UserProfile(
+            displayName: 'Maya Chen',
+            username: 'maya_chen',
+            bio: 'Coffee walks, local art, and welcoming new neighbours.',
+            city: 'Berlin',
+            preferredRadiusKm: 10,
+            approximateLatitude: 52.52,
+            approximateLongitude: 13.4,
+            assistantEnabled: true,
+          );
 
   UserProfile profile;
+  final bool failFetch;
   int identityUpdates = 0;
 
   @override
-  Future<UserProfile> fetchOwnProfile() async => profile;
+  Future<UserProfile> fetchOwnProfile() async {
+    if (failFetch) throw StateError('database detail hidden from UI');
+    return profile;
+  }
 
   @override
-  Future<ProfileStats> fetchStats() async =>
-      const ProfileStats(postsCount: 12, hostedCount: 4, goingCount: 7);
+  Future<ProfileStats> fetchStats() async => const ProfileStats(
+    postsCount: 12,
+    hostedCount: 4,
+    goingCount: 7,
+    followersCount: 31,
+    followingCount: 18,
+  );
 
   @override
   Future<UserProfile> updateIdentity({
@@ -64,13 +76,18 @@ Future<_FakeProfileRepository> _pumpProfile(
   WidgetTester tester, {
   ThemeData? theme,
   double textScale = 1,
+  UserProfile? initialProfile,
+  bool failFetch = false,
   ValueChanged<UserProfile>? onProfileChanged,
 }) async {
   tester.view.physicalSize = const Size(320, 568);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final repository = _FakeProfileRepository();
+  final repository = _FakeProfileRepository(
+    initialProfile: initialProfile,
+    failFetch: failFetch,
+  );
 
   await tester.pumpWidget(
     MaterialApp(
@@ -87,6 +104,7 @@ Future<_FakeProfileRepository> _pumpProfile(
             onProfileChanged: onProfileChanged,
             repository: repository,
             emailOverride: 'maya@example.com',
+            hasPasswordSignInOverride: true,
             avatarHeadersOverride: const {},
             forumRepository: _EmptyForumRepository(),
             onSignOut: () async {},
@@ -108,28 +126,32 @@ void main() {
     expect(find.text('Maya Chen'), findsOneWidget);
     expect(find.text('@maya_chen'), findsOneWidget);
     expect(find.text('12'), findsOneWidget);
-    expect(find.text('4'), findsOneWidget);
-    expect(find.text('7'), findsOneWidget);
-    expect(find.text('No community posts yet'), findsOneWidget);
+    expect(find.text('31'), findsOneWidget);
+    expect(find.text('18'), findsOneWidget);
     expect(find.byTooltip('Profile settings'), findsOneWidget);
-    expect(find.byKey(const Key('profile-social-header')), findsOneWidget);
+    expect(find.byKey(const Key('profile-page-header')), findsOneWidget);
     expect(find.byKey(const Key('profile-avatar')), findsOneWidget);
-    expect(find.byKey(const Key('profile-inline-stats')), findsOneWidget);
+    expect(find.byKey(const Key('profile-activity-summary')), findsOneWidget);
     expect(find.byKey(const Key('profile-edit-action')), findsOneWidget);
-    expect(find.byKey(const Key('profile-posts-tab')), findsOneWidget);
 
-    final header = tester.getRect(
-      find.byKey(const Key('profile-social-header')),
-    );
+    final header = tester.getRect(find.byKey(const Key('profile-page-header')));
     final avatar = tester.getRect(find.byKey(const Key('profile-avatar')));
-    final stats = tester.getRect(find.byKey(const Key('profile-inline-stats')));
+    final stats = tester.getRect(
+      find.byKey(const Key('profile-activity-summary')),
+    );
     final edit = tester.getRect(find.byKey(const Key('profile-edit-action')));
-    final postsTab = tester.getRect(find.byKey(const Key('profile-posts-tab')));
     expect(header.top, greaterThanOrEqualTo(0));
     expect(avatar.top, greaterThan(header.top));
-    expect((avatar.center.dy - stats.center.dy).abs(), lessThan(2));
     expect(edit.top, greaterThan(avatar.bottom));
-    expect(postsTab.top, greaterThan(edit.bottom));
+    expect(stats.top, greaterThan(edit.bottom));
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -700));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('profile-contributions-header')),
+      findsOneWidget,
+    );
+    expect(find.text('No community posts yet'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -143,6 +165,8 @@ void main() {
     await tester.tap(find.text('Edit profile'));
     await tester.pumpAndSettle();
     expect(find.text('Your identity'), findsOneWidget);
+    expect(find.byKey(const Key('save-profile-button')), findsOneWidget);
+    expect(find.text('Save profile'), findsNothing);
 
     await tester.enterText(find.byType(TextFormField).at(0), 'Maya C.');
     await tester.enterText(find.byType(TextFormField).at(1), 'Maya.Dot');
@@ -164,6 +188,43 @@ void main() {
     expect(changed.last.username, 'maya_local');
   });
 
+  testWidgets('edit profile locks a recently changed username', (tester) async {
+    final changedAt = DateTime.now().subtract(const Duration(days: 1));
+    final lockedProfile = UserProfile(
+      displayName: 'Maya Chen',
+      username: 'maya_chen',
+      bio: 'Coffee walks and local art.',
+      city: 'Berlin',
+      preferredRadiusKm: 10,
+      approximateLatitude: 52.52,
+      approximateLongitude: 13.4,
+      assistantEnabled: true,
+      usernameChangedAt: changedAt,
+    );
+    final repository = await _pumpProfile(
+      tester,
+      initialProfile: lockedProfile,
+    );
+
+    await tester.tap(find.text('Edit profile'));
+    await tester.pumpAndSettle();
+
+    final usernameField = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(const Key('profile-username-field')),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(usernameField.readOnly, isTrue);
+    expect(usernameField.enabled, isFalse);
+    final nextDate = DateFormat.yMMMMd().format(
+      lockedProfile.nextUsernameChangeAt!,
+    );
+    expect(find.text('You can change it again on $nextDate.'), findsOneWidget);
+    expect(find.byKey(const Key('profile-photo-action')), findsOneWidget);
+    expect(repository.identityUpdates, 0);
+  });
+
   testWidgets('settings action opens the profile settings hub', (tester) async {
     await _pumpProfile(tester);
     await tester.tap(find.byTooltip('Profile settings'));
@@ -174,5 +235,19 @@ void main() {
     expect(find.byKey(const Key('settings-account-row')), findsOneWidget);
     expect(find.byKey(const Key('settings-preferences-row')), findsOneWidget);
     expect(find.byKey(const Key('settings-security-row')), findsOneWidget);
+  });
+
+  testWidgets('profile failures use neutral maintenance messaging', (
+    tester,
+  ) async {
+    await _pumpProfile(tester, failFetch: true);
+
+    expect(find.byKey(const Key('profile-maintenance-state')), findsOneWidget);
+    expect(find.text('MAINTENANCE'), findsOneWidget);
+    expect(find.text('We’ll be back soon'), findsOneWidget);
+    expect(find.text('Couldn’t load your profile'), findsNothing);
+    expect(find.text('database detail hidden from UI'), findsNothing);
+    expect(find.text('Check again'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

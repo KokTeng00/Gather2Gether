@@ -24,11 +24,17 @@ resource "supabase_settings" "app" {
     max_rows             = 1000
   })
 
-  # The provider sends partial settings updates, so dashboard-managed Auth
-  # fields remain untouched. HIBP is intentionally not enabled here because it
-  # depends on the Supabase subscription plan.
+  # The provider sends partial settings updates. HIBP is intentionally not
+  # enabled here because it depends on the Supabase subscription plan.
   auth = jsonencode({
-    password_min_length = 10
+    password_min_length              = 10
+    site_url                         = "gather2gether://login-callback"
+    uri_allow_list                   = "gather2gether://login-callback"
+    external_email_enabled           = false
+    external_google_enabled          = true
+    external_google_client_id        = var.google_oauth_client_id
+    external_google_secret           = var.google_oauth_client_secret
+    external_google_skip_nonce_check = false
   })
 }
 

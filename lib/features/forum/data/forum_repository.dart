@@ -46,6 +46,14 @@ class ForumRepository {
     return _postList(await _request('GET', 'forum/posts'));
   }
 
+  Future<List<ForumPost>> searchPosts(String interest) async {
+    final normalized = interest.trim();
+    if (normalized.isEmpty) return listPosts();
+    return _postList(
+      await _request('GET', 'forum/posts', query: {'interest': normalized}),
+    );
+  }
+
   Future<List<ForumPost>> listOwnPosts() async {
     final posts = _postList(await _request('GET', 'forum/posts?scope=mine'));
     // Older edge deployments ignore the scope query and return the regular
@@ -177,9 +185,15 @@ class ForumRepository {
     return uploadToken;
   }
 
-  Future<Object?> _request(String method, String path, {Object? body}) async {
+  Future<Object?> _request(
+    String method,
+    String path, {
+    Map<String, String>? query,
+    Object? body,
+  }) async {
     final token = _requiredAccessToken();
-    final uri = _uri(path);
+    var uri = _uri(path);
+    if (query != null) uri = uri.replace(queryParameters: query);
     final headers = {
       'Authorization': 'Bearer $token',
       'Accept': 'application/json',

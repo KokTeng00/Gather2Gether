@@ -11,3 +11,6 @@ cloudflare_account_id = "replace-with-account-id"
 supabase_access_token    = "replace-with-project-admin-token"
 supabase_organization_id = "replace-with-organization-id"
 supabase_region          = "eu-west-1"
+
+google_oauth_client_id     = "replace-with-google-web-client-id.apps.googleusercontent.com"
+google_oauth_client_secret = "replace-with-google-web-client-secret"

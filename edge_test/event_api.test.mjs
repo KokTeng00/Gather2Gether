@@ -62,6 +62,39 @@ test('nearby endpoint verifies the user and forwards only validated RPC paramete
   assert.equal(payload.data[0].id, eventId);
 });
 
+test('interest search embeds the query and uses the cosine recommendation RPC', async () => {
+  const calls = [];
+  const embedding = Array.from({length: 384}, (_, index) => index / 384);
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/functions/v1/embed')) return Response.json({embedding});
+    if (address.endsWith('/rpc/recommend_nearby_events')) {
+      return Response.json([{id: eventId, title: 'Gentle forest walk'}]);
+    }
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const response = await handleApiRequest(
+    new Request(
+      'https://gather2gether.pages.dev/api/v1/events/nearby?latitude=52.52&longitude=13.405&radius_km=10&interest=quiet%20outdoor%20activities',
+      {headers: {Authorization: 'Bearer user-token'}},
+    ),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(JSON.parse(calls[1].options.body), {
+    input: 'quiet outdoor activities',
+  });
+  const rpcBody = JSON.parse(calls[2].options.body);
+  assert.match(calls[2].url, /\/rpc\/recommend_nearby_events$/);
+  assert.equal(rpcBody.p_query_embedding.length, 384);
+  assert.equal(rpcBody.p_limit, 30);
+});
+
 test('create endpoint rejects unexpected fields before calling the database', async () => {
   let calls = 0;
   globalThis.fetch = async (url) => {
@@ -135,6 +168,58 @@ test('forum list authenticates and uses the restricted list RPC', async () => {
     p_before: null,
   });
   assert.equal(payload.data[0].id, postId);
+});
+
+test('community interest search uses the indexed semantic feed RPC', async () => {
+  const calls = [];
+  const embedding = Array(384).fill(0.125);
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/functions/v1/embed')) return Response.json({embedding});
+    if (address.endsWith('/rpc/recommend_forum_posts')) {
+      return Response.json([{id: postId, title: 'Learn together'}]);
+    }
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const response = await handleApiRequest(
+    new Request(
+      'https://gather2gether.pages.dev/api/v1/forum/posts?interest=people%20learning%20new%20skills',
+      {headers: {Authorization: 'Bearer user-token'}},
+    ),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.match(calls[2].url, /\/rpc\/recommend_forum_posts$/);
+  assert.equal(JSON.parse(calls[2].options.body).p_query_embedding.length, 384);
+});
+
+test('profile follow endpoint derives the follower from the authenticated user', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({url: String(url), options});
+    if (String(url).endsWith('/auth/v1/user')) return Response.json({id: userId});
+    return Response.json(true);
+  };
+
+  const response = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/profiles/${postId}/follow`, {
+      method: 'PUT',
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.match(calls[1].url, /\/rpc\/set_profile_follow$/);
+  assert.deepEqual(JSON.parse(calls[1].options.body), {
+    p_profile_id: postId,
+    p_following: true,
+  });
+  assert.deepEqual(await response.json(), {following: true});
 });
 
 test('forum post creation forwards normalized, allow-listed fields', async () => {

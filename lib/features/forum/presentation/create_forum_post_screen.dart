@@ -191,27 +191,13 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
                   title: 'Discussion',
                   child: Column(
                     children: [
-                      DropdownButtonFormField<String>(
-                        initialValue: _category,
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(CupertinoIcons.square_grid_2x2),
-                          hintText: 'Category',
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                        ),
-                        items: forumCategories
-                            .map(
-                              (category) => DropdownMenuItem(
-                                value: category,
-                                child: Text(category),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: _submitting
-                            ? null
-                            : (value) => setState(() => _category = value!),
+                      AppChoiceField(
+                        key: const Key('forum-category-field'),
+                        value: _category,
+                        options: forumCategories,
+                        label: 'Topic',
+                        enabled: !_submitting,
+                        onChanged: (value) => setState(() => _category = value),
                       ),
                       const Divider(indent: 52),
                       TextFormField(

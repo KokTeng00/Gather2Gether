@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/events/data/event_repository.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
+import 'package:gather2gether/features/profile/presentation/public_profile_screen.dart';
 import 'package:intl/intl.dart';
 
 class EventDetailScreen extends StatefulWidget {
@@ -112,6 +113,12 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     }
   }
 
+  Future<void> _openOrganizer() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => PublicProfileScreen(profileId: _event.organizerId),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final status = _event.userRsvpStatus;
@@ -141,6 +148,61 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               title: _event.title,
               subtitle: 'Hosted by ${_event.organizerName}',
               height: 270,
+            ),
+            const SizedBox(height: 20),
+            AppSection(
+              title: 'Host',
+              child: InkWell(
+                key: const Key('event-organizer-profile'),
+                onTap: _openOrganizer,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: colors.primaryContainer,
+                        child: Text(
+                          _event.organizerName.trim().isEmpty
+                              ? '?'
+                              : String.fromCharCode(
+                                  _event.organizerName.trim().runes.first,
+                                ).toUpperCase(),
+                          style: TextStyle(
+                            color: colors.onPrimaryContainer,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _event.organizerName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            Text(
+                              'View profile and follow',
+                              style: TextStyle(
+                                color: colors.onSurfaceVariant,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        CupertinoIcons.chevron_forward,
+                        color: colors.onSurfaceVariant,
+                        size: 16,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 24),
             AppSection(

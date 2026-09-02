@@ -83,7 +83,9 @@ class EventRepository {
     required double latitude,
     required double longitude,
     required double radiusKm,
+    String? interest,
   }) async {
+    final normalizedInterest = interest?.trim() ?? '';
     final payload = await _request(
       'GET',
       'events/nearby',
@@ -91,6 +93,7 @@ class EventRepository {
         'latitude': '$latitude',
         'longitude': '$longitude',
         'radius_km': '$radiusKm',
+        if (normalizedInterest.isNotEmpty) 'interest': normalizedInterest,
       },
     );
     final rows = _map(payload)['data'];

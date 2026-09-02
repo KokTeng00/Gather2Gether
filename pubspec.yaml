@@ -56,6 +56,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+# Flutter 3.38 rebuilds iOS code assets during the hot-run DevFS sync without
+# passing SDKROOT. Keep the Darwin path provider on its channel-based release
+# until the project moves to Flutter 3.44 or newer, where that tool bug is fixed.
+dependency_overrides:
+  path_provider_foundation: 2.5.1
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 

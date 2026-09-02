@@ -48,6 +48,27 @@ variable "supabase_region" {
   default     = "eu-west-1"
 }
 
+variable "google_oauth_client_id" {
+  description = "Google Auth Platform Web application OAuth client ID used by Supabase Auth."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.google_oauth_client_id)) > 0
+    error_message = "google_oauth_client_id must not be empty."
+  }
+}
+
+variable "google_oauth_client_secret" {
+  description = "Google Auth Platform Web application OAuth client secret used only by Supabase Auth."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(trimspace(var.google_oauth_client_secret)) > 0
+    error_message = "google_oauth_client_secret must not be empty."
+  }
+}
+
 variable "production_branch" {
   description = "Branch label used for Cloudflare Pages production deployments."
   type        = string

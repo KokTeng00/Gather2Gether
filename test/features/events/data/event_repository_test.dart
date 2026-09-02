@@ -17,6 +17,10 @@ void main() {
         expect(request.url.path, '/api/v1/events/nearby');
         expect(request.url.queryParameters['latitude'], '52.52');
         expect(request.url.queryParameters['radius_km'], '10.0');
+        expect(
+          request.url.queryParameters['interest'],
+          'quiet outdoor activities',
+        );
         expect(request.headers['authorization'], 'Bearer access-token');
         return http.Response(
           jsonEncode({
@@ -36,6 +40,7 @@ void main() {
         latitude: 52.52,
         longitude: 13.405,
         radiusKm: 10,
+        interest: ' quiet outdoor activities ',
       );
 
       expect(events.single.id, eventId);

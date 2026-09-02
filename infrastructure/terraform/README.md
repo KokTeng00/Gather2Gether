@@ -22,10 +22,12 @@ Apply Terraform before deploying Pages Functions so the
 API; the media routes depend on the new permission-checked RPCs. The bucket has
 no public domain, and objects are served only through authenticated API routes.
 
-The Supabase Auth settings update manages only `password_min_length = 10`.
-Supabase's Terraform provider performs partial settings updates, preserving
-unmanaged Auth fields. Leaked-password protection remains dashboard-managed
-because availability depends on the Supabase plan.
+The Supabase Auth settings update disables email/password authentication and
+manages the mobile callback allow-list and Google provider. The Google client
+secret is a sensitive Terraform input and is still stored in Terraform state,
+so the remote state backend must be encrypted and access-restricted. Supabase's
+Terraform provider performs partial settings updates, preserving unmanaged Auth
+fields.
 
 Wrangler owns Pages deployment artifacts and Functions runtime configuration;
 Terraform ignores `deployment_configs` to prevent the two tools from fighting

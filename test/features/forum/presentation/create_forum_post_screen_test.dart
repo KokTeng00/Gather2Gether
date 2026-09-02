@@ -7,6 +7,29 @@ import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/features/forum/presentation/create_forum_post_screen.dart';
 
 void main() {
+  testWidgets('topic uses the simple app choice sheet', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: CreateForumPostScreen(imagePicker: _FakeImagePicker())),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('forum-category-field')), findsOneWidget);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+
+    await tester.tap(find.byKey(const Key('forum-category-field')));
+    await tester.pumpAndSettle();
+    final title = tester.widget<Text>(
+      find.byKey(const Key('app-choice-sheet-title')),
+    );
+    expect(title.data, 'Topic');
+
+    await tester.tap(
+      find.byKey(const ValueKey('app-choice-Looking for group')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Looking for group'), findsOneWidget);
+  });
+
   testWidgets('photo can be chosen, previewed, changed, and removed', (
     tester,
   ) async {

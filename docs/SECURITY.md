@@ -38,8 +38,9 @@
   private model Worker. Pages reaches it through a service binding; neither
   service logs, returns, or sends the key to the mobile client.
 - Auth sessions use Android Keystore encryption and iOS Keychain.
-- Password changes verify the current email/password session before updating;
-  Terraform manages a 10-character minimum for new passwords.
+- Hosted Supabase Auth disables email/password authentication; the app exposes
+  only Google OAuth and creates profiles after the first successful Google
+  sign-in.
 - Android cloud backup is disabled for encrypted auth material.
 - Cloudflare serves HSTS, CSP, anti-framing, MIME-sniffing, referrer, and
   permissions-policy headers.
@@ -75,9 +76,9 @@ Any model credential pasted into chat or another third-party system must be
 rotated after initial setup. Update the Secrets Store value through Wrangler's
 masked interactive prompt, never through a command-line `--value` argument.
 
-Terraform state contains the generated database password even though Terraform
-marks it sensitive. Move state to an encrypted, access-controlled remote
-backend before team or CI use.
+Terraform state contains the generated database password and Google OAuth client
+secret even though Terraform marks them sensitive. Move state to an encrypted,
+access-controlled remote backend before team or CI use.
 
 ## Required credential rotation
 

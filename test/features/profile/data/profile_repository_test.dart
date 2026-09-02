@@ -108,4 +108,59 @@ void main() {
       ),
     );
   });
+
+  test(
+    'public profiles and follow changes use authenticated edge routes',
+    () async {
+      var call = 0;
+      final client = MockClient((request) async {
+        call += 1;
+        expect(request.headers['authorization'], 'Bearer access-token');
+        if (call == 1) {
+          expect(request.method, 'GET');
+          expect(
+            request.url.path,
+            '/api/v1/profiles/11111111-1111-4111-8111-111111111111',
+          );
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'id': '11111111-1111-4111-8111-111111111111',
+                'display_name': 'Alex',
+                'username': 'alex_local',
+                'bio': 'Coffee and walks.',
+                'city': 'Berlin',
+                'has_avatar': false,
+                'followers_count': 4,
+                'following_count': 2,
+                'viewer_is_following': false,
+                'viewer_is_self': false,
+              },
+            }),
+            200,
+          );
+        }
+        expect(request.method, 'PUT');
+        expect(
+          request.url.path,
+          '/api/v1/profiles/11111111-1111-4111-8111-111111111111/follow',
+        );
+        return http.Response(jsonEncode({'following': true}), 200);
+      });
+      final repository = ProfileRepository(
+        httpClient: client,
+        accessTokenProvider: () => 'access-token',
+        edgeApiUrl: apiUrl,
+      );
+
+      final profile = await repository.fetchPublicProfile(
+        '11111111-1111-4111-8111-111111111111',
+      );
+      final following = await repository.setFollowing(profile.id, true);
+
+      expect(profile.username, 'alex_local');
+      expect(profile.followersCount, 4);
+      expect(following, isTrue);
+    },
+  );
 }

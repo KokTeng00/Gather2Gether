@@ -23,6 +23,20 @@ class _AuthGateState extends State<AuthGate> {
     _session = auth.currentSession;
     _subscription = auth.onAuthStateChange.listen((state) {
       if (mounted) setState(() => _session = state.session);
+    }, onError: _handleAuthError);
+  }
+
+  void _handleAuthError(Object error, StackTrace stackTrace) {
+    if (!mounted) return;
+    final message = error is AuthException
+        ? error.message
+        : 'Sign-in could not be completed. Please try again.';
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(
+        context,
+      )?.showSnackBar(SnackBar(content: Text(message)));
     });
   }
 

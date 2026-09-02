@@ -98,6 +98,264 @@ class CategoryVisual {
   }
 }
 
+class AppChoiceField extends StatelessWidget {
+  const AppChoiceField({
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.label = 'Category',
+    this.enabled = true,
+    super.key,
+  });
+
+  final String value;
+  final List<String> options;
+  final ValueChanged<String> onChanged;
+  final String label;
+  final bool enabled;
+
+  Future<void> _showChoices(BuildContext context) async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: false,
+      builder: (context) =>
+          _AppChoiceSheet(title: label, value: value, options: options),
+    );
+    if (selected != null && selected != value) onChanged(selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: '$label, $value',
+      hint: 'Double tap to choose',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const Key('app-choice-field'),
+          onTap: enabled ? () => _showChoices(context) : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+            child: Row(
+              children: [
+                Icon(
+                  CupertinoIcons.tag,
+                  color: enabled
+                      ? colors.primary
+                      : colors.onSurface.withValues(alpha: 0.38),
+                  size: 21,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: enabled
+                        ? colors.onSurface
+                        : colors.onSurface.withValues(alpha: 0.45),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: enabled
+                          ? colors.onSurfaceVariant
+                          : colors.onSurface.withValues(alpha: 0.38),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  CupertinoIcons.chevron_right,
+                  size: 16,
+                  color: colors.onSurfaceVariant.withValues(alpha: 0.72),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AppChoiceSheet extends StatelessWidget {
+  const _AppChoiceSheet({
+    required this.title,
+    required this.value,
+    required this.options,
+  });
+
+  final String title;
+  final String value;
+  final List<String> options;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.68;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 8, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    key: const Key('app-choice-sheet-title'),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(CupertinoIcons.xmark, size: 19),
+                ),
+              ],
+            ),
+          ),
+          Divider(
+            height: 1,
+            color: colors.outlineVariant.withValues(alpha: 0.72),
+          ),
+          Flexible(
+            child: ListView.separated(
+              key: const Key('app-choice-options'),
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              itemCount: options.length,
+              separatorBuilder: (_, _) => Divider(
+                height: 1,
+                color: colors.outlineVariant.withValues(alpha: 0.56),
+              ),
+              itemBuilder: (context, index) {
+                final option = options[index];
+                final selected = option == value;
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    key: ValueKey('app-choice-$option'),
+                    onTap: () => Navigator.pop(context, option),
+                    child: SizedBox(
+                      height: 52,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              option,
+                              style: Theme.of(context).textTheme.bodyLarge
+                                  ?.copyWith(
+                                    color: selected
+                                        ? colors.primary
+                                        : colors.onSurface,
+                                    fontWeight: selected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                  ),
+                            ),
+                          ),
+                          if (selected)
+                            Icon(
+                              CupertinoIcons.checkmark,
+                              color: colors.primary,
+                              size: 19,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AppInterestSearch extends StatelessWidget {
+  const AppInterestSearch({
+    required this.controller,
+    required this.onSubmitted,
+    required this.onClear,
+    this.enabled = true,
+    this.hintText = 'What are you interested in?',
+    super.key,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onClear;
+  final bool enabled;
+  final String hintText;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AppSurface(
+      borderRadius: 16,
+      child: TextField(
+        key: const Key('interest-search-field'),
+        controller: controller,
+        enabled: enabled,
+        textInputAction: TextInputAction.search,
+        maxLength: 240,
+        onSubmitted: onSubmitted,
+        decoration: InputDecoration(
+          hintText: hintText,
+          counterText: '',
+          prefixIcon: Icon(
+            CupertinoIcons.sparkles,
+            color: colors.primary,
+            size: 19,
+          ),
+          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) => value.text.trim().isEmpty
+                ? IconButton(
+                    tooltip: 'Search interests',
+                    onPressed: enabled
+                        ? () => onSubmitted(controller.text)
+                        : null,
+                    icon: const Icon(CupertinoIcons.arrow_right_circle_fill),
+                  )
+                : IconButton(
+                    key: const Key('clear-interest-search'),
+                    tooltip: 'Clear interest search',
+                    onPressed: enabled ? onClear : null,
+                    icon: const Icon(CupertinoIcons.xmark_circle_fill),
+                  ),
+          ),
+          filled: false,
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 15),
+        ),
+      ),
+    );
+  }
+}
+
 class AppBrandMark extends StatelessWidget {
   const AppBrandMark({this.size = 58, super.key});
 
@@ -192,6 +450,147 @@ class AppSurface extends StatelessWidget {
       child: onTap == null
           ? content
           : InkWell(borderRadius: radius, onTap: onTap, child: content),
+    );
+  }
+}
+
+class AppMaintenanceState extends StatelessWidget {
+  const AppMaintenanceState({required this.onRetry, super.key});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: AppSurface(
+          color: colors.primaryContainer.withValues(alpha: 0.56),
+          borderColor: colors.primary.withValues(alpha: 0.16),
+          borderRadius: 28,
+          child: Stack(
+            clipBehavior: Clip.antiAlias,
+            children: [
+              Positioned(
+                right: -30,
+                top: -34,
+                child: Container(
+                  width: 118,
+                  height: 118,
+                  decoration: BoxDecoration(
+                    color: colors.primary.withValues(alpha: 0.07),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Positioned(
+                left: -24,
+                bottom: -46,
+                child: Container(
+                  width: 104,
+                  height: 104,
+                  decoration: BoxDecoration(
+                    color: colors.secondary.withValues(alpha: 0.09),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(26, 28, 26, 26),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.surface.withValues(alpha: 0.82),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: colors.primary.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: colors.secondary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'MAINTENANCE',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.65,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        color: colors.primary,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.primary.withValues(alpha: 0.2),
+                            blurRadius: 22,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        CupertinoIcons.wrench_fill,
+                        size: 31,
+                        color: colors.onPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Text(
+                      'We’ll be back soon',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'We’re making a few improvements to Gather2Gether. '
+                      'Please check back in a moment.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonalIcon(
+                        onPressed: onRetry,
+                        icon: const Icon(CupertinoIcons.refresh),
+                        label: const Text('Check again'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -16,6 +16,7 @@ void main() {
         'approximate_longitude': 13.4,
         'assistant_enabled': false,
         'avatar_image_key': 'avatars/maya-v2',
+        'username_changed_at': '2026-08-31T09:15:00Z',
         'updated_at': '2026-08-31T10:30:00Z',
       });
 
@@ -24,6 +25,10 @@ void main() {
       expect(profile.preferredRadiusKm, 25);
       expect(profile.assistantEnabled, isFalse);
       expect(profile.hasAvatar, isTrue);
+      expect(
+        profile.usernameChangedAt,
+        DateTime.parse('2026-08-31T09:15:00Z').toLocal(),
+      );
       expect(
         profile.updatedAt,
         DateTime.parse('2026-08-31T10:30:00Z').toLocal(),
@@ -39,6 +44,31 @@ void main() {
     expect(profile.hasAvatar, isFalse);
     expect(profile.preferredRadiusKm, 10);
     expect(profile.assistantEnabled, isTrue);
+    expect(profile.usernameChangedAt, isNull);
+    expect(profile.canChangeUsernameAt(DateTime.now()), isTrue);
+  });
+
+  test('username cooldown uses three calendar months and clamps month end', () {
+    final profile = UserProfile(
+      displayName: 'Maya',
+      username: 'maya_chen',
+      city: 'Berlin',
+      preferredRadiusKm: 10,
+      approximateLatitude: null,
+      approximateLongitude: null,
+      assistantEnabled: true,
+      usernameChangedAt: DateTime.utc(2026, 1, 31, 18, 30),
+    );
+    final expected = DateTime.utc(2026, 4, 30, 18, 30).toLocal();
+
+    expect(profile.nextUsernameChangeAt, expected);
+    expect(
+      profile.canChangeUsernameAt(
+        expected.subtract(const Duration(microseconds: 1)),
+      ),
+      isFalse,
+    );
+    expect(profile.canChangeUsernameAt(expected), isTrue);
   });
 
   test('profile stats accepts PostgREST numeric representations', () {

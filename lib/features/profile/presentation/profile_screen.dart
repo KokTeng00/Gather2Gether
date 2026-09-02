@@ -25,6 +25,7 @@ class ProfileScreen extends StatefulWidget {
     this.repository,
     this.locationService,
     this.emailOverride,
+    this.hasPasswordSignInOverride,
     this.onSignOut,
     this.onProfileChanged,
     this.avatarPicker,
@@ -40,6 +41,7 @@ class ProfileScreen extends StatefulWidget {
   final ProfileRepository? repository;
   final LocationService? locationService;
   final String? emailOverride;
+  final bool? hasPasswordSignInOverride;
   final Future<void> Function()? onSignOut;
   final ValueChanged<UserProfile>? onProfileChanged;
   final ProfileAvatarPicker? avatarPicker;
@@ -59,7 +61,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ProfileStats? _stats;
   int _activityRevision = 0;
   bool _loading = true;
-  String? _loadError;
+  bool _maintenance = false;
 
   @override
   void initState() {
@@ -73,7 +75,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (mounted) {
       setState(() {
         if (_profile == null) _loading = true;
-        _loadError = null;
+        _maintenance = false;
       });
     }
     try {
@@ -93,7 +95,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       widget.onAssistantEnabledChanged(profile.assistantEnabled);
     } catch (_) {
       if (mounted) {
-        setState(() => _loadError = 'We could not load your profile details.');
+        setState(() => _maintenance = true);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -135,6 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           repository: _profiles,
           locationService: widget.locationService,
           emailOverride: widget.emailOverride,
+          hasPasswordSignInOverride: widget.hasPasswordSignInOverride,
           onSignOut: widget.onSignOut,
           onAssistantEnabledChanged: widget.onAssistantEnabledChanged,
           onProfileChanged: _profileChanged,
@@ -201,7 +204,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Center(child: CupertinoActivityIndicator(radius: 14)),
       );
     }
-    if (_loadError != null || _profile == null) {
+    if (_maintenance || _profile == null) {
       return SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 36),
@@ -211,8 +214,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               subtitle: 'Your Gather2Gether profile.',
             ),
             const SizedBox(height: 28),
-            ProfileLoadError(
-              message: _loadError ?? 'Your profile is unavailable.',
+            AppMaintenanceState(
+              key: const Key('profile-maintenance-state'),
               onRetry: _load,
             ),
           ],
@@ -236,15 +239,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 2, 8, 0),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
                         child: ProfileSocialAppBar(
                           username: profile.username,
                           onSettings: _openSettings,
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 22),
-                        child: ProfileOverviewHero(
+                        padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+                        child: ProfileCommunityOverview(
                           profile: profile,
                           stats: _stats,
                           avatarUrl: _avatarUrlFor(profile),
@@ -261,7 +264,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 640),
-                  child: const ProfilePostsTabHeader(),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: ProfileContributionsHeader(),
+                  ),
                 ),
               ),
             ),
@@ -269,12 +275,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 640),
-                  child:
-                      activity ??
-                      ProfileCommunityActivity(
-                        key: ValueKey('profile-activity-$_activityRevision'),
-                        repository: widget.forumRepository,
-                      ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    child:
+                        activity ??
+                        ProfileCommunityActivity(
+                          key: ValueKey('profile-activity-$_activityRevision'),
+                          repository: widget.forumRepository,
+                        ),
+                  ),
                 ),
               ),
             ),

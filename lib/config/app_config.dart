@@ -1,6 +1,8 @@
 class AppConfig {
   const AppConfig._();
 
+  static const authCallbackUrl = 'gather2gether://login-callback';
+
   static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   static const supabasePublishableKey = String.fromEnvironment(
     'SUPABASE_PUBLISHABLE_KEY',

@@ -7,6 +7,7 @@ import 'package:gather2gether/features/forum/domain/forum_comment.dart';
 import 'package:gather2gether/features/forum/domain/forum_post.dart';
 import 'package:gather2gether/features/forum/presentation/forum_format.dart';
 import 'package:gather2gether/features/forum/presentation/forum_post_attachments.dart';
+import 'package:gather2gether/features/profile/presentation/public_profile_screen.dart';
 
 class ForumPostScreen extends StatefulWidget {
   const ForumPostScreen({
@@ -68,6 +69,12 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  Future<void> _openAuthor(ForumPost post) => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => PublicProfileScreen(profileId: post.authorId),
+    ),
+  );
 
   Future<void> _sendComment() async {
     final body = _comment.text.trim();
@@ -163,7 +170,11 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 6, 20, 28),
                 children: [
-                  _PostHeader(post: post!, repository: _repository),
+                  _PostHeader(
+                    post: post!,
+                    repository: _repository,
+                    onAuthorTap: () => _openAuthor(post),
+                  ),
                   const SizedBox(height: 22),
                   Row(
                     children: [
@@ -211,10 +222,15 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
 }
 
 class _PostHeader extends StatelessWidget {
-  const _PostHeader({required this.post, required this.repository});
+  const _PostHeader({
+    required this.post,
+    required this.repository,
+    required this.onAuthorTap,
+  });
 
   final ForumPost post;
   final ForumRepository repository;
+  final VoidCallback onAuthorTap;
 
   @override
   Widget build(BuildContext context) {
@@ -252,51 +268,65 @@ class _PostHeader extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 18),
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: colors.primaryContainer,
-                    child: Text(
-                      post.authorName.isEmpty
-                          ? '?'
-                          : post.authorName.substring(0, 1).toUpperCase(),
-                      style: TextStyle(
-                        color: colors.onPrimaryContainer,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      post.authorName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  if (post.viewerIsAuthor) ...[
-                    const SizedBox(width: 7),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.secondaryContainer,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        'You',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colors.onSecondaryContainer,
-                          fontWeight: FontWeight.w800,
+              InkWell(
+                key: const Key('forum-author-profile'),
+                borderRadius: BorderRadius.circular(14),
+                onTap: onAuthorTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: colors.primaryContainer,
+                        child: Text(
+                          post.authorName.isEmpty
+                              ? '?'
+                              : post.authorName.substring(0, 1).toUpperCase(),
+                          style: TextStyle(
+                            color: colors.onPrimaryContainer,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ],
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Text(
+                          post.authorName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      if (post.viewerIsAuthor) ...[
+                        const SizedBox(width: 7),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.secondaryContainer,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Text(
+                            'You',
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: colors.onSecondaryContainer,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                          ),
+                        ),
+                      ] else
+                        Icon(
+                          CupertinoIcons.chevron_forward,
+                          size: 14,
+                          color: colors.onSurfaceVariant,
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),

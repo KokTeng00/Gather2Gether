@@ -1,65 +1,44 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
-import 'package:gather2gether/core/validation/validators.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key});
+  const SignInScreen({this.googleSignIn, super.key});
+
+  final Future<bool> Function()? googleSignIn;
 
   @override
   State<SignInScreen> createState() => _SignInScreenState();
 }
 
 class _SignInScreenState extends State<SignInScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _nameController = TextEditingController();
+  bool _isSigningIn = false;
 
-  bool _isSignUp = false;
-  bool _isLoading = false;
-  bool _obscurePassword = true;
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
+  Future<void> _signInWithGoogle() async {
+    if (_isSigningIn) return;
     FocusScope.of(context).unfocus();
-    setState(() => _isLoading = true);
+    setState(() => _isSigningIn = true);
+
     try {
-      final auth = Supabase.instance.client.auth;
-      if (_isSignUp) {
-        final response = await auth.signUp(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-          data: {'display_name': _nameController.text.trim()},
-        );
-        if (response.session == null && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Check your email to confirm your account.'),
-            ),
-          );
-        }
-      } else {
-        await auth.signInWithPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
+      final launched =
+          await (widget.googleSignIn?.call() ??
+              Supabase.instance.client.auth.signInWithOAuth(
+                OAuthProvider.google,
+                redirectTo: AppConfig.authCallbackUrl,
+                authScreenLaunchMode: LaunchMode.externalApplication,
+                queryParams: const {'prompt': 'select_account'},
+              ));
+      if (!launched) {
+        _showError('Could not open Google sign-in. Please try again.');
       }
     } on AuthException catch (error) {
       _showError(error.message);
     } catch (_) {
-      _showError('Something went wrong. Please try again.');
+      _showError('Could not start Google sign-in. Please try again.');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isSigningIn = false);
     }
   }
 
@@ -70,13 +49,9 @@ class _SignInScreenState extends State<SignInScreen> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _setSignUp(bool value) {
-    if (_isLoading || value == _isSignUp) return;
-    setState(() => _isSignUp = value);
-  }
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final colors = Theme.of(context).colorScheme;
     return Scaffold(
       body: Stack(
@@ -85,280 +60,276 @@ class _SignInScreenState extends State<SignInScreen> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                   colors: [
-                    Theme.of(context).scaffoldBackgroundColor,
+                    theme.scaffoldBackgroundColor,
                     Color.alphaBlend(
-                      colors.primaryContainer.withValues(alpha: 0.32),
-                      Theme.of(context).scaffoldBackgroundColor,
+                      colors.primaryContainer.withValues(alpha: 0.38),
+                      theme.scaffoldBackgroundColor,
                     ),
+                    theme.scaffoldBackgroundColor,
                   ],
                 ),
               ),
             ),
           ),
           Positioned(
-            right: -84,
-            top: -92,
-            child: Container(
-              width: 238,
-              height: 238,
-              decoration: BoxDecoration(
-                color: colors.primaryContainer.withValues(alpha: 0.62),
-                shape: BoxShape.circle,
-              ),
+            right: -82,
+            top: -74,
+            child: _BackdropOrb(
+              size: 238,
+              color: colors.primary.withValues(alpha: 0.06),
             ),
           ),
           Positioned(
-            left: -102,
-            top: 212,
-            child: Container(
-              width: 188,
-              height: 188,
-              decoration: BoxDecoration(
-                color: colors.secondaryContainer.withValues(alpha: 0.5),
-                shape: BoxShape.circle,
-              ),
+            left: -104,
+            top: 288,
+            child: _BackdropOrb(
+              size: 196,
+              color: colors.secondary.withValues(alpha: 0.07),
             ),
           ),
           SafeArea(
-            child: SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(20, 26, 20, 30),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
-                  child: AutofillGroup(
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              const AppBrandMark(size: 58),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Gather2Gether',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                            color: colors.primary,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Nearby plans, made together',
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(
-                                            color: colors.onSurfaceVariant,
-                                          ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 34),
-                          Text(
-                            'Make nearby feel closer.',
-                            style: Theme.of(context).textTheme.displaySmall
-                                ?.copyWith(
-                                  color: colors.onSurface,
-                                  fontSize: 40,
-                                  height: 1.02,
-                                ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Find free events, meet your neighbours, and turn a good idea into a real plan.',
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(
-                                  color: colors.onSurfaceVariant,
-                                  height: 1.42,
-                                ),
-                          ),
-                          const SizedBox(height: 28),
-                          AppSurface(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: SegmentedButton<bool>(
-                                    showSelectedIcon: false,
-                                    expandedInsets: EdgeInsets.zero,
-                                    segments: const [
-                                      ButtonSegment(
-                                        value: false,
-                                        label: Text('Sign in'),
-                                      ),
-                                      ButtonSegment(
-                                        value: true,
-                                        label: Text('Create account'),
-                                      ),
-                                    ],
-                                    selected: {_isSignUp},
-                                    onSelectionChanged: _isLoading
-                                        ? null
-                                        : (selection) =>
-                                              _setSignUp(selection.first),
-                                  ),
-                                ),
-                                const SizedBox(height: 24),
-                                Text(
-                                  _isSignUp
-                                      ? 'Join your local community'
-                                      : 'Welcome back',
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.headlineSmall,
-                                ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  _isSignUp
-                                      ? 'Create your account in less than a minute.'
-                                      : 'Sign in to see what is happening nearby.',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(
-                                        color: colors.onSurfaceVariant,
-                                      ),
-                                ),
-                                const SizedBox(height: 20),
-                                if (_isSignUp) ...[
-                                  TextFormField(
-                                    controller: _nameController,
-                                    textCapitalization:
-                                        TextCapitalization.words,
-                                    textInputAction: TextInputAction.next,
-                                    autofillHints: const [AutofillHints.name],
-                                    decoration: const InputDecoration(
-                                      labelText: 'Name',
-                                      prefixIcon: Icon(CupertinoIcons.person),
-                                    ),
-                                    validator: (value) =>
-                                        Validators.requiredText(
-                                          value,
-                                          maxLength: 80,
-                                        ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                                TextFormField(
-                                  controller: _emailController,
-                                  keyboardType: TextInputType.emailAddress,
-                                  textInputAction: TextInputAction.next,
-                                  autofillHints: const [AutofillHints.email],
-                                  autocorrect: false,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Email',
-                                    prefixIcon: Icon(CupertinoIcons.mail),
-                                  ),
-                                  validator: Validators.email,
-                                ),
-                                const SizedBox(height: 12),
-                                TextFormField(
-                                  controller: _passwordController,
-                                  obscureText: _obscurePassword,
-                                  textInputAction: TextInputAction.done,
-                                  autofillHints: _isSignUp
-                                      ? const [AutofillHints.newPassword]
-                                      : const [AutofillHints.password],
-                                  onFieldSubmitted: (_) => _submit(),
-                                  decoration: InputDecoration(
-                                    labelText: 'Password',
-                                    prefixIcon: const Icon(CupertinoIcons.lock),
-                                    suffixIcon: IconButton(
-                                      tooltip: _obscurePassword
-                                          ? 'Show password'
-                                          : 'Hide password',
-                                      onPressed: () => setState(
-                                        () => _obscurePassword =
-                                            !_obscurePassword,
-                                      ),
-                                      icon: Icon(
-                                        _obscurePassword
-                                            ? CupertinoIcons.eye
-                                            : CupertinoIcons.eye_slash,
-                                      ),
-                                    ),
-                                  ),
-                                  validator: _isSignUp
-                                      ? Validators.password
-                                      : Validators.requiredText,
-                                ),
-                                const SizedBox(height: 18),
-                                FilledButton(
-                                  onPressed: _isLoading ? null : _submit,
-                                  child: _isLoading
-                                      ? CupertinoActivityIndicator(
-                                          color: colors.onPrimary,
-                                        )
-                                      : Text(
-                                          _isSignUp
-                                              ? 'Create Account'
-                                              : 'Continue',
-                                        ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                            decoration: BoxDecoration(
-                              color: colors.secondaryContainer.withValues(
-                                alpha: 0.72,
-                              ),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                color: colors.secondary.withValues(alpha: 0.38),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final minimumHeight = (constraints.maxHeight - 48)
+                    .clamp(0.0, double.infinity)
+                    .toDouble();
+                return SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 26),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: 460,
+                        minHeight: minimumHeight,
+                      ),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const _BrandHeader(),
+                            const Spacer(),
+                            const SizedBox(height: 48),
+                            Text(
+                              'Make nearby\nfeel closer.',
+                              style: theme.textTheme.displaySmall?.copyWith(
+                                color: colors.onSurface,
+                                fontSize: 40,
+                                height: 1.01,
+                                letterSpacing: -1.45,
                               ),
                             ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Icon(
-                                  CupertinoIcons.checkmark_shield_fill,
-                                  color: colors.onSecondaryContainer,
-                                  size: 21,
-                                ),
-                                const SizedBox(width: 11),
-                                Expanded(
-                                  child: Text(
-                                    'Always free. Your precise location is never stored.',
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(
-                                          color: colors.onSecondaryContainer,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                  ),
-                                ),
-                              ],
+                            const SizedBox(height: 13),
+                            Text(
+                              'Discover free events, meet your neighbours, and turn a good idea into a real plan.',
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: colors.onSurfaceVariant,
+                                height: 1.45,
+                              ),
                             ),
-                          ),
-                        ],
+                            const Spacer(),
+                            const SizedBox(height: 42),
+                            _SignInPanel(
+                              isSigningIn: _isSigningIn,
+                              onPressed: _signInWithGoogle,
+                            ),
+                            const SizedBox(height: 16),
+                            const _PrivacyNote(),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        const AppBrandMark(size: 50),
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Gather2Gether',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: colors.primary,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                'Good plans start close to home',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SignInPanel extends StatelessWidget {
+  const _SignInPanel({required this.isSigningIn, required this.onPressed});
+
+  final bool isSigningIn;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colors.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: colors.outlineVariant.withValues(alpha: 0.72),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Ready when you are',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Use your Google account to continue securely.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            key: const Key('google-sign-in-button'),
+            onPressed: isSigningIn ? null : onPressed,
+            style: OutlinedButton.styleFrom(
+              backgroundColor: colors.surfaceContainerLowest,
+              foregroundColor: colors.onSurface,
+              minimumSize: const Size.fromHeight(58),
+              side: BorderSide(
+                color: colors.outlineVariant.withValues(alpha: 0.95),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(17),
+              ),
+            ),
+            icon: isSigningIn
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CupertinoActivityIndicator(),
+                  )
+                : const _GoogleMark(),
+            label: Text(
+              isSigningIn ? 'Opening Google…' : 'Continue with Google',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'New here? Your profile is created automatically.',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrivacyNote extends StatelessWidget {
+  const _PrivacyNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          CupertinoIcons.checkmark_shield_fill,
+          color: colors.primary,
+          size: 17,
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            'Free to join · Precise location stays private',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BackdropOrb extends StatelessWidget {
+  const _BackdropOrb({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+    );
+  }
+}
+
+class _GoogleMark extends StatelessWidget {
+  const _GoogleMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      alignment: Alignment.center,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+      ),
+      child: const Text(
+        'G',
+        style: TextStyle(
+          color: Color(0xFF4285F4),
+          fontSize: 15,
+          height: 1,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
