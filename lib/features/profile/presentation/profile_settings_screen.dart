@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/location/location_service.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
@@ -22,6 +23,8 @@ class ProfileSettingsScreen extends StatefulWidget {
     this.locationService,
     this.emailOverride,
     this.hasPasswordSignInOverride,
+    this.avatarUrlOverride,
+    this.avatarHeadersOverride,
     this.onSignOut,
     super.key,
   });
@@ -33,6 +36,8 @@ class ProfileSettingsScreen extends StatefulWidget {
   final LocationService? locationService;
   final String? emailOverride;
   final bool? hasPasswordSignInOverride;
+  final String? avatarUrlOverride;
+  final Map<String, String>? avatarHeadersOverride;
   final Future<void> Function()? onSignOut;
 
   @override
@@ -104,13 +109,44 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     ),
   );
 
-  Future<void> _openPrivacy() => Navigator.of(
-    context,
-  ).push<void>(MaterialPageRoute(builder: (_) => const _PrivacyScreen()));
+  Future<void> _openPrivacy() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => _PrivacyScreen(
+        profile: _profile,
+        repository: widget.repository,
+        onProfileChanged: _profileChanged,
+      ),
+    ),
+  );
 
   Future<void> _openAbout() => Navigator.of(
     context,
   ).push<void>(MaterialPageRoute(builder: (_) => const _AboutScreen()));
+
+  String? _avatarUrlFor(UserProfile profile) {
+    if (!profile.hasAvatar) return null;
+    final override = widget.avatarUrlOverride;
+    if (override != null) return override;
+    final base = AppConfig.edgeApiUrl.endsWith('/')
+        ? AppConfig.edgeApiUrl.substring(0, AppConfig.edgeApiUrl.length - 1)
+        : AppConfig.edgeApiUrl;
+    final version = Uri.encodeQueryComponent(profile.avatarImageKey!);
+    return '$base/profile/avatar?v=$version';
+  }
+
+  Map<String, String>? _avatarHeadersFor(UserProfile profile) {
+    final override = widget.avatarHeadersOverride;
+    if (override != null) return override;
+    if (!profile.hasAvatar) return null;
+    try {
+      final token = Supabase.instance.client.auth.currentSession?.accessToken;
+      return token == null || token.isEmpty
+          ? null
+          : {'Authorization': 'Bearer $token'};
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +155,6 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         ? 'Community member'
         : _profile.displayName.trim();
     final username = _profile.username.trim();
-    final initial = displayName.characters.first.toUpperCase();
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: SafeArea(
@@ -141,22 +176,12 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                       padding: const EdgeInsets.all(18),
                       child: Row(
                         children: [
-                          Container(
-                            width: 58,
-                            height: 58,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: colors.primary,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Text(
-                              initial,
-                              style: Theme.of(context).textTheme.titleLarge
-                                  ?.copyWith(
-                                    color: colors.onPrimary,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
+                          ProfileAvatar(
+                            key: const Key('settings-profile-avatar'),
+                            profile: _profile,
+                            imageUrl: _avatarUrlFor(_profile),
+                            headers: _avatarHeadersFor(_profile),
+                            size: 58,
                           ),
                           const SizedBox(width: 14),
                           Expanded(
@@ -244,7 +269,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                           icon: CupertinoIcons.hand_raised_fill,
                           title: 'Privacy',
                           description:
-                              'Location, conversations and public posts',
+                              'Event history, location and conversations',
                           onTap: _openPrivacy,
                         ),
                         _SettingsRow(
@@ -796,37 +821,147 @@ class _SecuritySettingsScreen extends StatelessWidget {
   }
 }
 
-class _PrivacyScreen extends StatelessWidget {
-  const _PrivacyScreen();
+class _PrivacyScreen extends StatefulWidget {
+  const _PrivacyScreen({
+    required this.profile,
+    required this.repository,
+    required this.onProfileChanged,
+  });
+
+  final UserProfile profile;
+  final ProfileRepository repository;
+  final ValueChanged<UserProfile> onProfileChanged;
 
   @override
-  Widget build(BuildContext context) => _InformationalSettingsScreen(
-    title: 'Privacy',
-    introIcon: CupertinoIcons.hand_raised_fill,
-    introTitle: 'Privacy by design',
-    introDescription:
-        'See what stays private and what you choose to share with the community.',
-    sectionTitle: 'Your information',
-    cards: const [
-      _InformationCardData(
-        icon: CupertinoIcons.location_fill,
-        title: 'Approximate home area',
-        description:
-            'Coordinates are rounded to about 1 km before storage. Location history is not stored or shown on your profile.',
+  State<_PrivacyScreen> createState() => _PrivacyScreenState();
+}
+
+class _PrivacyScreenState extends State<_PrivacyScreen> {
+  late bool _pastEventsPublic;
+  bool _savingPastVisibility = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pastEventsPublic = widget.profile.showPastEventsPublic;
+  }
+
+  Future<void> _setPastEventsPublic(bool isPublic) async {
+    if (_savingPastVisibility) return;
+    final previous = _pastEventsPublic;
+    setState(() {
+      _pastEventsPublic = isPublic;
+      _savingPastVisibility = true;
+    });
+    try {
+      final updated = await widget.repository.updatePastEventsVisibility(
+        isPublic,
+      );
+      if (!mounted) return;
+      setState(() => _pastEventsPublic = updated.showPastEventsPublic);
+      widget.onProfileChanged(updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isPublic
+                ? 'Past events are now visible on your profile.'
+                : 'Past events are now private.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pastEventsPublic = previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not update event privacy.')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingPastVisibility = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Privacy')),
+    body: SafeArea(
+      top: false,
+      child: ListView(
+        key: const Key('privacy-settings-list'),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
+        children: [
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const _SettingsPageIntro(
+                    icon: CupertinoIcons.hand_raised_fill,
+                    title: 'Privacy by design',
+                    description:
+                        'See what stays private and what you choose to share with the community.',
+                  ),
+                  const SizedBox(height: 24),
+                  const _SettingsSectionLabel('Profile activity'),
+                  const SizedBox(height: 8),
+                  _SettingsGroup(
+                    children: [
+                      SwitchListTile.adaptive(
+                        key: const Key('past-events-visibility-toggle'),
+                        contentPadding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
+                        secondary: const _SettingsIcon(
+                          icon: CupertinoIcons.clock_fill,
+                        ),
+                        title: const Text(
+                          'Show past events',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: const Text(
+                          'Show events you hosted or confirmed attending. Upcoming events you host remain public.',
+                        ),
+                        value: _pastEventsPublic,
+                        onChanged: _savingPastVisibility
+                            ? null
+                            : _setPastEventsPublic,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  const _SettingsSectionLabel('Your information'),
+                  const SizedBox(height: 8),
+                  const _InformationCard(
+                    data: _InformationCardData(
+                      icon: CupertinoIcons.location_fill,
+                      title: 'Approximate home area',
+                      description:
+                          'Coordinates are rounded to about 1 km before storage. Location history is not stored or shown on your profile.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const _InformationCard(
+                    data: _InformationCardData(
+                      icon: CupertinoIcons.chat_bubble_2_fill,
+                      title: 'Gather Guide conversations',
+                      description:
+                          'Your assistant conversations stay private to your account and can be cleared from Gather Guide.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const _InformationCard(
+                    data: _InformationCardData(
+                      icon: CupertinoIcons.person_2_fill,
+                      title: 'Community sharing',
+                      description:
+                          'Your profile, posts and any place you tag are visible to the community. Your email is never displayed.',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-      _InformationCardData(
-        icon: CupertinoIcons.chat_bubble_2_fill,
-        title: 'Gather Guide conversations',
-        description:
-            'Your assistant conversations stay private to your account and can be cleared from Gather Guide.',
-      ),
-      _InformationCardData(
-        icon: CupertinoIcons.person_2_fill,
-        title: 'Community sharing',
-        description:
-            'Your profile, posts and any place you tag are visible to the community. Your email is never displayed.',
-      ),
-    ],
+    ),
   );
 }
 
@@ -920,59 +1055,6 @@ class _AboutScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class _InformationalSettingsScreen extends StatelessWidget {
-  const _InformationalSettingsScreen({
-    required this.title,
-    required this.introIcon,
-    required this.introTitle,
-    required this.introDescription,
-    required this.sectionTitle,
-    required this.cards,
-  });
-
-  final String title;
-  final IconData introIcon;
-  final String introTitle;
-  final String introDescription;
-  final String sectionTitle;
-  final List<_InformationCardData> cards;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(title)),
-    body: SafeArea(
-      top: false,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
-        children: [
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 640),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _SettingsPageIntro(
-                    icon: introIcon,
-                    title: introTitle,
-                    description: introDescription,
-                  ),
-                  const SizedBox(height: 24),
-                  _SettingsSectionLabel(sectionTitle),
-                  const SizedBox(height: 8),
-                  for (var index = 0; index < cards.length; index++) ...[
-                    _InformationCard(data: cards[index]),
-                    if (index != cards.length - 1) const SizedBox(height: 12),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 class _SettingsPageIntro extends StatelessWidget {

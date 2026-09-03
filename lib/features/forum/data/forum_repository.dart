@@ -24,6 +24,21 @@ class ForumApiException implements Exception {
   String toString() => 'ForumApiException($code): $message';
 }
 
+class ForumLikeState {
+  const ForumLikeState({required this.liked, required this.likeCount});
+
+  factory ForumLikeState.fromJson(Map<String, dynamic> json) {
+    final rawCount = json['like_count'];
+    return ForumLikeState(
+      liked: json['liked'] == true,
+      likeCount: rawCount is int ? rawCount : int.tryParse('$rawCount') ?? 0,
+    );
+  }
+
+  final bool liked;
+  final int likeCount;
+}
+
 class ForumRepository {
   ForumRepository({
     http.Client? httpClient,
@@ -136,6 +151,16 @@ class ForumRepository {
     return _id(payload, 'comment');
   }
 
+  Future<ForumLikeState> setPostLike({
+    required String postId,
+    required bool liked,
+  }) async {
+    final payload = _map(
+      await _request('PUT', 'forum/posts/$postId/like', body: {'liked': liked}),
+    );
+    return ForumLikeState.fromJson(_map(payload['data']));
+  }
+
   Future<void> reportPost(String postId, String reason) =>
       _request('POST', 'forum/posts/$postId/report', body: {'reason': reason});
 
@@ -202,6 +227,7 @@ class ForumRepository {
     final future = switch (method) {
       'GET' => _httpClient.get(uri, headers: headers),
       'POST' => _httpClient.post(uri, headers: headers, body: jsonEncode(body)),
+      'PUT' => _httpClient.put(uri, headers: headers, body: jsonEncode(body)),
       _ => throw ArgumentError.value(
         method,
         'method',

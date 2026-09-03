@@ -1,6 +1,11 @@
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
+const MAX_PLACE_RESPONSE_BYTES = 128 * 1024;
 const ASSISTANT_HISTORY_LIMIT = 24;
+const RECOMMENDATION_RERANK_LIMIT = 24;
+const RECOMMENDATION_AI_WEIGHT = 0.8;
+const COMMUNITY_FEED_LIMIT = 30;
+const COMMUNITY_RECOMMENDATION_BLOCK = 3;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REPORT_REASONS = new Set([
@@ -26,6 +31,12 @@ const FORUM_CATEGORIES = new Set([
   'Safety',
 ]);
 const RSVP_STATUSES = new Set(['joined', 'tentative', 'cancelled']);
+const EVENT_PLAN_FILTERS = new Set(['going', 'tentative', 'hosting', 'past', 'saved']);
+const PROFILE_EVENT_FILTERS = new Set(['hosting', 'past']);
+const EVENT_DATE_FILTERS = new Set(['any', 'today', 'tomorrow', 'weekend']);
+const EVENT_TIME_FILTERS = new Set(['any', 'morning', 'afternoon', 'evening']);
+const EVENT_SETTINGS = new Set(['unspecified', 'indoor', 'outdoor', 'mixed']);
+const EVENT_AGE_GUIDANCE = new Set(['all_ages', 'families', 'teens', 'adults']);
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -69,6 +80,119 @@ export async function handleApiRequest(request, env, defer = null) {
 
     assertEnvironment(env);
     const identity = await authenticate(request, env);
+
+    if (request.method === 'GET' && segments.join('/') === 'notifications') {
+      await supabaseRpc(
+        env,
+        identity.authorization,
+        'process_due_event_reconfirmations',
+        {},
+      );
+      const notifications = await supabaseRpc(
+        env,
+        identity.authorization,
+        'list_member_notifications',
+        {},
+      );
+      if (!Array.isArray(notifications)) {
+        throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid notification data.');
+      }
+      return jsonResponse({data: notifications}, 200, requestId, cors);
+    }
+
+    if (request.method === 'PUT' && segments.join('/') === 'notifications/read-all') {
+      await supabaseRpc(
+        env,
+        identity.authorization,
+        'mark_all_member_notifications_read',
+        {},
+      );
+      return jsonResponse({read: true}, 200, requestId, cors);
+    }
+
+    if (segments.join('/') === 'event-searches') {
+      if (request.method === 'GET') {
+        const searches = await supabaseRpc(
+          env,
+          identity.authorization,
+          'list_saved_event_searches',
+          {},
+        );
+        if (!Array.isArray(searches)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid saved search data.');
+        }
+        return jsonResponse({data: searches}, 200, requestId, cors);
+      }
+      if (request.method === 'POST') {
+        const input = validateSavedEventSearch(await jsonBody(request));
+        const id = await supabaseRpc(
+          env,
+          identity.authorization,
+          'create_saved_event_search',
+          input,
+        );
+        if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid saved search identifier.');
+        }
+        return jsonResponse({id}, 201, requestId, cors);
+      }
+    }
+
+    if (
+      request.method === 'DELETE' && segments.length === 2 &&
+      segments[0] === 'event-searches'
+    ) {
+      const searchId = uuidParameter(segments[1], 'search_id');
+      const deleted = await supabaseRpc(
+        env,
+        identity.authorization,
+        'delete_saved_event_search',
+        {p_search_id: searchId},
+      );
+      return jsonResponse({deleted: deleted === true}, 200, requestId, cors);
+    }
+
+    if (
+      request.method === 'PUT' && segments.length === 3 &&
+      segments[0] === 'notifications' && segments[2] === 'read'
+    ) {
+      const notificationId = uuidParameter(segments[1], 'notification_id');
+      const read = await supabaseRpc(
+        env,
+        identity.authorization,
+        'mark_member_notification_read',
+        {p_notification_id: notificationId},
+      );
+      return jsonResponse({read: read === true}, 200, requestId, cors);
+    }
+
+    if (request.method === 'GET' && segments.join('/') === 'places/autocomplete') {
+      assertPlaceEnvironment(env);
+      const text = stringParameter(url.searchParams.get('text'), 'text', 3, 160);
+      const latitude = nullableQueryNumberParameter(
+        url.searchParams.get('latitude'),
+        'latitude',
+        -90,
+        90,
+      );
+      const longitude = nullableQueryNumberParameter(
+        url.searchParams.get('longitude'),
+        'longitude',
+        -180,
+        180,
+      );
+      if ((latitude === null) !== (longitude === null)) {
+        throw new ApiError(400, 'invalid_parameter', 'Location bias is invalid.');
+      }
+      const language = languageParameter(url.searchParams.get('language'));
+      const places = await geoapifyAutocomplete(env, {
+        text,
+        latitude,
+        longitude,
+        language,
+      });
+      return jsonResponse({data: places}, 200, requestId, cors);
+    }
 
     if (segments.join('/') === 'profile/avatar') {
       assertMediaEnvironment(env);
@@ -160,6 +284,31 @@ export async function handleApiRequest(request, env, defer = null) {
           throw new ApiError(404, 'profile_not_found', 'Profile was not found.');
         }
         return jsonResponse({data: rows[0]}, 200, requestId, cors);
+      }
+
+      if (request.method === 'GET' && segments.length === 3 && segments[2] === 'events') {
+        const filter = url.searchParams.get('filter') ?? 'hosting';
+        if (!PROFILE_EVENT_FILTERS.has(filter)) {
+          throw new ApiError(
+            400,
+            'invalid_profile_event_filter',
+            'Profile event filter is invalid.',
+          );
+        }
+        const events = await supabaseRpc(
+          env,
+          identity.authorization,
+          'list_profile_events',
+          {p_profile_id: profileId, p_filter: filter},
+        );
+        if (!Array.isArray(events)) {
+          throw new ApiError(
+            502,
+            'invalid_backend_response',
+            'The database returned invalid profile event data.',
+          );
+        }
+        return jsonResponse({data: events}, 200, requestId, cors);
       }
 
       if (request.method === 'GET' && segments.length === 3 && segments[2] === 'avatar') {
@@ -345,22 +494,52 @@ export async function handleApiRequest(request, env, defer = null) {
       const embedding = interest === null
         ? null
         : await generateEmbedding(env, identity.authorization, interest);
-      const posts = await supabaseRpc(
-        env,
-        identity.authorization,
-        scope === 'mine'
-          ? 'list_own_forum_posts'
-          : embedding === null
-            ? 'list_forum_posts'
-            : 'recommend_forum_posts',
-        embedding === null
-          ? {p_limit: 30, p_before: null}
-          : {p_query_embedding: embedding, p_limit: 30},
-      );
+      const isDefaultFeed = scope === null && embedding === null;
+      const [posts, latestPosts] = await Promise.all([
+        supabaseRpc(
+          env,
+          identity.authorization,
+          scope === 'mine'
+            ? 'list_own_forum_posts'
+            : embedding === null
+              ? 'recommend_personalized_forum_posts'
+              : 'recommend_forum_posts_v2',
+          embedding === null
+            ? {p_limit: 30, p_before: null}
+            : {
+                p_query_embedding: embedding,
+                p_query: interest,
+                p_limit: 30,
+              },
+        ),
+        isDefaultFeed
+          ? supabaseRpc(
+              env,
+              identity.authorization,
+              'list_forum_posts',
+              {p_limit: 30, p_before: null},
+            )
+          : Promise.resolve(null),
+      ]);
       if (!Array.isArray(posts)) {
         throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid forum data.');
       }
-      return jsonResponse({data: posts}, 200, requestId, cors);
+      if (latestPosts !== null && !Array.isArray(latestPosts)) {
+        throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid latest forum data.');
+      }
+      const personalizedPosts = isDefaultFeed
+        ? await rerankRecommendations({
+            env,
+            authorization: identity.authorization,
+            surface: 'forum_post',
+            candidates: posts,
+            defer,
+          })
+        : posts;
+      const rankedPosts = isDefaultFeed
+        ? interleaveCommunityFeed(personalizedPosts, latestPosts)
+        : personalizedPosts;
+      return jsonResponse({data: rankedPosts}, 200, requestId, cors);
     }
 
     if (request.method === 'POST' && segments.join('/') === 'forum/posts') {
@@ -414,7 +593,13 @@ export async function handleApiRequest(request, env, defer = null) {
             rpc: 'set_forum_post_embedding',
             idField: 'p_post_id',
             id: postId,
-            input: semanticContent(input.category, input.title, input.body, input.placeName),
+            input: semanticDocument({
+              Title: input.title,
+              Topic: input.category,
+              Place: input.placeName,
+              Address: input.placeAddress,
+              Description: input.body,
+            }),
           }),
         );
         return jsonResponse({id: postId}, 201, requestId, cors);
@@ -432,16 +617,57 @@ export async function handleApiRequest(request, env, defer = null) {
       const postId = uuidParameter(segments[2], 'post_id');
 
       if (request.method === 'GET' && segments.length === 3) {
-        const rows = await supabaseRpc(
-          env,
-          identity.authorization,
-          'get_forum_post',
-          {p_post_id: postId},
-        );
+        const [rows, likeState] = await Promise.all([
+          supabaseRpc(
+            env,
+            identity.authorization,
+            'get_forum_post',
+            {p_post_id: postId},
+          ),
+          supabaseRpc(
+            env,
+            identity.authorization,
+            'get_forum_post_like_state',
+            {p_post_id: postId},
+          ),
+        ]);
         if (!Array.isArray(rows) || rows.length === 0) {
           throw new ApiError(404, 'forum_post_not_found', 'Discussion was not found.');
         }
-        return jsonResponse({data: rows[0]}, 200, requestId, cors);
+        if (!likeState || typeof likeState !== 'object' || Array.isArray(likeState)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid like data.');
+        }
+        deferRecommendationView(
+          defer,
+          env,
+          identity.authorization,
+          'forum_post',
+          postId,
+        );
+        return jsonResponse(
+          {data: {...rows[0], ...likeState}},
+          200,
+          requestId,
+          cors,
+        );
+      }
+
+      if (request.method === 'PUT' && segments.length === 4 && segments[3] === 'like') {
+        const body = await jsonBody(request);
+        exactKeys(body, ['liked']);
+        if (typeof body.liked !== 'boolean') {
+          throw new ApiError(400, 'invalid_parameter', 'liked must be a boolean.');
+        }
+        const state = await supabaseRpc(
+          env,
+          identity.authorization,
+          'set_forum_post_like',
+          {p_post_id: postId, p_liked: body.liked},
+        );
+        if (!state || typeof state !== 'object' || Array.isArray(state)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid like data.');
+        }
+        return jsonResponse({data: state}, 200, requestId, cors);
       }
 
       if (request.method === 'GET' && segments.length === 4 && segments[3] === 'media') {
@@ -524,33 +750,113 @@ export async function handleApiRequest(request, env, defer = null) {
       return jsonResponse({submitted: true}, 201, requestId, cors);
     }
 
+    if (request.method === 'GET' && segments.join('/') === 'events/mine') {
+      const filter = url.searchParams.get('filter') ?? 'going';
+      if (!EVENT_PLAN_FILTERS.has(filter)) {
+        throw new ApiError(400, 'invalid_event_filter', 'Event plan filter is invalid.');
+      }
+      const events = await supabaseRpc(
+        env,
+        identity.authorization,
+        'list_my_events',
+        {p_filter: filter},
+      );
+      if (!Array.isArray(events)) {
+        throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid event data.');
+      }
+      return jsonResponse({data: events}, 200, requestId, cors);
+    }
+
     if (request.method === 'GET' && segments.join('/') === 'events/nearby') {
       const latitude = numberParameter(url.searchParams.get('latitude'), 'latitude', -90, 90);
       const longitude = numberParameter(url.searchParams.get('longitude'), 'longitude', -180, 180);
       const radiusKm = numberParameter(url.searchParams.get('radius_km'), 'radius_km', 1, 100);
       const interest = optionalSearchParameter(url.searchParams.get('interest'), 'interest', 240);
-      const embedding = interest === null
+      const category = optionalSearchParameter(url.searchParams.get('category'), 'category', 60);
+      const startFrom = optionalQueryDateParameter(url.searchParams.get('start_from'), 'start_from');
+      const startBefore = optionalQueryDateParameter(url.searchParams.get('start_before'), 'start_before');
+      if (startFrom !== null && startBefore !== null && startBefore <= startFrom) {
+        throw new ApiError(400, 'invalid_parameter', 'Event date range is invalid.');
+      }
+      const timeFilter = enumQueryParameter(
+        url.searchParams.get('time_filter'),
+        'time_filter',
+        EVENT_TIME_FILTERS,
+        'any',
+      );
+      const spotsOnly = booleanQueryParameter(url.searchParams.get('spots_only'), 'spots_only');
+      const followingOnly = booleanQueryParameter(
+        url.searchParams.get('following_only'),
+        'following_only',
+      );
+      const timezoneOffsetMinutes = integerParameter(
+        url.searchParams.get('timezone_offset_minutes') ?? 0,
+        'timezone_offset_minutes',
+        -840,
+        840,
+      );
+      const embedding = interest === null || followingOnly
         ? null
         : await generateEmbedding(env, identity.authorization, interest);
-      const events = await supabaseRpc(
-        env,
-        identity.authorization,
-        embedding === null ? 'nearby_events' : 'recommend_nearby_events',
-        embedding === null
-          ? {
+      const events = followingOnly
+        ? await supabaseRpc(
+            env,
+            identity.authorization,
+            'list_followed_nearby_events',
+            {
               p_latitude: latitude,
               p_longitude: longitude,
               p_radius_km: radiusKm,
-            }
-          : {
-              p_latitude: latitude,
-              p_longitude: longitude,
-              p_radius_km: radiusKm,
-              p_query_embedding: embedding,
-              p_limit: 30,
+              p_query: interest,
             },
+          )
+        : await supabaseRpc(
+          env,
+          identity.authorization,
+          embedding === null
+            ? 'recommend_personalized_events'
+            : 'recommend_nearby_events_v2',
+          embedding === null
+            ? {
+                p_latitude: latitude,
+                p_longitude: longitude,
+                p_radius_km: radiusKm,
+              }
+            : {
+                p_latitude: latitude,
+                p_longitude: longitude,
+                p_radius_km: radiusKm,
+                p_query_embedding: embedding,
+                p_query: interest,
+                p_limit: 30,
+              },
+        );
+      if (!Array.isArray(events)) {
+        throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid event data.');
+      }
+      const followedIds = new Set(
+        followingOnly ? events.map((event) => event?.organizer_id) : [],
       );
-      return jsonResponse({data: events}, 200, requestId, cors);
+      const filteredEvents = filterDiscoveredEvents(events, {
+        category,
+        startFrom,
+        startBefore,
+        timeFilter,
+        spotsOnly,
+        followingOnly,
+        followedIds,
+        timezoneOffsetMinutes,
+      });
+      const rankedEvents = interest === null
+        ? await rerankRecommendations({
+            env,
+            authorization: identity.authorization,
+            surface: 'event',
+            candidates: filteredEvents,
+            defer,
+          })
+        : filteredEvents;
+      return jsonResponse({data: rankedEvents}, 200, requestId, cors);
     }
 
     if (request.method === 'POST' && segments.join('/') === 'events') {
@@ -558,7 +864,7 @@ export async function handleApiRequest(request, env, defer = null) {
       const eventId = await supabaseRpc(
         env,
         identity.authorization,
-        'create_event',
+        'create_event_v2',
         input,
       );
       if (typeof eventId !== 'string' || !UUID_PATTERN.test(eventId)) {
@@ -571,12 +877,13 @@ export async function handleApiRequest(request, env, defer = null) {
           rpc: 'set_event_embedding',
           idField: 'p_event_id',
           id: eventId,
-          input: semanticContent(
-            input.p_category,
-            input.p_title,
-            input.p_description,
-            input.p_venue_name,
-          ),
+          input: semanticDocument({
+            Title: input.p_title,
+            Category: input.p_category,
+            Venue: input.p_venue_name,
+            Address: input.p_address,
+            Description: input.p_description,
+          }),
         }),
       );
       return jsonResponse({id: eventId}, 201, requestId, cors);
@@ -586,16 +893,56 @@ export async function handleApiRequest(request, env, defer = null) {
       const eventId = uuidParameter(segments[1], 'event_id');
 
       if (request.method === 'GET' && segments.length === 2) {
+        await supabaseRpc(
+          env,
+          identity.authorization,
+          'process_due_event_reconfirmations',
+          {},
+        );
         const rows = await supabaseRpc(
           env,
           identity.authorization,
-          'get_event_details',
+          'get_event_details_v2',
           {p_event_id: eventId},
         );
         if (!Array.isArray(rows) || rows.length === 0) {
           throw new ApiError(404, 'event_not_found', 'Event was not found.');
         }
+        deferRecommendationView(
+          defer,
+          env,
+          identity.authorization,
+          'event',
+          eventId,
+        );
         return jsonResponse({data: rows[0]}, 200, requestId, cors);
+      }
+
+      if (request.method === 'PUT' && segments.length === 2) {
+        const input = validateCreateEvent(await jsonBody(request));
+        await supabaseRpc(
+          env,
+          identity.authorization,
+          'update_own_event_v2',
+          {p_event_id: eventId, ...input},
+        );
+        defer?.(
+          indexCreatedContent({
+            env,
+            authorization: identity.authorization,
+            rpc: 'set_event_embedding',
+            idField: 'p_event_id',
+            id: eventId,
+            input: semanticDocument({
+              Title: input.p_title,
+              Category: input.p_category,
+              Venue: input.p_venue_name,
+              Address: input.p_address,
+              Description: input.p_description,
+            }),
+          }),
+        );
+        return jsonResponse({updated: true}, 200, requestId, cors);
       }
 
       if (request.method === 'PUT' && segments.length === 3 && segments[2] === 'rsvp') {
@@ -611,6 +958,229 @@ export async function handleApiRequest(request, env, defer = null) {
           {p_event_id: eventId, p_status: body.status},
         );
         return jsonResponse({status}, 200, requestId, cors);
+      }
+
+      if (request.method === 'GET' && segments.length === 3 && segments[2] === 'attendees') {
+        const attendees = await supabaseRpc(
+          env,
+          identity.authorization,
+          'list_event_attendees',
+          {p_event_id: eventId},
+        );
+        if (!Array.isArray(attendees)) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid attendee data.');
+        }
+        return jsonResponse({data: attendees}, 200, requestId, cors);
+      }
+
+      if (
+        request.method === 'PUT' && segments.length === 4 &&
+        segments[2] === 'attendees' && segments[3] === 'visibility'
+      ) {
+        const body = await jsonBody(request);
+        exactKeys(body, ['visible']);
+        if (typeof body.visible !== 'boolean') {
+          throw new ApiError(400, 'invalid_parameter', 'Attendee visibility is invalid.');
+        }
+        const visible = await supabaseRpc(
+          env,
+          identity.authorization,
+          'set_event_attendee_visibility',
+          {p_event_id: eventId, p_visible: body.visible},
+        );
+        return jsonResponse({visible: visible === true}, 200, requestId, cors);
+      }
+
+      if (
+        request.method === 'PUT' && segments.length === 3 &&
+        segments[2] === 'discussion-notifications'
+      ) {
+        const body = await jsonBody(request);
+        exactKeys(body, ['enabled']);
+        if (typeof body.enabled !== 'boolean') {
+          throw new ApiError(400, 'invalid_parameter', 'Notification preference is invalid.');
+        }
+        const enabled = await supabaseRpc(
+          env,
+          identity.authorization,
+          'set_event_discussion_notifications',
+          {p_event_id: eventId, p_enabled: body.enabled},
+        );
+        return jsonResponse({enabled: enabled === true}, 200, requestId, cors);
+      }
+
+      if (
+        request.method === 'POST' && segments.length === 4 &&
+        segments[2] === 'reconfirmation' && segments[3] === 'request'
+      ) {
+        const deadline = await supabaseRpc(
+          env,
+          identity.authorization,
+          'request_event_rsvp_reconfirmation',
+          {p_event_id: eventId},
+        );
+        return jsonResponse({deadline_at: deadline}, 200, requestId, cors);
+      }
+
+      if (
+        request.method === 'POST' && segments.length === 4 &&
+        segments[2] === 'reconfirmation' && segments[3] === 'confirm'
+      ) {
+        const confirmedAt = await supabaseRpc(
+          env,
+          identity.authorization,
+          'confirm_event_rsvp',
+          {p_event_id: eventId},
+        );
+        return jsonResponse({confirmed_at: confirmedAt}, 200, requestId, cors);
+      }
+
+      if (
+        (request.method === 'PUT' || request.method === 'DELETE') &&
+        segments.length === 3 && segments[2] === 'save'
+      ) {
+        const saved = request.method === 'PUT';
+        await supabaseRpc(
+          env,
+          identity.authorization,
+          'set_event_saved',
+          {p_event_id: eventId, p_saved: saved},
+        );
+        return jsonResponse({saved}, 200, requestId, cors);
+      }
+
+      if (segments.length === 3 && segments[2] === 'reminder') {
+        if (request.method === 'PUT') {
+          const body = await jsonBody(request);
+          exactKeys(body, ['remind_at']);
+          const remindAt = dateParameter(body.remind_at, 'remind_at');
+          const saved = await supabaseRpc(
+            env,
+            identity.authorization,
+            'set_event_reminder',
+            {p_event_id: eventId, p_remind_at: remindAt.toISOString()},
+          );
+          return jsonResponse({remind_at: saved}, 200, requestId, cors);
+        }
+        if (request.method === 'DELETE') {
+          await supabaseRpc(
+            env,
+            identity.authorization,
+            'clear_event_reminder',
+            {p_event_id: eventId},
+          );
+          return jsonResponse({cleared: true}, 200, requestId, cors);
+        }
+      }
+
+      if (request.method === 'POST' && segments.length === 3 && segments[2] === 'cancel') {
+        await supabaseRpc(
+          env,
+          identity.authorization,
+          'cancel_own_event',
+          {p_event_id: eventId},
+        );
+        return jsonResponse({cancelled: true}, 200, requestId, cors);
+      }
+
+      if (segments.length === 3 && segments[2] === 'announcements') {
+        if (request.method === 'GET') {
+          const announcements = await supabaseRpc(
+            env,
+            identity.authorization,
+            'list_event_announcements',
+            {p_event_id: eventId},
+          );
+          if (!Array.isArray(announcements)) {
+            throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid announcement data.');
+          }
+          return jsonResponse({data: announcements}, 200, requestId, cors);
+        }
+        if (request.method === 'POST') {
+          const body = await jsonBody(request);
+          exactKeys(body, ['body']);
+          const announcement = stringParameter(body.body, 'body', 1, 1000);
+          const id = await supabaseRpc(
+            env,
+            identity.authorization,
+            'create_event_announcement',
+            {p_event_id: eventId, p_body: announcement},
+          );
+          if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+            throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid announcement identifier.');
+          }
+          return jsonResponse({id}, 201, requestId, cors);
+        }
+      }
+
+      if (segments.length === 3 && segments[2] === 'discussion') {
+        if (request.method === 'GET') {
+          const messages = await supabaseRpc(
+            env,
+            identity.authorization,
+            'list_event_discussion',
+            {p_event_id: eventId},
+          );
+          if (!Array.isArray(messages)) {
+            throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid discussion data.');
+          }
+          return jsonResponse({data: messages}, 200, requestId, cors);
+        }
+        if (request.method === 'POST') {
+          const body = await jsonBody(request);
+          exactKeys(body, ['body']);
+          const message = stringParameter(body.body, 'body', 1, 1200);
+          const id = await supabaseRpc(
+            env,
+            identity.authorization,
+            'create_event_discussion_message',
+            {p_event_id: eventId, p_body: message},
+          );
+          if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+            throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid discussion identifier.');
+          }
+          return jsonResponse({id}, 201, requestId, cors);
+        }
+      }
+
+      if (
+        request.method === 'POST' && segments.length === 5 &&
+        segments[2] === 'discussion' && segments[4] === 'report'
+      ) {
+        const messageId = uuidParameter(segments[3], 'message_id');
+        const reason = validateForumReport(await jsonBody(request));
+        await supabaseRpc(
+          env,
+          identity.authorization,
+          'report_event_discussion_message',
+          {p_message_id: messageId, p_reason: reason},
+        );
+        return jsonResponse({submitted: true}, 201, requestId, cors);
+      }
+
+      if (segments.length === 3 && segments[2] === 'feedback') {
+        if (request.method === 'GET') {
+          const feedback = await supabaseRpc(
+            env,
+            identity.authorization,
+            'list_event_feedback',
+            {p_event_id: eventId},
+          );
+          if (!Array.isArray(feedback)) {
+            throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid feedback data.');
+          }
+          return jsonResponse({data: feedback}, 200, requestId, cors);
+        }
+        if (request.method === 'POST') {
+          const input = validateEventFeedback(await jsonBody(request));
+          await supabaseRpc(
+            env,
+            identity.authorization,
+            'submit_event_feedback',
+            {p_event_id: eventId, ...input},
+          );
+          return jsonResponse({submitted: true}, 201, requestId, cors);
+        }
       }
 
       if (request.method === 'POST' && segments.length === 3 && segments[2] === 'report') {
@@ -673,6 +1243,152 @@ function assertMediaEnvironment(env) {
   }
 }
 
+function assertPlaceEnvironment(env) {
+  if (typeof env.GEOAPIFY_API_KEY !== 'string' || env.GEOAPIFY_API_KEY.trim().length < 16) {
+    throw new ApiError(503, 'places_not_configured', 'Address suggestions are not configured.');
+  }
+}
+
+async function geoapifyAutocomplete(env, {
+  text,
+  latitude,
+  longitude,
+  language,
+}) {
+  const upstreamUrl = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
+  upstreamUrl.searchParams.set('text', text);
+  upstreamUrl.searchParams.set('format', 'json');
+  upstreamUrl.searchParams.set('limit', '5');
+  upstreamUrl.searchParams.set('apiKey', env.GEOAPIFY_API_KEY.trim());
+  if (language !== null) upstreamUrl.searchParams.set('lang', language);
+  if (latitude !== null && longitude !== null) {
+    upstreamUrl.searchParams.set('bias', `proximity:${longitude},${latitude}`);
+  }
+
+  let response;
+  try {
+    response = await fetch(upstreamUrl, {
+      headers: {Accept: 'application/json'},
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (_) {
+    throw new ApiError(503, 'place_search_unavailable', 'Address suggestions are temporarily unavailable.');
+  }
+  if (response.status === 429) {
+    throw new ApiError(429, 'place_search_busy', 'Address suggestions are busy. Please wait and retry.');
+  }
+  if (!response.ok) {
+    throw new ApiError(503, 'place_search_unavailable', 'Address suggestions are temporarily unavailable.');
+  }
+
+  const rawLength = response.headers.get('Content-Length');
+  const contentLength = rawLength === null ? null : Number(rawLength);
+  if (
+    contentLength !== null &&
+    (!Number.isFinite(contentLength) || contentLength > MAX_PLACE_RESPONSE_BYTES)
+  ) {
+    throw new ApiError(502, 'invalid_place_response', 'The address provider returned invalid data.');
+  }
+
+  let payloadText;
+  try {
+    payloadText = await readBoundedResponseText(response, MAX_PLACE_RESPONSE_BYTES);
+  } catch (_) {
+    throw new ApiError(502, 'invalid_place_response', 'The address provider returned invalid data.');
+  }
+  let payload;
+  try {
+    payload = JSON.parse(payloadText);
+  } catch (_) {
+    throw new ApiError(502, 'invalid_place_response', 'The address provider returned invalid data.');
+  }
+  const results = payload && !Array.isArray(payload) && typeof payload === 'object'
+    ? payload.results
+    : null;
+  if (!Array.isArray(results)) {
+    throw new ApiError(502, 'invalid_place_response', 'The address provider returned invalid data.');
+  }
+
+  return results
+    .map(normalizeGeoapifyPlace)
+    .filter((place) => place !== null)
+    .slice(0, 5);
+}
+
+async function readBoundedResponseText(response, maximumBytes) {
+  if (response.body === null) return '';
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBytes) {
+        await reader.cancel();
+        throw new Error('Response is too large.');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
+}
+
+function normalizeGeoapifyPlace(value) {
+  if (!value || Array.isArray(value) || typeof value !== 'object') return null;
+  const latitude = finiteNumber(value.lat);
+  const longitude = finiteNumber(value.lon);
+  const formattedAddress = boundedUpstreamString(value.formatted, 300);
+  if (
+    latitude === null ||
+    longitude === null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180 ||
+    formattedAddress === null
+  ) {
+    return null;
+  }
+
+  const timezone = value.timezone && typeof value.timezone === 'object'
+    ? boundedUpstreamString(value.timezone.name, 80)
+    : null;
+  return {
+    id: boundedUpstreamString(value.place_id, 240) ?? `${latitude},${longitude}:${formattedAddress}`,
+    name: boundedUpstreamString(value.name, 160),
+    formatted_address: formattedAddress,
+    address_line1: boundedUpstreamString(value.address_line1, 200),
+    address_line2: boundedUpstreamString(value.address_line2, 240),
+    country_code: boundedUpstreamString(value.country_code, 2)?.toLowerCase() ?? null,
+    latitude,
+    longitude,
+    result_type: boundedUpstreamString(value.result_type, 40),
+    timezone,
+  };
+}
+
+function finiteNumber(value) {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function boundedUpstreamString(value, maximum) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= maximum ? trimmed : null;
+}
+
 async function authenticate(request, env) {
   const authorization = request.headers.get('Authorization') ?? '';
   if (!/^Bearer\s+\S+$/.test(authorization)) {
@@ -718,6 +1434,24 @@ async function supabaseRpc(env, authorization, functionName, parameters) {
   return parseSupabaseResponse(response);
 }
 
+function deferRecommendationView(
+  defer,
+  env,
+  authorization,
+  contentKind,
+  contentId,
+) {
+  if (defer === null) return;
+  defer(
+    supabaseRpc(
+      env,
+      authorization,
+      'record_recommendation_view',
+      {p_content_kind: contentKind, p_content_id: contentId},
+    ).catch(() => undefined),
+  );
+}
+
 async function insertReport(env, identity, eventId, reason) {
   let response;
   try {
@@ -761,9 +1495,23 @@ function mappedSupabaseError(status, payload) {
     authentication_required: [401, 'authentication_required', 'Sign in is required.'],
     event_validation: [400, 'event_validation', 'Event details are invalid.'],
     invalid_rsvp_status: [400, 'invalid_rsvp_status', 'RSVP status is invalid.'],
+    invalid_event_filter: [400, 'invalid_event_filter', 'Event plan filter is invalid.'],
+    invalid_reminder_time: [400, 'invalid_reminder_time', 'Choose a reminder before the event starts.'],
+    capacity_below_attendance: [400, 'capacity_below_attendance', 'Capacity cannot be lower than the number already going.'],
+    announcement_validation: [400, 'announcement_validation', 'Announcement content is invalid.'],
+    announcement_rate_limited: [429, 'announcement_rate_limited', 'Please wait before sending another announcement.'],
+    discussion_validation: [400, 'discussion_validation', 'Event message is invalid.'],
+    discussion_rate_limited: [429, 'discussion_rate_limited', 'You are sending event messages too quickly.'],
+    discussion_unavailable: [403, 'discussion_unavailable', 'Join this event to take part in its discussion.'],
+    feedback_validation: [400, 'feedback_validation', 'Feedback is invalid.'],
+    feedback_unavailable: [403, 'feedback_unavailable', 'Feedback is not available for this event.'],
     event_unavailable: [409, 'event_unavailable', 'This event is unavailable.'],
     event_started: [409, 'event_started', 'This event has already started.'],
     event_full: [409, 'event_full', 'This event is full.'],
+    saved_search_validation: [400, 'saved_search_validation', 'Saved search details are invalid.'],
+    saved_search_limit: [409, 'saved_search_limit', 'You can save up to 12 event searches.'],
+    reconfirmation_too_late: [409, 'reconfirmation_too_late', 'It is too close to the event to request confirmations.'],
+    reconfirmation_unavailable: [409, 'reconfirmation_unavailable', 'This confirmation request is no longer active.'],
     forum_validation: [400, 'forum_validation', 'Discussion content is invalid.'],
     forum_rate_limited: [429, 'forum_rate_limited', 'You are posting too quickly. Please wait and try again.'],
     forum_post_unavailable: [404, 'forum_post_not_found', 'Discussion was not found.'],
@@ -806,7 +1554,7 @@ async function jsonBody(request) {
 }
 
 function validateCreateEvent(body) {
-  const fields = [
+  const requiredFields = [
     'title',
     'description',
     'category',
@@ -818,7 +1566,15 @@ function validateCreateEvent(body) {
     'end_at',
     'max_participants',
   ];
-  exactKeys(body, fields);
+  const optionalFields = [
+    'beginner_friendly',
+    'wheelchair_accessible',
+    'event_setting',
+    'event_language',
+    'age_guidance',
+    'what_to_bring',
+  ];
+  exactOptionalKeys(body, requiredFields, optionalFields);
 
   const title = stringParameter(body.title, 'title', 3, 120);
   const description = stringParameter(body.description, 'description', 1, 2000);
@@ -833,6 +1589,21 @@ function validateCreateEvent(body) {
   if (startAt.getTime() <= Date.now() || endAt.getTime() <= startAt.getTime()) {
     throw new ApiError(400, 'event_validation', 'Event times are invalid.');
   }
+  const beginnerFriendly = body.beginner_friendly ?? false;
+  const wheelchairAccessible = body.wheelchair_accessible ?? false;
+  if (typeof beginnerFriendly !== 'boolean' || typeof wheelchairAccessible !== 'boolean') {
+    throw new ApiError(400, 'event_validation', 'Event accessibility details are invalid.');
+  }
+  const eventSetting = body.event_setting ?? 'unspecified';
+  const ageGuidance = body.age_guidance ?? 'all_ages';
+  if (typeof eventSetting !== 'string' || !EVENT_SETTINGS.has(eventSetting)) {
+    throw new ApiError(400, 'event_validation', 'Event setting is invalid.');
+  }
+  if (typeof ageGuidance !== 'string' || !EVENT_AGE_GUIDANCE.has(ageGuidance)) {
+    throw new ApiError(400, 'event_validation', 'Age guidance is invalid.');
+  }
+  const eventLanguage = optionalStringWithDefault(body.event_language, 'event_language', 80);
+  const whatToBring = optionalStringWithDefault(body.what_to_bring, 'what_to_bring', 500);
 
   return {
     p_title: title,
@@ -845,6 +1616,51 @@ function validateCreateEvent(body) {
     p_start_at: startAt.toISOString(),
     p_end_at: endAt.toISOString(),
     p_max_participants: maxParticipants,
+    p_beginner_friendly: beginnerFriendly,
+    p_wheelchair_accessible: wheelchairAccessible,
+    p_event_setting: eventSetting,
+    p_event_language: eventLanguage,
+    p_age_guidance: ageGuidance,
+    p_what_to_bring: whatToBring,
+  };
+}
+
+function validateSavedEventSearch(body) {
+  exactKeys(body, [
+    'name', 'interest', 'radius_km', 'category', 'date_filter', 'time_filter',
+    'timezone_offset_minutes', 'spots_only', 'following_only',
+  ]);
+  const name = stringParameter(body.name, 'name', 1, 80);
+  const interest = optionalStringWithDefault(body.interest, 'interest', 240);
+  const radiusKm = numberParameter(body.radius_km, 'radius_km', 1, 100);
+  const category = body.category === null
+    ? null
+    : stringParameter(body.category, 'category', 2, 60);
+  if (typeof body.date_filter !== 'string' || !EVENT_DATE_FILTERS.has(body.date_filter)) {
+    throw new ApiError(400, 'saved_search_validation', 'Saved search date is invalid.');
+  }
+  if (typeof body.time_filter !== 'string' || !EVENT_TIME_FILTERS.has(body.time_filter)) {
+    throw new ApiError(400, 'saved_search_validation', 'Saved search time is invalid.');
+  }
+  const timezoneOffsetMinutes = integerParameter(
+    body.timezone_offset_minutes,
+    'timezone_offset_minutes',
+    -840,
+    840,
+  );
+  if (typeof body.spots_only !== 'boolean' || typeof body.following_only !== 'boolean') {
+    throw new ApiError(400, 'saved_search_validation', 'Saved search filters are invalid.');
+  }
+  return {
+    p_name: name,
+    p_interest: interest,
+    p_radius_km: radiusKm,
+    p_category: category,
+    p_date_filter: body.date_filter,
+    p_time_filter: body.time_filter,
+    p_timezone_offset_minutes: timezoneOffsetMinutes,
+    p_spots_only: body.spots_only,
+    p_following_only: body.following_only,
   };
 }
 
@@ -869,6 +1685,27 @@ function validateCreateForumPost(body) {
     throw new ApiError(400, 'invalid_parameter', 'Place name and address must be provided together.');
   }
   return {title, body: postBody, category, imageToken, placeName, placeAddress};
+}
+
+function validateEventFeedback(body) {
+  exactKeys(body, ['attended', 'rating', 'comment']);
+  if (typeof body.attended !== 'boolean') {
+    throw new ApiError(400, 'feedback_validation', 'Attendance is invalid.');
+  }
+  const rating = body.rating === null
+    ? null
+    : integerParameter(body.rating, 'rating', 1, 5);
+  if ((body.attended && rating === null) || (!body.attended && rating !== null)) {
+    throw new ApiError(400, 'feedback_validation', 'Rating is invalid.');
+  }
+  if (typeof body.comment !== 'string' || body.comment.trim().length > 1000) {
+    throw new ApiError(400, 'feedback_validation', 'Feedback comment is invalid.');
+  }
+  return {
+    p_attended: body.attended,
+    p_rating: rating,
+    p_comment: body.comment.trim(),
+  };
 }
 
 function validateForumReport(body) {
@@ -925,6 +1762,38 @@ function optionalSearchParameter(value, name, maximum) {
   return trimmed;
 }
 
+function optionalStringWithDefault(value, name, maximum) {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') {
+    throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > maximum) {
+    throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
+  }
+  return trimmed;
+}
+
+function booleanQueryParameter(value, name) {
+  if (value === null || value === '') return false;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
+}
+
+function enumQueryParameter(value, name, values, fallback) {
+  if (value === null || value === '') return fallback;
+  if (!values.has(value)) {
+    throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
+  }
+  return value;
+}
+
+function optionalQueryDateParameter(value, name) {
+  if (value === null || value.trim() === '') return null;
+  return dateParameter(value, name);
+}
+
 function stringParameter(value, name, minimum, maximum) {
   if (typeof value !== 'string') {
     throw new ApiError(400, 'invalid_parameter', `${name} is invalid.`);
@@ -947,6 +1816,20 @@ function numberParameter(value, name, minimum, maximum) {
 function nullableNumberParameter(value, name, minimum, maximum) {
   if (value === null) return null;
   return numberParameter(value, name, minimum, maximum);
+}
+
+function nullableQueryNumberParameter(value, name, minimum, maximum) {
+  if (value === null || value.trim().length === 0) return null;
+  return numberParameter(value, name, minimum, maximum);
+}
+
+function languageParameter(value) {
+  if (value === null || value.trim().length === 0) return null;
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-z]{2}$/.test(normalized)) {
+    throw new ApiError(400, 'invalid_parameter', 'language is invalid.');
+  }
+  return normalized;
 }
 
 function integerParameter(value, name, minimum, maximum) {
@@ -1148,6 +2031,49 @@ function dateParameter(value, name) {
   return parsed;
 }
 
+function filterDiscoveredEvents(events, filters) {
+  const {
+    category,
+    startFrom,
+    startBefore,
+    timeFilter,
+    spotsOnly,
+    followingOnly,
+    followedIds,
+    timezoneOffsetMinutes,
+  } = filters;
+  return events.filter((event) => {
+    if (!event || typeof event !== 'object') return false;
+    if (category !== null && event.category !== category) return false;
+    if (followingOnly && !followedIds.has(event.organizer_id)) return false;
+
+    let start = null;
+    if (startFrom !== null || startBefore !== null || timeFilter !== 'any') {
+      start = new Date(event.start_at);
+      if (!Number.isFinite(start.getTime())) return false;
+      if (startFrom !== null && start < startFrom) return false;
+      if (startBefore !== null && start >= startBefore) return false;
+    }
+
+    if (spotsOnly) {
+      const joined = Number(event.joined_count);
+      const capacity = Number(event.max_participants);
+      if (!Number.isFinite(joined) || !Number.isFinite(capacity) || joined >= capacity) {
+        return false;
+      }
+    }
+
+    if (timeFilter !== 'any') {
+      const localStart = new Date(start.getTime() + timezoneOffsetMinutes * 60_000);
+      const hour = localStart.getUTCHours();
+      if (timeFilter === 'morning' && (hour < 5 || hour >= 12)) return false;
+      if (timeFilter === 'afternoon' && (hour < 12 || hour >= 17)) return false;
+      if (timeFilter === 'evening' && (hour < 17 || hour >= 24)) return false;
+    }
+    return true;
+  });
+}
+
 function assistantEventSearch(message) {
   const normalized = message.toLowerCase();
   const categories = [
@@ -1171,6 +2097,281 @@ function assistantEventSearch(message) {
     shouldSearch: locationIntent || category !== undefined || unknownType !== undefined,
     query: category?.[0] ?? unknownType ?? null,
   };
+}
+
+function interleaveCommunityFeed(recommendedPosts, latestPosts) {
+  const output = [];
+  const usedIds = new Set();
+  let recommendationIndex = 0;
+  let latestIndex = 0;
+
+  while (output.length < COMMUNITY_FEED_LIMIT) {
+    const lengthBeforeBlock = output.length;
+    let recommendationsAdded = 0;
+    while (
+      recommendationsAdded < COMMUNITY_RECOMMENDATION_BLOCK &&
+      recommendationIndex < recommendedPosts.length &&
+      output.length < COMMUNITY_FEED_LIMIT
+    ) {
+      const post = recommendedPosts[recommendationIndex];
+      recommendationIndex += 1;
+      if (
+        !post ||
+        typeof post !== 'object' ||
+        typeof post.id !== 'string' ||
+        usedIds.has(post.id)
+      ) {
+        continue;
+      }
+      usedIds.add(post.id);
+      output.push(post);
+      recommendationsAdded += 1;
+    }
+
+    while (
+      latestIndex < latestPosts.length &&
+      output.length < COMMUNITY_FEED_LIMIT
+    ) {
+      const post = latestPosts[latestIndex];
+      latestIndex += 1;
+      if (
+        !post ||
+        typeof post !== 'object' ||
+        typeof post.id !== 'string' ||
+        usedIds.has(post.id)
+      ) {
+        continue;
+      }
+      usedIds.add(post.id);
+      output.push(post);
+      break;
+    }
+
+    if (output.length === lengthBeforeBlock) break;
+  }
+  return output;
+}
+
+async function rerankRecommendations({
+  env,
+  authorization,
+  surface,
+  candidates,
+  defer,
+}) {
+  if (
+    !env.ASSISTANT_MODEL ||
+    typeof env.ASSISTANT_MODEL.fetch !== 'function' ||
+    !Array.isArray(candidates) ||
+    candidates.length < 2
+  ) {
+    return candidates;
+  }
+
+  const shortlist = candidates.slice(0, RECOMMENDATION_RERANK_LIMIT);
+  if (
+    shortlist.length < 2 ||
+    shortlist.some((candidate) =>
+      !candidate ||
+      typeof candidate !== 'object' ||
+      typeof candidate.id !== 'string' ||
+      !UUID_PATTERN.test(candidate.id)
+    ) ||
+    new Set(shortlist.map((candidate) => candidate.id)).size !== shortlist.length
+  ) {
+    return candidates;
+  }
+
+  let state;
+  try {
+    state = await supabaseRpc(
+      env,
+      authorization,
+      'get_ai_recommendation_state',
+      {
+        p_surface: surface,
+        p_candidate_ids: shortlist.map((candidate) => candidate.id),
+      },
+    );
+  } catch (_) {
+    return candidates;
+  }
+  if (
+    !state ||
+    Array.isArray(state) ||
+    typeof state !== 'object' ||
+    state.eligible !== true ||
+    typeof state.cache_key !== 'string' ||
+    !/^[0-9a-f]{32}$/.test(state.cache_key)
+  ) {
+    return candidates;
+  }
+
+  const cached = recommendationOrder(state.ranked_ids, shortlist);
+  if (cached !== null) {
+    return [...cached, ...candidates.slice(shortlist.length)];
+  }
+  if (
+    typeof state.preference_query !== 'string' ||
+    state.preference_query.length < 1 ||
+    state.preference_query.length > 4000
+  ) {
+    return candidates;
+  }
+
+  const modelCandidates = shortlist.map((candidate) => ({
+    id: candidate.id,
+    document: recommendationDocument(surface, candidate),
+  }));
+  if (modelCandidates.some((candidate) => candidate.document.length < 1)) {
+    return candidates;
+  }
+
+  let claimed;
+  try {
+    claimed = await supabaseRpc(
+      env,
+      authorization,
+      'claim_ai_recommendation_rerank',
+      {p_surface: surface},
+    );
+  } catch (_) {
+    return candidates;
+  }
+  if (claimed !== true) return candidates;
+
+  let response;
+  try {
+    response = await env.ASSISTANT_MODEL.fetch(new Request('https://assistant.internal/rerank', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        surface,
+        preference_query: recommendationQuery(surface, state.preference_query),
+        candidates: modelCandidates,
+      }),
+    }));
+  } catch (_) {
+    return candidates;
+  }
+  if (!response.ok) return candidates;
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (_) {
+    return candidates;
+  }
+  const blended = blendRecommendationRanking(payload?.ranking, shortlist);
+  if (blended === null) return candidates;
+
+  if (defer !== null) {
+    defer(
+      supabaseRpc(
+        env,
+        authorization,
+        'set_ai_recommendation_cache',
+        {
+          p_surface: surface,
+          p_cache_key: state.cache_key,
+          p_ranked_ids: blended.map((candidate) => candidate.id),
+        },
+      ).catch(() => undefined),
+    );
+  }
+  return [...blended, ...candidates.slice(shortlist.length)];
+}
+
+function recommendationQuery(surface, preferenceSummary) {
+  const purpose = surface === 'event'
+    ? 'Rank public events this anonymous user is most likely to join.'
+    : 'Rank public community discussions this anonymous user is most likely to value.';
+  return [
+    purpose,
+    'Use the recent anonymous interactions below as preference evidence; stronger actions indicate stronger interest.',
+    preferenceSummary,
+  ].join('\n').slice(0, 4000);
+}
+
+function recommendationDocument(surface, candidate) {
+  const fields = surface === 'event'
+    ? {
+        Type: 'Event',
+        Title: candidate.title,
+        Category: candidate.category,
+        Venue: candidate.venue_name,
+        Starts: candidate.start_at,
+        Description: candidate.description,
+      }
+    : {
+        Type: 'Community discussion',
+        Title: candidate.title,
+        Topic: candidate.category,
+        Place: candidate.place_name,
+        Posted: candidate.created_at,
+        Content: candidate.body,
+      };
+  return Object.entries(fields)
+    .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+    .map(([label, value]) => `${label}: ${value.trim()}`)
+    .join('\n')
+    .slice(0, 1200);
+}
+
+function recommendationOrder(rankedIds, shortlist) {
+  if (
+    !Array.isArray(rankedIds) ||
+    rankedIds.length !== shortlist.length ||
+    rankedIds.some((id) => typeof id !== 'string') ||
+    new Set(rankedIds).size !== shortlist.length
+  ) {
+    return null;
+  }
+  const byId = new Map(shortlist.map((candidate) => [candidate.id, candidate]));
+  if (rankedIds.some((id) => !byId.has(id))) return null;
+  return rankedIds.map((id) => byId.get(id));
+}
+
+function blendRecommendationRanking(ranking, shortlist) {
+  if (!Array.isArray(ranking) || ranking.length !== shortlist.length) return null;
+  const byId = new Map(shortlist.map((candidate, index) => [candidate.id, {candidate, index}]));
+  const seen = new Set();
+  const scored = [];
+  for (const result of ranking) {
+    const match = typeof result?.id === 'string' ? byId.get(result.id) : null;
+    if (
+      match === null ||
+      match === undefined ||
+      seen.has(result.id) ||
+      typeof result.score !== 'number' ||
+      !Number.isFinite(result.score)
+    ) {
+      return null;
+    }
+    seen.add(result.id);
+    scored.push({...match, aiScore: result.score});
+  }
+
+  const minimum = Math.min(...scored.map((item) => item.aiScore));
+  const maximum = Math.max(...scored.map((item) => item.aiScore));
+  const spread = maximum - minimum;
+  return scored
+    .map((item) => {
+      const normalizedAi = spread > Number.EPSILON
+        ? (item.aiScore - minimum) / spread
+        : 0.5;
+      const normalizedBase = (shortlist.length - item.index) / shortlist.length;
+      return {
+        ...item,
+        blendedScore:
+          normalizedAi * RECOMMENDATION_AI_WEIGHT +
+          normalizedBase * (1 - RECOMMENDATION_AI_WEIGHT),
+      };
+    })
+    .sort((left, right) =>
+      right.blendedScore - left.blendedScore || left.index - right.index
+    )
+    .map((item) => item.candidate);
 }
 
 async function openRouterChat({
@@ -1223,11 +2424,11 @@ async function openRouterChat({
   return answer.trim();
 }
 
-function semanticContent(...parts) {
-  return parts
-    .filter((value) => typeof value === 'string' && value.trim().length > 0)
-    .map((value) => value.trim())
-    .join('. ')
+function semanticDocument(fields) {
+  return Object.entries(fields)
+    .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+    .map(([label, value]) => `${label}: ${value.trim()}`)
+    .join('\n')
     .slice(0, 4000);
 }
 

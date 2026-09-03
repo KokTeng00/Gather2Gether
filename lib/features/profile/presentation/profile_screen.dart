@@ -138,6 +138,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           locationService: widget.locationService,
           emailOverride: widget.emailOverride,
           hasPasswordSignInOverride: widget.hasPasswordSignInOverride,
+          avatarUrlOverride: widget.avatarUrlOverride,
+          avatarHeadersOverride: widget.avatarHeadersOverride,
           onSignOut: widget.onSignOut,
           onAssistantEnabledChanged: widget.onAssistantEnabledChanged,
           onProfileChanged: _profileChanged,
@@ -239,15 +241,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
+                        padding: const EdgeInsets.fromLTRB(20, 18, 16, 0),
                         child: ProfileSocialAppBar(
                           username: profile.username,
                           onSettings: _openSettings,
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
-                        child: ProfileCommunityOverview(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 36),
+                        child: ProfileBalancedOverview(
                           profile: profile,
                           stats: _stats,
                           avatarUrl: _avatarUrlFor(profile),
@@ -265,7 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 640),
                   child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(horizontal: 20),
                     child: ProfileContributionsHeader(),
                   ),
                 ),
@@ -276,7 +278,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 640),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
                     child:
                         activity ??
                         ProfileCommunityActivity(
@@ -287,7 +289,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: 36)),
+            const SliverToBoxAdapter(child: SizedBox(height: 48)),
           ],
         ),
       ),

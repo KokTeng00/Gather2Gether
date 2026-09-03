@@ -237,6 +237,22 @@ void main() {
     expect(find.byKey(const Key('settings-security-row')), findsOneWidget);
   });
 
+  testWidgets('owner profile leaves event management to Plans', (tester) async {
+    await _pumpProfile(tester, textScale: 1.6);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -650));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('profile-events-section')), findsNothing);
+    expect(find.text('Hosting'), findsNothing);
+    expect(find.text('Past'), findsNothing);
+    expect(
+      find.byKey(const Key('profile-contributions-header')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('profile failures use neutral maintenance messaging', (
     tester,
   ) async {

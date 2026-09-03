@@ -135,6 +135,7 @@ void main() {
                 'following_count': 2,
                 'viewer_is_following': false,
                 'viewer_is_self': false,
+                'past_events_public': true,
               },
             }),
             200,
@@ -160,7 +161,65 @@ void main() {
 
       expect(profile.username, 'alex_local');
       expect(profile.followersCount, 4);
+      expect(profile.pastEventsPublic, isTrue);
       expect(following, isTrue);
     },
   );
+
+  test('profile event lists use the authenticated profile route', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(
+        request.url.path,
+        '/api/v1/profiles/11111111-1111-4111-8111-111111111111/events',
+      );
+      expect(request.url.queryParameters, {'filter': 'past'});
+      expect(request.headers['authorization'], 'Bearer access-token');
+      return http.Response(
+        jsonEncode({
+          'data': [
+            {
+              'id': '22222222-2222-4222-8222-222222222222',
+              'organizer_id': '11111111-1111-4111-8111-111111111111',
+              'organizer_name': 'Alex',
+              'title': 'Community walk',
+              'description': 'A finished neighbourhood walk.',
+              'category': 'Walking',
+              'venue_name': 'Town square',
+              'address': 'Main street',
+              'latitude': 52.52,
+              'longitude': 13.4,
+              'start_at': '2026-08-01T10:00:00Z',
+              'end_at': '2026-08-01T11:00:00Z',
+              'max_participants': 20,
+              'joined_count': 8,
+              'tentative_count': 1,
+              'distance_meters': 0,
+              'user_rsvp_status': 'attended',
+              'event_status': 'completed',
+              'is_saved': false,
+              'reminder_at': null,
+              'waitlist_position': null,
+              'viewer_is_organizer': false,
+            },
+          ],
+        }),
+        200,
+      );
+    });
+    final repository = ProfileRepository(
+      httpClient: client,
+      accessTokenProvider: () => 'access-token',
+      edgeApiUrl: apiUrl,
+    );
+
+    final events = await repository.fetchProfileEvents(
+      '11111111-1111-4111-8111-111111111111',
+      'past',
+    );
+
+    expect(events, hasLength(1));
+    expect(events.single.title, 'Community walk');
+    expect(events.single.userRsvpStatus, 'attended');
+  });
 }

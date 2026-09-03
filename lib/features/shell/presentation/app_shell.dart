@@ -5,14 +5,20 @@ import 'package:flutter/material.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/assistant/presentation/assistant_panel.dart';
 import 'package:gather2gether/features/events/presentation/create_event_screen.dart';
+import 'package:gather2gether/features/events/data/event_repository.dart';
+import 'package:gather2gether/features/events/presentation/event_detail_screen.dart';
 import 'package:gather2gether/features/events/presentation/discover_screen.dart';
+import 'package:gather2gether/features/events/presentation/my_events_screen.dart';
 import 'package:gather2gether/features/forum/presentation/forum_screen.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/profile_screen.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({this.inviteLink, this.onInviteConsumed, super.key});
+
+  final Uri? inviteLink;
+  final VoidCallback? onInviteConsumed;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -21,8 +27,10 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
   int _discoverRevision = 0;
+  int _plansRevision = 0;
   int _profileRevision = 0;
   final _profiles = ProfileRepository();
+  final _events = EventRepository();
   UserProfile? _profile;
   bool _assistantEnabled = true;
   bool _assistantPreferenceLoaded = false;
@@ -33,6 +41,54 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     _loadProfile();
+    if (widget.inviteLink != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openInviteLink(widget.inviteLink!);
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AppShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.inviteLink != null &&
+        widget.inviteLink != oldWidget.inviteLink) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openInviteLink(widget.inviteLink!);
+      });
+    }
+  }
+
+  Future<void> _openInviteLink(Uri uri) async {
+    if (uri.scheme != 'gather2gether' || uri.host != 'event') return;
+    final eventId = uri.pathSegments.isEmpty ? null : uri.pathSegments.first;
+    if (eventId == null ||
+        !RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          caseSensitive: false,
+        ).hasMatch(eventId)) {
+      widget.onInviteConsumed?.call();
+      return;
+    }
+    try {
+      final event = await _events.eventDetails(eventId);
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => EventDetailScreen(event: event, repository: _events),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This invitation is no longer available.'),
+          ),
+        );
+      }
+    } finally {
+      widget.onInviteConsumed?.call();
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -61,6 +117,7 @@ class _AppShellState extends State<AppShell> {
             setState(() {
               _selectedIndex = 0;
               _discoverRevision++;
+              _plansRevision++;
             });
           },
         ),
@@ -180,6 +237,7 @@ class _AppShellState extends State<AppShell> {
                     key: ValueKey(_discoverRevision),
                     onCreate: _openCreate,
                   ),
+                  MyEventsScreen(key: ValueKey(_plansRevision)),
                   const ForumScreen(),
                   ProfileScreen(
                     key: ValueKey(_profileRevision),
@@ -216,7 +274,7 @@ class _AppShellState extends State<AppShell> {
           selectedIndex: _selectedIndex,
           onDestinationSelected: (index) {
             setState(() {
-              if (index == 2 && _selectedIndex != 2) {
+              if (index == 3 && _selectedIndex != 3) {
                 // Refresh contribution counts and the own-post grid whenever
                 // the member returns after posting in Community.
                 _profileRevision++;
@@ -229,6 +287,11 @@ class _AppShellState extends State<AppShell> {
               icon: Icon(CupertinoIcons.location),
               selectedIcon: Icon(CupertinoIcons.location_fill),
               label: 'Discover',
+            ),
+            NavigationDestination(
+              icon: Icon(CupertinoIcons.calendar),
+              selectedIcon: Icon(CupertinoIcons.calendar_today),
+              label: 'Plans',
             ),
             NavigationDestination(
               icon: Icon(CupertinoIcons.chat_bubble_2),

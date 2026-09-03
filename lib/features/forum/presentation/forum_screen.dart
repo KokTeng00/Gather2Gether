@@ -112,25 +112,6 @@ class _ForumScreenState extends State<ForumScreen> {
                 child: AppPageHeader(
                   title: 'Community',
                   subtitle: 'Ask, share, and make local connections.',
-                  actions: [
-                    AppCircleButton(
-                      icon: CupertinoIcons.square_pencil,
-                      tooltip: 'New discussion',
-                      filled: true,
-                      onPressed: _create,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SliverPadding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 22),
-              sliver: SliverToBoxAdapter(
-                child: AppFeatureBanner(
-                  label: 'Neighbourhood notes',
-                  title: 'A space for good neighbours',
-                  subtitle: 'Be kind · Keep personal details private',
-                  icon: CupertinoIcons.person_3_fill,
                 ),
               ),
             ),
@@ -141,7 +122,7 @@ class _ForumScreenState extends State<ForumScreen> {
                   key: const Key('forum-interest-search'),
                   controller: _interestController,
                   enabled: !_loading,
-                  hintText: 'Try “people learning something new”',
+                  hintText: 'Search discussions',
                   onSubmitted: _applyInterest,
                   onClear: _clearInterest,
                 ),
@@ -183,27 +164,23 @@ class _ForumScreenState extends State<ForumScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Latest conversations',
+                          'Discussions',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 5,
+                      FilledButton.tonalIcon(
+                        key: const Key('new-discussion-action'),
+                        onPressed: _create,
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 46),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
                         ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(99),
+                        icon: const Icon(
+                          CupertinoIcons.square_pencil,
+                          size: 17,
                         ),
-                        child: Text(
-                          '${_posts.length}',
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
+                        label: const Text('New discussion'),
                       ),
                     ],
                   ),

@@ -96,17 +96,27 @@ attendee_id="$(printf '%s' "$attendee_response" | jq -r '.id')"
 organizer_token="$(sign_in "$organizer_email")"
 attendee_token="$(sign_in "$attendee_email")"
 
-event_body="$(jq -n \
-  --arg title "Smoke Event ${run_id}" \
-  '{title:$title,description:"Temporary end-to-end verification event.",category:"Running",venue_name:"Test Park",address:"Test address",latitude:52.52,longitude:13.405,start_at:"2099-01-01T18:00:00Z",end_at:"2099-01-01T20:00:00Z",max_participants:2}')"
-event_id="$(
+create_event() {
+  local title="$1"
+  local category="$2"
+  local description="$3"
+  local event_body
+  event_body="$(jq -n \
+    --arg title "$title" \
+    --arg category "$category" \
+    --arg description "$description" \
+    '{title:$title,description:$description,category:$category,venue_name:"Test Park",address:"Test address",latitude:52.52,longitude:13.405,start_at:"2099-01-01T18:00:00Z",end_at:"2099-01-01T20:00:00Z",max_participants:2}')"
   curl --silent --show-error --fail-with-body \
     --request POST \
     "${edge_api_url}/events" \
     --header "Authorization: Bearer ${organizer_token}" \
     --header "Content-Type: application/json" \
     --data "$event_body" | jq -r '.id'
-)"
+}
+
+event_id="$(create_event "Smoke Event ${run_id}" 'Running' 'Temporary end-to-end verification event.')"
+second_event_id="$(create_event "Smoke Hike ${run_id}" 'Hiking' 'Temporary forest walking recommendation signal.')"
+third_event_id="$(create_event "Smoke Games ${run_id}" 'Board games' 'Temporary board-game recommendation candidate.')"
 
 nearby_response="$(
   curl --silent --show-error --fail-with-body \
@@ -183,6 +193,51 @@ if [[ "$(printf '%s' "$details_response" | jq -r '.data.joined_count')" != "2" ]
   exit 1
 fi
 
+# A second distinct interaction makes the user eligible for cross-encoder
+# reranking. The resulting cache row proves that the Pages service binding,
+# private Worker, OpenRouter rerank endpoint, response validation, and deferred
+# cache write all completed rather than silently taking the local fallback.
+curl --silent --show-error --fail-with-body \
+  "${edge_api_url}/events/${second_event_id}" \
+  --header "Authorization: Bearer ${attendee_token}" >/dev/null
+
+reranked_response="$(
+  curl --silent --show-error --fail-with-body \
+    --max-time 25 \
+    --get "${edge_api_url}/events/nearby" \
+    --header "Authorization: Bearer ${attendee_token}" \
+    --data-urlencode 'latitude=52.52' \
+    --data-urlencode 'longitude=13.405' \
+    --data-urlencode 'radius_km=10'
+)"
+for recommendation_id in "$event_id" "$second_event_id" "$third_event_id"; do
+  if [[ "$(printf '%s' "$reranked_response" | jq -r --arg id "$recommendation_id" 'any(.data[]; .id == $id)')" != "true" ]]; then
+    printf 'Recommendation feed omitted a smoke-test candidate.\n' >&2
+    exit 1
+  fi
+done
+
+recommendation_cache='[]'
+for _ in 1 2 3 4 5; do
+  recommendation_cache="$(
+    curl --silent --show-error --fail-with-body \
+      --get "${project_url}/rest/v1/ai_recommendation_cache" \
+      --header "apikey: ${service_key}" \
+      --header "Authorization: Bearer ${service_key}" \
+      --data-urlencode 'select=ranked_ids,expires_at' \
+      --data-urlencode "user_id=eq.${attendee_id}" \
+      --data-urlencode 'surface=eq.event'
+  )"
+  if [[ "$(printf '%s' "$recommendation_cache" | jq 'length')" -eq 1 ]]; then
+    break
+  fi
+  sleep 1
+done
+if [[ "$(printf '%s' "$recommendation_cache" | jq 'length')" -ne 1 ]]; then
+  printf 'AI recommendation reranking did not create its short-lived cache.\n' >&2
+  exit 1
+fi
+
 curl --silent --show-error --fail-with-body \
   --request POST \
   "${edge_api_url}/events/${event_id}/report" \
@@ -202,4 +257,4 @@ if [[ "$anonymous_status" == "200" ]]; then
   exit 1
 fi
 
-printf 'Smoke test passed: Cloudflare compute, private model Worker, Supabase auth/database, indexed assistant search/history, create, nearby, report, RSVP capacity, and RLS.\n'
+printf 'Smoke test passed: Cloudflare compute, private model Worker, Supabase auth/database, AI recommendation reranking/cache, indexed assistant search/history, create, nearby, report, RSVP capacity, and RLS.\n'

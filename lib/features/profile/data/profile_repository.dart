@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/media/prepared_image.dart';
+import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/profile/domain/profile_stats.dart';
 import 'package:gather2gether/features/profile/domain/public_profile.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
@@ -41,6 +42,10 @@ class ProfileRepository {
   static const _profileFields =
       'display_name, username, bio, city, preferred_radius_km, '
       'approximate_latitude, approximate_longitude, assistant_enabled, '
+      'show_past_events_public, avatar_image_key, username_changed_at, updated_at';
+  static const _prePastVisibilityProfileFields =
+      'display_name, username, bio, city, preferred_radius_km, '
+      'approximate_latitude, approximate_longitude, assistant_enabled, '
       'avatar_image_key, username_changed_at, updated_at';
   static const _legacyProfileFields =
       'display_name, username, bio, city, preferred_radius_km, '
@@ -68,8 +73,24 @@ class ProfileRepository {
       return UserProfile.fromJson(response);
     } on PostgrestException catch (error) {
       // Keep read-only profile screens available during the short deployment
-      // window between shipping the app and applying the cooldown migration.
-      // Username writes never use this fallback.
+      // window between shipping the app and applying profile migrations.
+      if (_isMissingPastVisibilityColumn(error)) {
+        try {
+          final response = await _fetchOwnProfileRow(
+            userId,
+            _prePastVisibilityProfileFields,
+          );
+          return UserProfile.fromJson(response);
+        } on PostgrestException catch (legacyError) {
+          if (!_isMissingCooldownColumn(legacyError)) rethrow;
+          final response = await _fetchOwnProfileRow(
+            userId,
+            _legacyProfileFields,
+          );
+          return UserProfile.fromJson(response);
+        }
+      }
+      // Username writes never use this older fallback.
       if (!_isMissingCooldownColumn(error)) rethrow;
       final response = await _fetchOwnProfileRow(userId, _legacyProfileFields);
       return UserProfile.fromJson(response);
@@ -95,7 +116,17 @@ class ProfileRepository {
     required String bio,
     required String city,
   }) async {
-    _requireUserId();
+    final userId = _requireUserId();
+    bool? showPastEventsPublic;
+    try {
+      final visibility = await _fetchOwnProfileRow(
+        userId,
+        'show_past_events_public',
+      );
+      showPastEventsPublic = visibility['show_past_events_public'] == true;
+    } on PostgrestException catch (error) {
+      if (!_isMissingPastVisibilityColumn(error)) rethrow;
+    }
     try {
       final response = await _client.rpc(
         'update_own_profile_identity',
@@ -106,7 +137,10 @@ class ProfileRepository {
           'p_city': city.trim().isEmpty ? null : city.trim(),
         },
       );
-      return UserProfile.fromJson(_singleRow(response));
+      final updated = UserProfile.fromJson(_singleRow(response));
+      return showPastEventsPublic == null
+          ? updated
+          : updated.copyWith(showPastEventsPublic: showPastEventsPublic);
     } on PostgrestException catch (error) {
       throw switch (error.message) {
         'profile_username_cooldown' => const ProfileApiException(
@@ -179,6 +213,17 @@ class ProfileRepository {
         .eq('id', userId);
   }
 
+  Future<UserProfile> updatePastEventsVisibility(bool isPublic) async {
+    final userId = _requireUserId();
+    final response = await _client
+        .from('profiles')
+        .update({'show_past_events_public': isPublic})
+        .eq('id', userId)
+        .select(_profileFields)
+        .single();
+    return UserProfile.fromJson(response);
+  }
+
   Future<void> updatePassword({
     required String currentPassword,
     required String newPassword,
@@ -219,6 +264,26 @@ class ProfileRepository {
       await _edgeRequest('GET', 'profiles/${Uri.encodeComponent(profileId)}'),
     );
     return PublicProfile.fromJson(_responseMap(payload['data']));
+  }
+
+  Future<List<EventSummary>> fetchProfileEvents(
+    String profileId,
+    String filter,
+  ) async {
+    final payload = _responseMap(
+      await _edgeRequest(
+        'GET',
+        'profiles/${Uri.encodeComponent(profileId)}/events'
+            '?filter=${Uri.encodeQueryComponent(filter)}',
+      ),
+    );
+    final rows = payload['data'];
+    if (rows is! List<dynamic>) {
+      throw const FormatException('Invalid profile event response.');
+    }
+    return rows
+        .map((row) => EventSummary.fromJson(_responseMap(row)))
+        .toList(growable: false);
   }
 
   Future<bool> setFollowing(String profileId, bool following) async {
@@ -361,6 +426,10 @@ class ProfileRepository {
   bool _isMissingCooldownColumn(PostgrestException error) {
     return error.code == '42703' ||
         error.message.toLowerCase().contains('username_changed_at');
+  }
+
+  bool _isMissingPastVisibilityColumn(PostgrestException error) {
+    return error.message.toLowerCase().contains('show_past_events_public');
   }
 
   Map<String, dynamic> _singleRow(Object? response) {

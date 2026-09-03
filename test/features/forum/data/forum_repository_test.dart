@@ -239,6 +239,54 @@ void main() {
     expect(repository.mediaHeaders()['Authorization'], 'Bearer access-token');
   });
 
+  test('discussion detail parses its current like state', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/v1/forum/posts/$postId');
+      return http.Response(
+        jsonEncode({
+          'data': {...forumPostJson(postId), 'liked': true, 'like_count': 12},
+        }),
+        200,
+      );
+    });
+    final repository = ForumRepository(
+      httpClient: client,
+      accessTokenProvider: () => 'access-token',
+      edgeApiUrl: apiUrl,
+    );
+
+    final post = await repository.getPost(postId);
+
+    expect(post.viewerHasLiked, isTrue);
+    expect(post.likeCount, 12);
+  });
+
+  test('like changes use the authenticated boolean API contract', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'PUT');
+      expect(request.url.path, '/api/v1/forum/posts/$postId/like');
+      expect(request.headers['authorization'], 'Bearer access-token');
+      expect(jsonDecode(request.body), {'liked': true});
+      return http.Response(
+        jsonEncode({
+          'data': {'liked': true, 'like_count': 4, 'changed': true},
+        }),
+        200,
+      );
+    });
+    final repository = ForumRepository(
+      httpClient: client,
+      accessTokenProvider: () => 'access-token',
+      edgeApiUrl: apiUrl,
+    );
+
+    final state = await repository.setPostLike(postId: postId, liked: true);
+
+    expect(state.liked, isTrue);
+    expect(state.likeCount, 4);
+  });
+
   test('forum rate-limit response is preserved for the UI', () async {
     final client = MockClient(
       (_) async => http.Response(

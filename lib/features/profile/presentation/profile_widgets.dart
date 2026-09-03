@@ -23,36 +23,214 @@ class ProfileSocialAppBar extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Row(
       key: const Key('profile-page-header'),
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Your space',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: colors.onSurface,
-                  fontWeight: FontWeight.w800,
-                ),
+          child: Semantics(
+            label: username.trim().isEmpty
+                ? 'Profile'
+                : 'Profile for ${username.trim()}',
+            header: true,
+            child: Text(
+              'Profile',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: colors.onSurface,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.4,
               ),
-              const SizedBox(height: 2),
-              Text(
-                'Your Gather2Gether profile',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-              ),
-            ],
+            ),
           ),
         ),
-        const SizedBox(width: 12),
-        IconButton.filledTonal(
+        const SizedBox(width: 16),
+        IconButton(
           tooltip: 'Profile settings',
           onPressed: onSettings,
-          icon: const Icon(CupertinoIcons.slider_horizontal_3, size: 20),
+          color: colors.onSurfaceVariant,
+          icon: const Icon(CupertinoIcons.gear, size: 21),
         ),
       ],
+    );
+  }
+}
+
+/// A calm profile summary that keeps identity and community activity distinct.
+class ProfileBalancedOverview extends StatelessWidget {
+  const ProfileBalancedOverview({
+    required this.profile,
+    required this.stats,
+    required this.onEdit,
+    this.avatarUrl,
+    this.avatarHeaders,
+    super.key,
+  });
+
+  final UserProfile profile;
+  final ProfileStats? stats;
+  final VoidCallback onEdit;
+  final String? avatarUrl;
+  final Map<String, String>? avatarHeaders;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final username = profile.username.trim();
+    final city = profile.city.trim();
+    final bio = profile.bio.trim();
+    final displayName = profile.displayName.trim().isEmpty
+        ? 'Community member'
+        : profile.displayName.trim();
+
+    return AppSurface(
+      key: const Key('profile-overview'),
+      borderColor: colors.outlineVariant.withValues(alpha: 0.72),
+      borderRadius: 20,
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Align(
+            alignment: Alignment.center,
+            child: ProfileAvatar(
+              key: const Key('profile-avatar'),
+              profile: profile,
+              imageUrl: avatarUrl,
+              headers: avatarHeaders,
+              size: 96,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            displayName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              color: colors.onSurface,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+            ),
+          ),
+          if (username.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(
+              '@$username',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (city.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    CupertinoIcons.location,
+                    size: 14,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      city,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (bio.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Text(
+              bio,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.5,
+              ),
+            ),
+          ],
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: const Key('profile-edit-action'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                side: BorderSide(color: colors.outlineVariant),
+              ),
+              onPressed: onEdit,
+              icon: const Icon(CupertinoIcons.pencil, size: 16),
+              label: const Text('Edit profile'),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Container(
+            key: const Key('profile-activity-summary'),
+            padding: const EdgeInsets.fromLTRB(8, 18, 8, 2),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: colors.outlineVariant.withValues(alpha: 0.8),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _ProfileStat(value: stats?.postsCount, label: 'Posts'),
+                ),
+                _ProfileStatSeparator(color: colors.outlineVariant),
+                Expanded(
+                  child: _ProfileStat(
+                    value: stats?.followersCount,
+                    label: 'Followers',
+                  ),
+                ),
+                _ProfileStatSeparator(color: colors.outlineVariant),
+                Expanded(
+                  child: _ProfileStat(
+                    value: stats?.followingCount,
+                    label: 'Following',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileStatSeparator extends StatelessWidget {
+  const _ProfileStatSeparator({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 3,
+      height: 3,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
@@ -290,7 +468,6 @@ class ProfileAvatar extends StatelessWidget {
     final initial = name.isEmpty
         ? '?'
         : String.fromCharCode(name.runes.first).toUpperCase();
-    final radius = BorderRadius.circular(size * 0.3);
     final fallback = ColoredBox(
       color: colors.primaryContainer,
       child: Center(
@@ -311,7 +488,7 @@ class ProfileAvatar extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          borderRadius: radius,
+          shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.07),
@@ -321,7 +498,7 @@ class ProfileAvatar extends StatelessWidget {
           ],
         ),
         foregroundDecoration: BoxDecoration(
-          borderRadius: radius,
+          shape: BoxShape.circle,
           border: Border.all(
             color: colors.primary.withValues(alpha: 0.55),
             width: 2,
@@ -540,43 +717,22 @@ class ProfileContributionsHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Row(
+    return Column(
       key: const Key('profile-contributions-header'),
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: colors.primaryContainer,
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Icon(
-            CupertinoIcons.square_pencil,
-            color: colors.onPrimaryContainer,
-            size: 19,
-          ),
+        Text(
+          'Community posts',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Your contributions',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Updates you’ve shared with nearby people',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-              ),
-            ],
-          ),
+        const SizedBox(height: 3),
+        Text(
+          'Posts shared with the community',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
         ),
       ],
     );
@@ -1066,9 +1222,7 @@ class ProfileGuidePreferenceCard extends StatelessWidget {
               ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             subtitle: Text(
-              saving
-                  ? 'Saving preference…'
-                  : 'Nearby event recommendations and app help',
+              saving ? 'Saving preference…' : 'Nearby events and app help',
             ),
           ),
           const Divider(height: 1),

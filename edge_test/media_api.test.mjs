@@ -461,7 +461,12 @@ test('profile avatar GET and DELETE use owner-only reference RPCs', async () => 
 
 test('only media routes require the R2 binding', async () => {
   const calls = mockSupabase(async (call) => {
-    if (call.url.endsWith('/rpc/list_forum_posts')) return Response.json([]);
+    if (call.url.endsWith('/rpc/recommend_personalized_forum_posts')) {
+      return Response.json([]);
+    }
+    if (call.url.endsWith('/rpc/list_forum_posts')) {
+      return Response.json([]);
+    }
     throw new Error(`Unexpected RPC: ${call.url}`);
   });
 

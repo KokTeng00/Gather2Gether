@@ -11,6 +11,8 @@ class ForumPost {
     required this.lastActivityAt,
     required this.commentCount,
     required this.viewerIsAuthor,
+    this.likeCount = 0,
+    this.viewerHasLiked = false,
     this.hasImage = false,
     this.placeName,
     this.placeAddress,
@@ -32,6 +34,8 @@ class ForumPost {
       ).toLocal(),
       commentCount: count is int ? count : int.parse('$count'),
       viewerIsAuthor: json['viewer_is_author'] == true,
+      likeCount: _integer(json['like_count']),
+      viewerHasLiked: json['liked'] == true || json['viewer_has_liked'] == true,
       hasImage: json['has_image'] == true,
       placeName: _optionalString(json['place_name']),
       placeAddress: _optionalString(json['place_address']),
@@ -41,6 +45,11 @@ class ForumPost {
   static String? _optionalString(Object? value) {
     if (value is! String || value.trim().isEmpty) return null;
     return value.trim();
+  }
+
+  static int _integer(Object? value) {
+    if (value is int) return value;
+    return int.tryParse('$value') ?? 0;
   }
 
   final String id;
@@ -54,6 +63,8 @@ class ForumPost {
   final DateTime lastActivityAt;
   final int commentCount;
   final bool viewerIsAuthor;
+  final int likeCount;
+  final bool viewerHasLiked;
   final bool hasImage;
   final String? placeName;
   final String? placeAddress;
@@ -61,4 +72,23 @@ class ForumPost {
   bool get isLocked => status == 'locked';
 
   bool get hasPlace => placeName != null && placeAddress != null;
+
+  ForumPost withLike({required bool liked, required int count}) => ForumPost(
+    id: id,
+    authorId: authorId,
+    authorName: authorName,
+    category: category,
+    title: title,
+    body: body,
+    status: status,
+    createdAt: createdAt,
+    lastActivityAt: lastActivityAt,
+    commentCount: commentCount,
+    viewerIsAuthor: viewerIsAuthor,
+    likeCount: count,
+    viewerHasLiked: liked,
+    hasImage: hasImage,
+    placeName: placeName,
+    placeAddress: placeAddress,
+  );
 }

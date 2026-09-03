@@ -30,6 +30,7 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
   List<ForumComment> _comments = const [];
   bool _loading = true;
   bool _sending = false;
+  bool _liking = false;
   String? _error;
 
   @override
@@ -91,6 +92,29 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
       if (mounted) _showMessage('Could not add your reply. Try again.');
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    final post = _post;
+    if (post == null || _liking) return;
+    setState(() => _liking = true);
+    try {
+      final state = await _repository.setPostLike(
+        postId: post.id,
+        liked: !post.viewerHasLiked,
+      );
+      if (mounted) {
+        setState(() {
+          _post = post.withLike(liked: state.liked, count: state.likeCount);
+        });
+      }
+    } on ForumApiException catch (error) {
+      if (mounted) _showMessage(error.message);
+    } catch (_) {
+      if (mounted) _showMessage('Could not update your like. Try again.');
+    } finally {
+      if (mounted) setState(() => _liking = false);
     }
   }
 
@@ -174,6 +198,8 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
                     post: post!,
                     repository: _repository,
                     onAuthorTap: () => _openAuthor(post),
+                    onLike: _toggleLike,
+                    liking: _liking,
                   ),
                   const SizedBox(height: 22),
                   Row(
@@ -226,11 +252,15 @@ class _PostHeader extends StatelessWidget {
     required this.post,
     required this.repository,
     required this.onAuthorTap,
+    required this.onLike,
+    required this.liking,
   });
 
   final ForumPost post;
   final ForumRepository repository;
   final VoidCallback onAuthorTap;
+  final VoidCallback onLike;
+  final bool liking;
 
   @override
   Widget build(BuildContext context) {
@@ -267,7 +297,26 @@ class _PostHeader extends StatelessWidget {
                   address: post.placeAddress!,
                 ),
               ],
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                key: const Key('forum-like-action'),
+                onPressed: liking ? null : onLike,
+                icon: liking
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CupertinoActivityIndicator(radius: 8),
+                      )
+                    : Icon(
+                        post.viewerHasLiked
+                            ? CupertinoIcons.heart_fill
+                            : CupertinoIcons.heart,
+                        size: 18,
+                      ),
+                label: Text(
+                  '${post.likeCount} ${post.likeCount == 1 ? 'like' : 'likes'}',
+                ),
+              ),
+              const SizedBox(height: 14),
               InkWell(
                 key: const Key('forum-author-profile'),
                 borderRadius: BorderRadius.circular(14),

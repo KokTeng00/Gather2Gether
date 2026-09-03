@@ -5,7 +5,8 @@
 - Row Level Security is enabled on every app-facing table.
 - Organizer identity is always derived from `auth.uid()` on the server.
 - Join capacity is enforced under a database lock, preventing race-condition
-  overbooking.
+  overbooking. The same transaction promotes the oldest waitlisted member when
+  a joined place is released.
 - Security-definer functions use an empty `search_path`, validate inputs, and
   expose only the minimum required data.
 - Event operations pass through a Cloudflare Pages Function that verifies the
@@ -27,8 +28,39 @@
 - The Cloudflare Function forwards the user's JWT and publishable key. It has no
   service-role key and cannot bypass Supabase RLS.
 - Anonymous users cannot read profiles, events, RSVPs, reports, or blocks.
+- Event saves, reminders, announcements, attendee messages, feedback, and
+  notifications deny direct client access. Fixed-signature functions scope
+  plans and the notification inbox to `auth.uid()`, restrict event discussion
+  to hosts and participating members, and derive organizer authority from the
+  authenticated session.
+- Shared invitation pages contain only an opaque event identifier and an app
+  deep link. They do not query or expose private profile, attendee, location, or
+  database data. Event details remain behind the authenticated mobile API.
+- Device reminders are scheduled locally only after the member explicitly
+  chooses a reminder time. Declining OS notification permission leaves the
+  private in-app reminder available and does not weaken server authorization.
 - Profiles store only rounded coordinates; no background location or location
   history is collected.
+- Upcoming public events may appear on an organizer's profile. Past event
+  activity is private by default and exposed to other authenticated members
+  only after the profile owner opts in. Public attendance requires an explicit
+  attendance confirmation; owner views and block checks are enforced inside
+  the profile-event RPC rather than relying on client-side hiding.
+- Recommendation signals are private aggregate rows scoped to `auth.uid()`;
+  direct table access is denied. They contain content IDs and action types, not
+  search text, raw GPS history, or third-party tracking identifiers. Repeated
+  views are de-duplicated for six hours, ranking influence decays over time,
+  and signals older than 180 days are removed as the member continues using the
+  app.
+- Recommendation retrieval uses bounded Postgres candidates. After two distinct
+  interactions, the first 24 public candidates may be cross-encoder reranked
+  through the private model Worker and OpenRouter. The provider receives an
+  anonymous preference summary containing action labels and truncated public
+  content, never the user ID, profile fields, exact member location, searches,
+  private messages, or comment text. Requests deny providers that enable data
+  collection, exact results are cached for six hours, and an atomic throttle
+  allows at most one model attempt per member and feed type in that interval.
+  Failure falls back to the database ranking.
 - Assistant messages deny direct table access. Security-definer RPCs scope
   history, deletion, rate limits, and replies to `auth.uid()`.
 - Assistant event lookup combines a GiST geography index, a GIN full-text index,
@@ -47,12 +79,17 @@
 - Terraform protects the Supabase project from accidental deletion.
 - The product has no payment or price data path.
 
-The map loads public OpenStreetMap tiles on demand. As with any map tile
-provider, the provider receives the device IP address and requested tile area.
-The app does not send the user's account identity to the tile provider, and it
-does not collect background location or retain a location trail. Before a
-large-scale launch, use a production tile service or properly operated cache
-with a privacy agreement and service capacity suitable for the audience.
+The MapLibre client loads public OpenFreeMap vector tiles on demand. The tile
+provider receives the device IP address and requested tile area, but the app
+does not send the user's account identity. Address completion sends the typed
+search text and an optional current-location ranking bias to the authenticated
+Pages Function, which forwards only those fields to Geoapify. Geoapify does not
+receive the Supabase JWT, user ID, or account profile. The provider credential
+stays in the Pages environment, and autocomplete responses are bounded and
+normalized before reaching the client. The app does not collect background
+location or retain a location trail. Before a large-scale launch, review both
+providers' capacity, privacy terms, and service guarantees for the expected
+audience.
 
 ## Credential rules
 
@@ -63,10 +100,12 @@ The Flutter app may contain only:
 - the public Cloudflare edge API URL.
 
 The Pages Function environment may contain the same public Supabase URL and
-publishable key. The OpenRouter credential must be supplied only through the
-`OPENROUTER_API_KEY` account-level Secrets Store binding on the private model
-Worker. Neither Cloudflare service may contain a database password, Supabase
-personal access token, service-role key, or JWT signing secret.
+publishable key. `GEOAPIFY_API_KEY` must be supplied as a Pages secret and is
+used only by the authenticated autocomplete route. The OpenRouter credential
+must be supplied only through the `OPENROUTER_API_KEY` account-level Secrets
+Store binding on the private model Worker. Neither Cloudflare service may
+contain a database password, Supabase personal access token, service-role key,
+or JWT signing secret.
 
 Never place a Cloudflare token, Supabase personal access token, database
 password, service-role/secret key, or JWT signing secret in Dart code, web
@@ -109,3 +148,6 @@ project's database password or JWT secret.
 - Publish assistant-specific retention and AI-subprocessor disclosures. The app
   currently retains at most 200 messages per user until they clear history or
   delete their account.
+- Include recommendation reranking in the AI-subprocessor disclosure, including
+  the action labels and public-content summaries sent to OpenRouter and the
+  selected inference provider's retention terms.

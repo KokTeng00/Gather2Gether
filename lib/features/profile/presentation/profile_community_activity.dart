@@ -84,13 +84,7 @@ class _ProfileCommunityActivityState extends State<ProfileCommunityActivity> {
       );
     }
     if (_posts.isEmpty) {
-      return const _ActivityMessage(
-        key: Key('profile-activity-empty'),
-        icon: CupertinoIcons.photo_on_rectangle,
-        title: 'No community posts yet',
-        message:
-            'Photos, places, and ideas you share will collect here on your profile.',
-      );
+      return const _EmptyActivityMessage(key: Key('profile-activity-empty'));
     }
 
     return Semantics(
@@ -100,7 +94,12 @@ class _ProfileCommunityActivityState extends State<ProfileCommunityActivity> {
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: _posts.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => Divider(
+          height: 1,
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: 0.7),
+        ),
         itemBuilder: (context, index) {
           final post = _posts[index];
           return _ActivityTile(
@@ -110,6 +109,44 @@ class _ProfileCommunityActivityState extends State<ProfileCommunityActivity> {
             onTap: () => _openPost(post),
           );
         },
+      ),
+    );
+  }
+}
+
+class _EmptyActivityMessage extends StatelessWidget {
+  const _EmptyActivityMessage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
+      child: Column(
+        children: [
+          Icon(
+            CupertinoIcons.chat_bubble_2,
+            size: 30,
+            color: colors.primary.withValues(alpha: 0.82),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No community posts yet',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            'Discussions and local tips you share will appear here.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -127,9 +164,8 @@ class _ActivityLoading extends StatelessWidget {
       child: Column(
         children: [
           for (var index = 0; index < 3; index++) ...[
-            AppSurface(
-              borderRadius: 18,
-              padding: const EdgeInsets.all(14),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
               child: SizedBox(
                 height: 58,
                 child: Row(
@@ -169,7 +205,7 @@ class _ActivityLoading extends StatelessWidget {
                 ),
               ),
             ),
-            if (index != 2) const SizedBox(height: 10),
+            if (index != 2) const Divider(height: 1),
           ],
         ],
       ),
@@ -196,22 +232,16 @@ class _ActivityMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return AppSurface(
-      borderRadius: 18,
-      padding: const EdgeInsets.all(18),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 22),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: colors.primaryContainer,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: colors.onPrimaryContainer, size: 21),
+          SizedBox(
+            width: 30,
+            child: Icon(icon, color: colors.primary, size: 22),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,91 +295,87 @@ class _ActivityTile extends StatelessWidget {
     return Semantics(
       button: true,
       label: 'Open community post: ${post.title}',
-      child: AppSurface(
-        borderRadius: 18,
+      child: InkWell(
         onTap: onTap,
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            if (!post.hasImage) ...[
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: visual.background,
-                  borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: Row(
+            children: [
+              if (!post.hasImage) ...[
+                SizedBox(
+                  width: 30,
+                  child: Icon(visual.icon, color: visual.ink, size: 20),
                 ),
-                child: Icon(visual.icon, color: visual.ink, size: 21),
-              ),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    post.category,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: visual.ink,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    post.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      height: 1.25,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 4,
-                    children: [
-                      _PostMeta(
-                        icon: CupertinoIcons.chat_bubble,
-                        label:
-                            '${post.commentCount} ${post.commentCount == 1 ? 'reply' : 'replies'}',
+                const SizedBox(width: 10),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      post.category,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: visual.ink,
+                        fontWeight: FontWeight.w700,
                       ),
-                      if (post.hasPlace)
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      post.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
+                      children: [
                         _PostMeta(
-                          icon: CupertinoIcons.location,
-                          label: post.placeName!,
+                          icon: CupertinoIcons.chat_bubble,
+                          label:
+                              '${post.commentCount} ${post.commentCount == 1 ? 'reply' : 'replies'}',
                         ),
-                      if (post.isLocked)
-                        const _PostMeta(
-                          icon: CupertinoIcons.lock,
-                          label: 'Closed',
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            if (post.hasImage)
-              SizedBox(
-                width: 100,
-                child: ForumPostImage(
-                  postId: post.id,
-                  title: post.title,
-                  repository: repository,
-                  aspectRatio: 1,
-                  borderRadius: 14,
+                        if (post.hasPlace)
+                          _PostMeta(
+                            icon: CupertinoIcons.location,
+                            label: post.placeName!,
+                          ),
+                        if (post.isLocked)
+                          const _PostMeta(
+                            icon: CupertinoIcons.lock,
+                            label: 'Closed',
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
-              )
-            else
-              Icon(
-                CupertinoIcons.chevron_right,
-                size: 15,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
-          ],
+              const SizedBox(width: 10),
+              if (post.hasImage)
+                SizedBox(
+                  width: 100,
+                  child: ForumPostImage(
+                    postId: post.id,
+                    title: post.title,
+                    repository: repository,
+                    aspectRatio: 1,
+                    borderRadius: 12,
+                  ),
+                )
+              else
+                Icon(
+                  CupertinoIcons.chevron_right,
+                  size: 15,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:gather2gether/features/auth/presentation/sign_in_screen.dart';
 import 'package:gather2gether/features/shell/presentation/app_shell.dart';
@@ -15,6 +16,8 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   late Session? _session;
   late final StreamSubscription<AuthState> _subscription;
+  StreamSubscription<Uri>? _linkSubscription;
+  Uri? _inviteLink;
 
   @override
   void initState() {
@@ -24,6 +27,20 @@ class _AuthGateState extends State<AuthGate> {
     _subscription = auth.onAuthStateChange.listen((state) {
       if (mounted) setState(() => _session = state.session);
     }, onError: _handleAuthError);
+    _listenForInvites();
+  }
+
+  Future<void> _listenForInvites() async {
+    final links = AppLinks();
+    void capture(Uri uri) {
+      if (uri.scheme == 'gather2gether' && uri.host == 'event' && mounted) {
+        setState(() => _inviteLink = uri);
+      }
+    }
+
+    _linkSubscription = links.uriLinkStream.listen(capture);
+    final initial = await links.getInitialLink();
+    if (initial != null) capture(initial);
   }
 
   void _handleAuthError(Object error, StackTrace stackTrace) {
@@ -43,6 +60,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void dispose() {
     _subscription.cancel();
+    _linkSubscription?.cancel();
     super.dispose();
   }
 
@@ -52,7 +70,13 @@ class _AuthGateState extends State<AuthGate> {
       duration: const Duration(milliseconds: 250),
       child: _session == null
           ? const SignInScreen(key: ValueKey('signed-out'))
-          : const AppShell(key: ValueKey('signed-in')),
+          : AppShell(
+              key: const ValueKey('signed-in'),
+              inviteLink: _inviteLink,
+              onInviteConsumed: () {
+                if (mounted) setState(() => _inviteLink = null);
+              },
+            ),
     );
   }
 }

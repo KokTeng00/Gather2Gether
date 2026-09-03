@@ -5,6 +5,7 @@ import 'package:gather2gether/core/theme/app_theme.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/profile_settings_screen.dart';
+import 'package:gather2gether/features/profile/presentation/profile_widgets.dart';
 
 class _FakeProfileRepository extends ProfileRepository {
   _FakeProfileRepository()
@@ -22,6 +23,7 @@ class _FakeProfileRepository extends ProfileRepository {
   UserProfile profile;
   int preferenceUpdates = 0;
   final assistantUpdates = <bool>[];
+  final pastVisibilityUpdates = <bool>[];
   final passwordUpdates = <(String, String)>[];
 
   @override
@@ -43,6 +45,13 @@ class _FakeProfileRepository extends ProfileRepository {
   Future<void> updateAssistantEnabled(bool enabled) async {
     assistantUpdates.add(enabled);
     profile = profile.copyWith(assistantEnabled: enabled);
+  }
+
+  @override
+  Future<UserProfile> updatePastEventsVisibility(bool isPublic) async {
+    pastVisibilityUpdates.add(isPublic);
+    profile = profile.copyWith(showPastEventsPublic: isPublic);
+    return profile;
   }
 
   @override
@@ -90,6 +99,39 @@ _pumpSettings(WidgetTester tester, {bool hasPasswordSignIn = true}) async {
 }
 
 void main() {
+  testWidgets('settings header uses the authenticated profile photo', (
+    tester,
+  ) async {
+    final repository = _FakeProfileRepository();
+    final profile = repository.profile.copyWith(
+      avatarImageKey: 'avatars/member/avatar-v2.jpg',
+    );
+    const headers = {'Authorization': 'Bearer test-token'};
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: ProfileSettingsScreen(
+          profile: profile,
+          repository: repository,
+          emailOverride: 'maya@example.com',
+          hasPasswordSignInOverride: true,
+          avatarUrlOverride: 'https://example.test/profile/avatar-v2.jpg',
+          avatarHeadersOverride: headers,
+          onAssistantEnabledChanged: (_) {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final avatar = tester.widget<ProfileAvatar>(
+      find.byKey(const Key('settings-profile-avatar')),
+    );
+    expect(avatar.profile.avatarImageKey, 'avatars/member/avatar-v2.jpg');
+    expect(avatar.imageUrl, 'https://example.test/profile/avatar-v2.jpg');
+    expect(avatar.headers, headers);
+  });
+
   testWidgets('settings uses a grouped navigation hub instead of tabs', (
     tester,
   ) async {
@@ -291,7 +333,7 @@ void main() {
   });
 
   testWidgets('privacy information is reachable from the hub', (tester) async {
-    await _pumpSettings(tester);
+    final setup = await _pumpSettings(tester);
 
     await tester.ensureVisible(find.text('Privacy'));
     await tester.tap(find.text('Privacy'));
@@ -300,6 +342,21 @@ void main() {
     expect(find.text('Privacy by design'), findsOneWidget);
     expect(find.text('Approximate home area'), findsOneWidget);
     expect(find.text('Community sharing'), findsOneWidget);
+    expect(find.text('Show past events'), findsOneWidget);
+
+    final toggle = tester.widget<SwitchListTile>(
+      find.byKey(const Key('past-events-visibility-toggle')),
+    );
+    expect(toggle.value, isFalse);
+    toggle.onChanged!(true);
+    await tester.pumpAndSettle();
+
+    expect(setup.repository.pastVisibilityUpdates, [true]);
+    expect(setup.changed.last.showPastEventsPublic, isTrue);
+    expect(
+      find.text('Past events are now visible on your profile.'),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/public_profile.dart';
+import 'package:gather2gether/features/profile/presentation/profile_events_section.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   const PublicProfileScreen({
@@ -100,13 +101,20 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               onRefresh: _load,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 36),
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 48),
                 children: [
                   _PublicProfileHero(
                     profile: profile!,
                     repository: _repository,
                     updatingFollow: _updatingFollow,
                     onFollow: _toggleFollow,
+                  ),
+                  const SizedBox(height: 36),
+                  ProfileEventsSection(
+                    profileId: profile.id,
+                    pastEventsPublic: profile.pastEventsPublic,
+                    viewerIsSelf: profile.viewerIsSelf,
+                    repository: _repository,
                   ),
                 ],
               ),
@@ -137,14 +145,15 @@ class _PublicProfileHero extends StatelessWidget {
             profile.displayName.trim().runes.first,
           ).toUpperCase();
     return AppSurface(
-      borderRadius: 24,
-      padding: const EdgeInsets.all(20),
+      borderColor: colors.outlineVariant.withValues(alpha: 0.72),
+      borderRadius: 20,
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
       child: Column(
         children: [
           Container(
             key: const Key('public-profile-avatar'),
-            width: 92,
-            height: 92,
+            width: 96,
+            height: 96,
             decoration: BoxDecoration(
               color: colors.primaryContainer,
               shape: BoxShape.circle,
@@ -162,7 +171,7 @@ class _PublicProfileHero extends StatelessWidget {
                   )
                 : Center(child: Text(initial, style: _initialStyle(colors))),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Text(
             profile.displayName,
             textAlign: TextAlign.center,
@@ -191,48 +200,88 @@ class _PublicProfileHero extends StatelessWidget {
           if (profile.city.trim().isNotEmpty) ...[
             const SizedBox(height: 10),
             Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  CupertinoIcons.location_fill,
-                  size: 15,
-                  color: colors.primary,
+                  CupertinoIcons.location,
+                  size: 14,
+                  color: colors.onSurfaceVariant,
                 ),
                 const SizedBox(width: 5),
-                Flexible(child: Text(profile.city)),
+                Flexible(
+                  child: Text(
+                    profile.city,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ],
             ),
           ],
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: _SocialCount(
-                  value: profile.followersCount,
-                  label: 'Followers',
+          const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.fromLTRB(8, 18, 8, 2),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: colors.outlineVariant.withValues(alpha: 0.8),
                 ),
               ),
-              const SizedBox(height: 40, child: VerticalDivider()),
-              Expanded(
-                child: _SocialCount(
-                  value: profile.followingCount,
-                  label: 'Following',
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _SocialCount(
+                    value: profile.followersCount,
+                    label: 'Followers',
+                  ),
                 ),
-              ),
-            ],
+                Container(
+                  width: 3,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: colors.outlineVariant,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Expanded(
+                  child: _SocialCount(
+                    value: profile.followingCount,
+                    label: 'Following',
+                  ),
+                ),
+              ],
+            ),
           ),
           if (!profile.viewerIsSelf) ...[
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: profile.viewerIsFollowing
                   ? OutlinedButton(
                       key: const Key('profile-follow-button'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        side: BorderSide(color: colors.outlineVariant),
+                      ),
                       onPressed: updatingFollow ? null : onFollow,
                       child: Text(updatingFollow ? 'Saving…' : 'Following'),
                     )
                   : FilledButton(
                       key: const Key('profile-follow-button'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                       onPressed: updatingFollow ? null : onFollow,
                       child: Text(updatingFollow ? 'Saving…' : 'Follow'),
                     ),

@@ -17,6 +17,21 @@ class EventSummary {
     required this.tentativeCount,
     required this.distanceMeters,
     required this.userRsvpStatus,
+    this.eventStatus = 'published',
+    this.isSaved = false,
+    this.reminderAt,
+    this.waitlistPosition,
+    this.viewerIsOrganizer = false,
+    this.beginnerFriendly = false,
+    this.wheelchairAccessible = false,
+    this.eventSetting = 'unspecified',
+    this.eventLanguage = '',
+    this.ageGuidance = 'all_ages',
+    this.whatToBring = '',
+    this.attendeeVisible = false,
+    this.discussionNotificationsEnabled = true,
+    this.reconfirmationDeadlineAt,
+    this.viewerReconfirmedAt,
   });
 
   factory EventSummary.fromJson(Map<String, dynamic> json) {
@@ -42,6 +57,32 @@ class EventSummary {
       tentativeCount: asInt(json['tentative_count']),
       distanceMeters: asDouble(json['distance_meters'] ?? 0),
       userRsvpStatus: json['user_rsvp_status'] as String?,
+      eventStatus: (json['event_status'] as String?) ?? 'published',
+      isSaved: json['is_saved'] == true,
+      reminderAt: json['reminder_at'] is String
+          ? DateTime.parse(json['reminder_at'] as String).toLocal()
+          : null,
+      waitlistPosition: json['waitlist_position'] == null
+          ? null
+          : asInt(json['waitlist_position']),
+      viewerIsOrganizer: json['viewer_is_organizer'] == true,
+      beginnerFriendly: json['beginner_friendly'] == true,
+      wheelchairAccessible: json['wheelchair_accessible'] == true,
+      eventSetting: (json['event_setting'] as String?) ?? 'unspecified',
+      eventLanguage: (json['event_language'] as String?) ?? '',
+      ageGuidance: (json['age_guidance'] as String?) ?? 'all_ages',
+      whatToBring: (json['what_to_bring'] as String?) ?? '',
+      attendeeVisible: json['attendee_visible'] == true,
+      discussionNotificationsEnabled:
+          json['discussion_notifications_enabled'] != false,
+      reconfirmationDeadlineAt: json['reconfirmation_deadline_at'] is String
+          ? DateTime.parse(
+              json['reconfirmation_deadline_at'] as String,
+            ).toLocal()
+          : null,
+      viewerReconfirmedAt: json['viewer_reconfirmed_at'] is String
+          ? DateTime.parse(json['viewer_reconfirmed_at'] as String).toLocal()
+          : null,
     );
   }
 
@@ -62,6 +103,29 @@ class EventSummary {
   final int tentativeCount;
   final double distanceMeters;
   final String? userRsvpStatus;
+  final String eventStatus;
+  final bool isSaved;
+  final DateTime? reminderAt;
+  final int? waitlistPosition;
+  final bool viewerIsOrganizer;
+  final bool beginnerFriendly;
+  final bool wheelchairAccessible;
+  final String eventSetting;
+  final String eventLanguage;
+  final String ageGuidance;
+  final String whatToBring;
+  final bool attendeeVisible;
+  final bool discussionNotificationsEnabled;
+  final DateTime? reconfirmationDeadlineAt;
+  final DateTime? viewerReconfirmedAt;
+
+  bool get hasEnded => endAt.isBefore(DateTime.now());
+  bool get isCancelled => eventStatus == 'cancelled';
+  bool get needsReconfirmation =>
+      userRsvpStatus == 'joined' &&
+      reconfirmationDeadlineAt?.isAfter(DateTime.now()) == true &&
+      viewerReconfirmedAt == null &&
+      !viewerIsOrganizer;
 
   int get spotsLeft =>
       (maxParticipants - joinedCount).clamp(0, maxParticipants);
@@ -71,6 +135,17 @@ class EventSummary {
     int? tentativeCount,
     String? userRsvpStatus,
     bool clearRsvpStatus = false,
+    String? eventStatus,
+    bool? isSaved,
+    DateTime? reminderAt,
+    bool clearReminder = false,
+    int? waitlistPosition,
+    bool? viewerIsOrganizer,
+    bool? attendeeVisible,
+    bool? discussionNotificationsEnabled,
+    DateTime? reconfirmationDeadlineAt,
+    bool clearReconfirmationDeadline = false,
+    DateTime? viewerReconfirmedAt,
   }) {
     return EventSummary(
       id: id,
@@ -92,6 +167,24 @@ class EventSummary {
       userRsvpStatus: clearRsvpStatus
           ? null
           : userRsvpStatus ?? this.userRsvpStatus,
+      eventStatus: eventStatus ?? this.eventStatus,
+      isSaved: isSaved ?? this.isSaved,
+      reminderAt: clearReminder ? null : reminderAt ?? this.reminderAt,
+      waitlistPosition: waitlistPosition ?? this.waitlistPosition,
+      viewerIsOrganizer: viewerIsOrganizer ?? this.viewerIsOrganizer,
+      beginnerFriendly: beginnerFriendly,
+      wheelchairAccessible: wheelchairAccessible,
+      eventSetting: eventSetting,
+      eventLanguage: eventLanguage,
+      ageGuidance: ageGuidance,
+      whatToBring: whatToBring,
+      attendeeVisible: attendeeVisible ?? this.attendeeVisible,
+      discussionNotificationsEnabled:
+          discussionNotificationsEnabled ?? this.discussionNotificationsEnabled,
+      reconfirmationDeadlineAt: clearReconfirmationDeadline
+          ? null
+          : reconfirmationDeadlineAt ?? this.reconfirmationDeadlineAt,
+      viewerReconfirmedAt: viewerReconfirmedAt ?? this.viewerReconfirmedAt,
     );
   }
 }

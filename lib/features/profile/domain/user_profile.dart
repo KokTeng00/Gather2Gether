@@ -6,6 +6,7 @@ class UserProfile {
     required this.approximateLatitude,
     required this.approximateLongitude,
     required this.assistantEnabled,
+    this.showPastEventsPublic = false,
     this.username = '',
     this.bio = '',
     this.avatarImageKey,
@@ -26,6 +27,7 @@ class UserProfile {
       approximateLatitude: (json['approximate_latitude'] as num?)?.toDouble(),
       approximateLongitude: (json['approximate_longitude'] as num?)?.toDouble(),
       assistantEnabled: (json['assistant_enabled'] as bool?) ?? true,
+      showPastEventsPublic: json['show_past_events_public'] == true,
       avatarImageKey: json['avatar_image_key'] as String?,
       usernameChangedAt: usernameChangedAtValue is String
           ? DateTime.tryParse(usernameChangedAtValue)?.toLocal()
@@ -44,6 +46,7 @@ class UserProfile {
   final double? approximateLatitude;
   final double? approximateLongitude;
   final bool assistantEnabled;
+  final bool showPastEventsPublic;
   final String? avatarImageKey;
   final DateTime? usernameChangedAt;
   final DateTime? updatedAt;
@@ -89,6 +92,7 @@ class UserProfile {
     double? approximateLatitude,
     double? approximateLongitude,
     bool? assistantEnabled,
+    bool? showPastEventsPublic,
     String? avatarImageKey,
     DateTime? usernameChangedAt,
     DateTime? updatedAt,
@@ -102,6 +106,7 @@ class UserProfile {
       approximateLatitude: approximateLatitude ?? this.approximateLatitude,
       approximateLongitude: approximateLongitude ?? this.approximateLongitude,
       assistantEnabled: assistantEnabled ?? this.assistantEnabled,
+      showPastEventsPublic: showPastEventsPublic ?? this.showPastEventsPublic,
       avatarImageKey: avatarImageKey ?? this.avatarImageKey,
       usernameChangedAt: usernameChangedAt ?? this.usernameChangedAt,
       updatedAt: updatedAt ?? this.updatedAt,

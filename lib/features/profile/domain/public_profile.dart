@@ -10,6 +10,7 @@ class PublicProfile {
     required this.followingCount,
     required this.viewerIsFollowing,
     required this.viewerIsSelf,
+    this.pastEventsPublic = false,
     this.avatarVersion,
   });
 
@@ -27,6 +28,7 @@ class PublicProfile {
     followingCount: _count(json['following_count']),
     viewerIsFollowing: json['viewer_is_following'] == true,
     viewerIsSelf: json['viewer_is_self'] == true,
+    pastEventsPublic: json['past_events_public'] == true,
   );
 
   final String id;
@@ -40,6 +42,7 @@ class PublicProfile {
   final int followingCount;
   final bool viewerIsFollowing;
   final bool viewerIsSelf;
+  final bool pastEventsPublic;
 
   PublicProfile copyWith({int? followersCount, bool? viewerIsFollowing}) =>
       PublicProfile(
@@ -54,6 +57,7 @@ class PublicProfile {
         followingCount: followingCount,
         viewerIsFollowing: viewerIsFollowing ?? this.viewerIsFollowing,
         viewerIsSelf: viewerIsSelf,
+        pastEventsPublic: pastEventsPublic,
       );
 
   static int _count(Object? value) {

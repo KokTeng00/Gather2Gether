@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gather2gether/core/constants/event_categories.dart';
-import 'package:gather2gether/core/location/location_service.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/core/validation/validators.dart';
 import 'package:gather2gether/features/events/data/event_repository.dart';
+import 'package:gather2gether/features/events/domain/event_summary.dart';
+import 'package:gather2gether/features/places/data/place_repository.dart';
+import 'package:gather2gether/features/places/domain/place_suggestion.dart';
+import 'package:gather2gether/features/places/presentation/place_autocomplete_field.dart';
 import 'package:intl/intl.dart';
 
 String _publishErrorMessage(EdgeApiException error) => switch (error.code) {
@@ -24,9 +27,20 @@ String _publishErrorMessage(EdgeApiException error) => switch (error.code) {
 };
 
 class CreateEventScreen extends StatefulWidget {
-  const CreateEventScreen({required this.onCreated, super.key});
+  const CreateEventScreen({
+    required this.onCreated,
+    this.placeRepository,
+    this.eventRepository,
+    this.initialEvent,
+    this.templateEvent,
+    super.key,
+  }) : assert(initialEvent == null || templateEvent == null);
 
   final VoidCallback onCreated;
+  final PlaceRepository? placeRepository;
+  final EventRepository? eventRepository;
+  final EventSummary? initialEvent;
+  final EventSummary? templateEvent;
 
   @override
   State<CreateEventScreen> createState() => _CreateEventScreenState();
@@ -34,13 +48,15 @@ class CreateEventScreen extends StatefulWidget {
 
 class _CreateEventScreenState extends State<CreateEventScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController();
-  final _venueController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _limitController = TextEditingController(text: '12');
-  final _events = EventRepository();
-  final _location = const LocationService();
+  late final TextEditingController _titleController;
+  late final TextEditingController _descriptionController;
+  late final TextEditingController _venueController;
+  late final TextEditingController _addressController;
+  late final TextEditingController _limitController;
+  late final TextEditingController _languageController;
+  late final TextEditingController _whatToBringController;
+  late final EventRepository _events;
+  late final PlaceRepository _places;
 
   String _category = eventCategories.first;
   DateTime _date = DateTime.now().add(const Duration(days: 1));
@@ -48,8 +64,61 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   TimeOfDay _endTime = const TimeOfDay(hour: 20, minute: 0);
   double? _latitude;
   double? _longitude;
-  bool _loadingLocation = false;
+  bool _addressMatched = false;
   bool _submitting = false;
+  bool _beginnerFriendly = false;
+  bool _wheelchairAccessible = false;
+  String _eventSetting = 'Not specified';
+  String _ageGuidance = 'All ages';
+
+  @override
+  void initState() {
+    super.initState();
+    final event = widget.initialEvent ?? widget.templateEvent;
+    _titleController = TextEditingController(text: event?.title);
+    _descriptionController = TextEditingController(text: event?.description);
+    _venueController = TextEditingController(text: event?.venueName);
+    _addressController = TextEditingController(text: event?.address);
+    _limitController = TextEditingController(
+      text: event?.maxParticipants.toString() ?? '12',
+    );
+    _languageController = TextEditingController(text: event?.eventLanguage);
+    _whatToBringController = TextEditingController(text: event?.whatToBring);
+    _events = widget.eventRepository ?? EventRepository();
+    _places = widget.placeRepository ?? PlaceRepository();
+    if (event != null) {
+      _category = event.category;
+      var start = event.startAt;
+      var end = event.endAt;
+      if (widget.templateEvent != null) {
+        final duration = end.difference(start);
+        while (!start.isAfter(DateTime.now().add(const Duration(hours: 1)))) {
+          start = start.add(const Duration(days: 7));
+        }
+        end = start.add(duration);
+      }
+      _date = start;
+      _startTime = TimeOfDay.fromDateTime(start);
+      _endTime = TimeOfDay.fromDateTime(end);
+      _latitude = event.latitude;
+      _longitude = event.longitude;
+      _addressMatched = true;
+      _beginnerFriendly = event.beginnerFriendly;
+      _wheelchairAccessible = event.wheelchairAccessible;
+      _eventSetting = switch (event.eventSetting) {
+        'indoor' => 'Indoor',
+        'outdoor' => 'Outdoor',
+        'mixed' => 'Mixed',
+        _ => 'Not specified',
+      };
+      _ageGuidance = switch (event.ageGuidance) {
+        'families' => 'Family friendly',
+        'teens' => 'Teens',
+        'adults' => 'Adults only',
+        _ => 'All ages',
+      };
+    }
+  }
 
   @override
   void dispose() {
@@ -58,6 +127,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _venueController.dispose();
     _addressController.dispose();
     _limitController.dispose();
+    _languageController.dispose();
+    _whatToBringController.dispose();
     super.dispose();
   }
 
@@ -112,34 +183,25 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     );
   }
 
-  Future<void> _setCurrentLocation() async {
-    setState(() => _loadingLocation = true);
-    try {
-      final position = await _location.currentPosition();
-      if (mounted) {
-        setState(() {
-          _latitude = position.latitude;
-          _longitude = position.longitude;
-        });
+  void _onAddressChanged() {
+    if (_latitude == null && _longitude == null && !_addressMatched) return;
+    setState(() {
+      _latitude = null;
+      _longitude = null;
+      _addressMatched = false;
+    });
+  }
+
+  void _selectPlace(PlaceSuggestion place) {
+    setState(() {
+      _latitude = place.latitude;
+      _longitude = place.longitude;
+      _addressMatched = true;
+      final venueName = place.suggestedVenueName;
+      if (_venueController.text.trim().isEmpty && venueName != null) {
+        _venueController.text = venueName;
       }
-    } on LocationFailure catch (failure) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(failure.message),
-          action: failure.canOpenSettings
-              ? SnackBarAction(
-                  label: 'Settings',
-                  onPressed: _location.openSettings,
-                )
-              : null,
-        ),
-      );
-    } catch (_) {
-      _showError('Could not get the event location.');
-    } finally {
-      if (mounted) setState(() => _loadingLocation = false);
-    }
+    });
   }
 
   Future<void> _submit() async {
@@ -162,24 +224,46 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     FocusScope.of(context).unfocus();
     setState(() => _submitting = true);
     try {
-      await _events.createEvent(
-        CreateEventInput(
-          title: _titleController.text,
-          description: _descriptionController.text,
-          category: _category,
-          venueName: _venueController.text,
-          address: _addressController.text,
-          latitude: _latitude!,
-          longitude: _longitude!,
-          startAt: startAt,
-          endAt: endAt,
-          maxParticipants: int.parse(_limitController.text),
+      final input = CreateEventInput(
+        title: _titleController.text,
+        description: _descriptionController.text,
+        category: _category,
+        venueName: _venueController.text,
+        address: _addressController.text,
+        latitude: _latitude!,
+        longitude: _longitude!,
+        startAt: startAt,
+        endAt: endAt,
+        maxParticipants: int.parse(_limitController.text),
+        beginnerFriendly: _beginnerFriendly,
+        wheelchairAccessible: _wheelchairAccessible,
+        eventSetting: switch (_eventSetting) {
+          'Indoor' => 'indoor',
+          'Outdoor' => 'outdoor',
+          'Mixed' => 'mixed',
+          _ => 'unspecified',
+        },
+        eventLanguage: _languageController.text,
+        ageGuidance: switch (_ageGuidance) {
+          'Family friendly' => 'families',
+          'Teens' => 'teens',
+          'Adults only' => 'adults',
+          _ => 'all_ages',
+        },
+        whatToBring: _whatToBringController.text,
+      );
+      final event = widget.initialEvent;
+      if (event == null) {
+        await _events.createEvent(input);
+      } else {
+        await _events.updateEvent(event.id, input);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(event == null ? 'Event published.' : 'Event updated.'),
         ),
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Event published.')));
       widget.onCreated();
     } on EdgeApiException catch (error) {
       _showError(_publishErrorMessage(error));
@@ -215,7 +299,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New Event'),
+        title: Text(
+          widget.initialEvent != null
+              ? 'Edit Event'
+              : widget.templateEvent != null
+              ? 'Create Again'
+              : 'New Event',
+        ),
         leading: IconButton(
           tooltip: 'Close',
           onPressed: _submitting ? null : () => Navigator.of(context).pop(),
@@ -231,12 +321,20 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
             children: [
               Text(
-                'Make a plan',
+                widget.initialEvent != null
+                    ? 'Update the plan'
+                    : widget.templateEvent != null
+                    ? 'Run it again'
+                    : 'Make a plan',
                 style: Theme.of(context).textTheme.displaySmall,
               ),
               const SizedBox(height: 6),
               Text(
-                'Add the essentials. People can join as soon as you publish.',
+                widget.initialEvent != null
+                    ? 'Attendees will receive an in-app update when you save.'
+                    : widget.templateEvent != null
+                    ? 'The previous details are ready. Check the new date and publish.'
+                    : 'Add the essentials. People can join as soon as you publish.',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -289,7 +387,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               AppSection(
                 title: 'Where',
                 footer:
-                    'Your current position is used only to place the venue pin.',
+                    'Choose a suggested address so its global map pin matches.',
                 child: Column(
                   children: [
                     TextFormField(
@@ -306,37 +404,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       ),
                     ),
                     const Divider(indent: 52),
-                    TextFormField(
+                    PlaceAutocompleteField(
                       controller: _addressController,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: _fieldDecoration(
-                        'Street address',
-                        CupertinoIcons.map_pin_ellipse,
-                      ),
+                      repository: _places,
+                      latitude: _latitude,
+                      longitude: _longitude,
+                      enabled: !_submitting,
+                      onTextChanged: _onAddressChanged,
+                      onSelected: _selectPlace,
                       validator: (value) => Validators.requiredText(
                         value,
                         minLength: 3,
                         maxLength: 300,
                       ),
-                    ),
-                    const Divider(indent: 52),
-                    _ActionRow(
-                      icon: _latitude == null
-                          ? CupertinoIcons.location
-                          : CupertinoIcons.location_fill,
-                      title: _latitude == null
-                          ? 'Set venue pin'
-                          : 'Venue pin ready',
-                      subtitle: _latitude == null
-                          ? 'Use the simulator or phone location'
-                          : 'Tap to update the position',
-                      trailing: _loadingLocation
-                          ? const CupertinoActivityIndicator()
-                          : const Icon(
-                              CupertinoIcons.chevron_forward,
-                              size: 16,
-                            ),
-                      onTap: _loadingLocation ? null : _setCurrentLocation,
                     ),
                   ],
                 ),
@@ -371,6 +451,95 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
               const SizedBox(height: 24),
               AppSection(
+                title: 'Good to know',
+                footer:
+                    'These details help people quickly decide whether the event works for them.',
+                child: Column(
+                  children: [
+                    SwitchListTile.adaptive(
+                      key: const Key('event-beginner-friendly'),
+                      value: _beginnerFriendly,
+                      onChanged: _submitting
+                          ? null
+                          : (value) =>
+                                setState(() => _beginnerFriendly = value),
+                      secondary: const Icon(CupertinoIcons.hand_thumbsup),
+                      title: const Text('Beginner-friendly'),
+                    ),
+                    const Divider(indent: 52),
+                    SwitchListTile.adaptive(
+                      key: const Key('event-wheelchair-accessible'),
+                      value: _wheelchairAccessible,
+                      onChanged: _submitting
+                          ? null
+                          : (value) =>
+                                setState(() => _wheelchairAccessible = value),
+                      secondary: const Icon(CupertinoIcons.person_crop_circle),
+                      title: const Text('Wheelchair accessible'),
+                    ),
+                    const Divider(indent: 52),
+                    AppChoiceField(
+                      key: const Key('event-setting-field'),
+                      value: _eventSetting,
+                      options: const [
+                        'Not specified',
+                        'Indoor',
+                        'Outdoor',
+                        'Mixed',
+                      ],
+                      label: 'Setting',
+                      enabled: !_submitting,
+                      onChanged: (value) =>
+                          setState(() => _eventSetting = value),
+                    ),
+                    const Divider(indent: 52),
+                    AppChoiceField(
+                      key: const Key('event-age-guidance-field'),
+                      value: _ageGuidance,
+                      options: const [
+                        'All ages',
+                        'Family friendly',
+                        'Teens',
+                        'Adults only',
+                      ],
+                      label: 'Age group',
+                      enabled: !_submitting,
+                      onChanged: (value) =>
+                          setState(() => _ageGuidance = value),
+                    ),
+                    const Divider(indent: 52),
+                    TextFormField(
+                      key: const Key('event-language-field'),
+                      controller: _languageController,
+                      maxLength: 80,
+                      decoration: _fieldDecoration(
+                        'Language (optional)',
+                        CupertinoIcons.globe,
+                      ).copyWith(counterText: ''),
+                      validator: (value) => (value?.trim().length ?? 0) > 80
+                          ? 'Use 80 characters or fewer.'
+                          : null,
+                    ),
+                    const Divider(indent: 52),
+                    TextFormField(
+                      key: const Key('event-what-to-bring-field'),
+                      controller: _whatToBringController,
+                      minLines: 2,
+                      maxLines: 4,
+                      maxLength: 500,
+                      decoration: _fieldDecoration(
+                        'What to bring (optional)',
+                        CupertinoIcons.bag,
+                      ).copyWith(counterText: ''),
+                      validator: (value) => (value?.trim().length ?? 0) > 500
+                          ? 'Use 500 characters or fewer.'
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              AppSection(
                 title: 'Group size',
                 footer: 'Choose between 2 and 500 people.',
                 child: TextFormField(
@@ -391,7 +560,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                         color: Theme.of(context).colorScheme.onPrimary,
                       )
                     : const Icon(CupertinoIcons.paperplane_fill),
-                label: Text(_submitting ? 'Publishing…' : 'Publish Free Event'),
+                label: Text(
+                  _submitting
+                      ? (widget.initialEvent == null
+                            ? 'Publishing…'
+                            : 'Saving…')
+                      : (widget.initialEvent == null
+                            ? 'Publish Free Event'
+                            : 'Save Changes'),
+                ),
               ),
               const SizedBox(height: 10),
               Text(
@@ -415,15 +592,11 @@ class _ActionRow extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.onTap,
-    this.subtitle,
-    this.trailing,
     this.trailingText,
   });
 
   final IconData icon;
   final String title;
-  final String? subtitle;
-  final Widget? trailing;
   final String? trailingText;
   final VoidCallback? onTap;
 
@@ -436,22 +609,7 @@ class _ActionRow extends StatelessWidget {
         children: [
           Icon(icon, size: 21, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 15),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 16)),
-                if (subtitle != null)
-                  Text(
-                    subtitle!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontSize: 12,
-                    ),
-                  ),
-              ],
-            ),
-          ),
+          Expanded(child: Text(title, style: const TextStyle(fontSize: 16))),
           if (trailingText != null)
             Text(
               trailingText!,
@@ -460,7 +618,6 @@ class _ActionRow extends StatelessWidget {
                 fontSize: 16,
               ),
             ),
-          ?trailing,
         ],
       ),
     ),

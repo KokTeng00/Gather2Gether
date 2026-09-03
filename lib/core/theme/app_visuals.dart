@@ -311,47 +311,61 @@ class AppInterestSearch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return AppSurface(
-      borderRadius: 16,
-      child: TextField(
-        key: const Key('interest-search-field'),
-        controller: controller,
-        enabled: enabled,
-        textInputAction: TextInputAction.search,
-        maxLength: 240,
-        onSubmitted: onSubmitted,
-        decoration: InputDecoration(
-          hintText: hintText,
-          counterText: '',
-          prefixIcon: Icon(
-            CupertinoIcons.sparkles,
-            color: colors.primary,
-            size: 19,
-          ),
-          suffixIcon: ValueListenableBuilder<TextEditingValue>(
-            valueListenable: controller,
-            builder: (context, value, _) => value.text.trim().isEmpty
-                ? IconButton(
-                    tooltip: 'Search interests',
-                    onPressed: enabled
-                        ? () => onSubmitted(controller.text)
-                        : null,
-                    icon: const Icon(CupertinoIcons.arrow_right_circle_fill),
-                  )
-                : IconButton(
-                    key: const Key('clear-interest-search'),
-                    tooltip: 'Clear interest search',
-                    onPressed: enabled ? onClear : null,
-                    icon: const Icon(CupertinoIcons.xmark_circle_fill),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: AppSurface(
+            borderRadius: 16,
+            child: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, _) => TextField(
+                key: const Key('interest-search-field'),
+                controller: controller,
+                enabled: enabled,
+                textInputAction: TextInputAction.search,
+                maxLength: 240,
+                onSubmitted: onSubmitted,
+                decoration: InputDecoration(
+                  hintText: hintText,
+                  counterText: '',
+                  prefixIcon: Icon(
+                    CupertinoIcons.search,
+                    color: colors.onSurfaceVariant,
+                    size: 20,
                   ),
+                  suffixIcon: value.text.trim().isEmpty
+                      ? null
+                      : IconButton(
+                          key: const Key('clear-interest-search'),
+                          tooltip: 'Clear search',
+                          onPressed: enabled ? onClear : null,
+                          icon: const Icon(CupertinoIcons.xmark_circle_fill),
+                        ),
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                ),
+              ),
+            ),
           ),
-          filled: false,
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 15),
         ),
-      ),
+        const SizedBox(width: 10),
+        FilledButton(
+          key: const Key('interest-search-submit'),
+          onPressed: enabled ? () => onSubmitted(controller.text) : null,
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(82, 54),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+          child: const Text('Search'),
+        ),
+      ],
     );
   }
 }
