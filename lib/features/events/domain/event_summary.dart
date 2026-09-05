@@ -32,6 +32,9 @@ class EventSummary {
     this.discussionNotificationsEnabled = true,
     this.reconfirmationDeadlineAt,
     this.viewerReconfirmedAt,
+    this.eventVisibility = 'public',
+    this.eventSeriesId,
+    this.recommendationReason = '',
   });
 
   factory EventSummary.fromJson(Map<String, dynamic> json) {
@@ -83,6 +86,9 @@ class EventSummary {
       viewerReconfirmedAt: json['viewer_reconfirmed_at'] is String
           ? DateTime.parse(json['viewer_reconfirmed_at'] as String).toLocal()
           : null,
+      eventVisibility: (json['event_visibility'] as String?) ?? 'public',
+      eventSeriesId: json['event_series_id'] as String?,
+      recommendationReason: (json['recommendation_reason'] as String?) ?? '',
     );
   }
 
@@ -118,6 +124,49 @@ class EventSummary {
   final bool discussionNotificationsEnabled;
   final DateTime? reconfirmationDeadlineAt;
   final DateTime? viewerReconfirmedAt;
+  final String eventVisibility;
+  final String? eventSeriesId;
+  final String recommendationReason;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'organizer_id': organizerId,
+    'organizer_name': organizerName,
+    'title': title,
+    'description': description,
+    'category': category,
+    'venue_name': venueName,
+    'address': address,
+    'latitude': latitude,
+    'longitude': longitude,
+    'start_at': startAt.toUtc().toIso8601String(),
+    'end_at': endAt.toUtc().toIso8601String(),
+    'max_participants': maxParticipants,
+    'joined_count': joinedCount,
+    'tentative_count': tentativeCount,
+    'distance_meters': distanceMeters,
+    'user_rsvp_status': userRsvpStatus,
+    'event_status': eventStatus,
+    'is_saved': isSaved,
+    'reminder_at': reminderAt?.toUtc().toIso8601String(),
+    'waitlist_position': waitlistPosition,
+    'viewer_is_organizer': viewerIsOrganizer,
+    'beginner_friendly': beginnerFriendly,
+    'wheelchair_accessible': wheelchairAccessible,
+    'event_setting': eventSetting,
+    'event_language': eventLanguage,
+    'age_guidance': ageGuidance,
+    'what_to_bring': whatToBring,
+    'attendee_visible': attendeeVisible,
+    'discussion_notifications_enabled': discussionNotificationsEnabled,
+    'reconfirmation_deadline_at': reconfirmationDeadlineAt
+        ?.toUtc()
+        .toIso8601String(),
+    'viewer_reconfirmed_at': viewerReconfirmedAt?.toUtc().toIso8601String(),
+    'event_visibility': eventVisibility,
+    'event_series_id': eventSeriesId,
+    'recommendation_reason': recommendationReason,
+  };
 
   bool get hasEnded => endAt.isBefore(DateTime.now());
   bool get isCancelled => eventStatus == 'cancelled';
@@ -146,6 +195,9 @@ class EventSummary {
     DateTime? reconfirmationDeadlineAt,
     bool clearReconfirmationDeadline = false,
     DateTime? viewerReconfirmedAt,
+    String? eventVisibility,
+    String? eventSeriesId,
+    String? recommendationReason,
   }) {
     return EventSummary(
       id: id,
@@ -185,6 +237,9 @@ class EventSummary {
           ? null
           : reconfirmationDeadlineAt ?? this.reconfirmationDeadlineAt,
       viewerReconfirmedAt: viewerReconfirmedAt ?? this.viewerReconfirmedAt,
+      eventVisibility: eventVisibility ?? this.eventVisibility,
+      eventSeriesId: eventSeriesId ?? this.eventSeriesId,
+      recommendationReason: recommendationReason ?? this.recommendationReason,
     );
   }
 }

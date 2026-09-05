@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/theme/app_theme.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
+import 'package:gather2gether/features/profile/domain/public_profile.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/profile_settings_screen.dart';
 import 'package:gather2gether/features/profile/presentation/profile_widgets.dart';
@@ -22,9 +23,34 @@ class _FakeProfileRepository extends ProfileRepository {
 
   UserProfile profile;
   int preferenceUpdates = 0;
+  int onboardingUpdates = 0;
   final assistantUpdates = <bool>[];
   final pastVisibilityUpdates = <bool>[];
   final passwordUpdates = <(String, String)>[];
+  final blockUpdates = <(String, bool)>[];
+  List<String>? savedInterests;
+  List<String>? savedAccessibilityPreferences;
+  var accountDeletions = 0;
+
+  @override
+  Future<void> completeOnboarding({
+    required List<String> interests,
+    required List<String> accessibilityPreferences,
+    required double radiusKm,
+    double? latitude,
+    double? longitude,
+  }) async {
+    onboardingUpdates++;
+    savedInterests = interests;
+    savedAccessibilityPreferences = accessibilityPreferences;
+    profile = profile.copyWith(
+      preferredRadiusKm: radiusKm,
+      approximateLatitude: latitude,
+      approximateLongitude: longitude,
+      interests: interests,
+      accessibilityPreferences: accessibilityPreferences,
+    );
+  }
 
   @override
   Future<UserProfile> updateDiscoveryPreferences({
@@ -60,6 +86,27 @@ class _FakeProfileRepository extends ProfileRepository {
     required String newPassword,
   }) async {
     passwordUpdates.add((currentPassword, newPassword));
+  }
+
+  @override
+  Future<List<BlockedProfile>> blockedProfiles() async => [
+    BlockedProfile(
+      id: '11111111-1111-4111-8111-111111111111',
+      displayName: 'Alex Morgan',
+      username: 'alex_local',
+      blockedAt: DateTime.utc(2026, 9, 4, 10),
+    ),
+  ];
+
+  @override
+  Future<bool> setBlocked(String profileId, bool blocked) async {
+    blockUpdates.add((profileId, blocked));
+    return blocked;
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    accountDeletions += 1;
   }
 }
 
@@ -99,6 +146,31 @@ _pumpSettings(WidgetTester tester, {bool hasPasswordSignIn = true}) async {
 }
 
 void main() {
+  testWidgets('event interests remain editable after onboarding', (
+    tester,
+  ) async {
+    final setup = await _pumpSettings(tester);
+
+    await tester.tap(find.text('Preferences & discovery'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilterChip, 'Coffee'),
+      250,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.widgetWithText(FilterChip, 'Coffee'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('save-event-preferences-button')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const Key('save-preferences-button')));
+    await tester.pumpAndSettle();
+
+    expect(setup.repository.savedInterests, contains('Coffee'));
+    expect(setup.repository.onboardingUpdates, 1);
+  });
+
   testWidgets('settings header uses the authenticated profile photo', (
     tester,
   ) async {
@@ -253,7 +325,8 @@ void main() {
     await tester.tap(find.byKey(const Key('save-preferences-button')));
     await tester.pumpAndSettle();
 
-    expect(setup.repository.preferenceUpdates, 1);
+    expect(setup.repository.onboardingUpdates, 1);
+    expect(setup.repository.preferenceUpdates, 0);
     expect(setup.repository.profile.preferredRadiusKm, 25);
     expect(setup.changed.last.preferredRadiusKm, 25);
 
@@ -357,6 +430,80 @@ void main() {
       find.text('Past events are now visible on your profile.'),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('privacy lets members review and unblock people', (tester) async {
+    final setup = await _pumpSettings(tester);
+
+    await tester.ensureVisible(find.text('Privacy'));
+    await tester.tap(find.text('Privacy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('blocked-users-settings-row')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alex Morgan'), findsOneWidget);
+    expect(find.text('@alex_local'), findsOneWidget);
+    await tester.tap(find.text('Unblock'));
+    await tester.pumpAndSettle();
+
+    expect(setup.repository.blockUpdates, [
+      ('11111111-1111-4111-8111-111111111111', false),
+    ]);
+    expect(find.text('You have not blocked anyone.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('account deletion requires typing the exact confirmation', (
+    tester,
+  ) async {
+    final setup = await _pumpSettings(tester);
+
+    await tester.tap(find.text('Account & profile'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('settings-delete-account-button')),
+      220,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('account-profile-settings-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.drag(
+      find.byKey(const Key('account-profile-settings-list')),
+      const Offset(0, -180),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('settings-delete-account-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('delete-account-confirmation-field')),
+      'delete',
+    );
+    await tester.tap(find.byKey(const Key('confirm-delete-account-button')));
+    await tester.pumpAndSettle();
+    expect(setup.repository.accountDeletions, 0);
+
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('settings-delete-account-button')),
+    );
+    await tester.drag(
+      find.byKey(const Key('account-profile-settings-list')),
+      const Offset(0, -120),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('settings-delete-account-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('delete-account-confirmation-field')),
+      'DELETE',
+    );
+    await tester.tap(find.byKey(const Key('confirm-delete-account-button')));
+    await tester.pumpAndSettle();
+
+    expect(setup.repository.accountDeletions, 1);
     expect(tester.takeException(), isNull);
   });
 }

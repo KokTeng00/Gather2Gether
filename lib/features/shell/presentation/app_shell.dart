@@ -13,12 +13,19 @@ import 'package:gather2gether/features/forum/presentation/forum_screen.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/profile_screen.dart';
+import 'package:gather2gether/features/profile/presentation/onboarding_screen.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({this.inviteLink, this.onInviteConsumed, super.key});
+  const AppShell({
+    this.inviteLink,
+    this.onInviteConsumed,
+    this.onSignOut,
+    super.key,
+  });
 
   final Uri? inviteLink;
   final VoidCallback? onInviteConsumed;
+  final Future<void> Function()? onSignOut;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -71,7 +78,10 @@ class _AppShellState extends State<AppShell> {
       return;
     }
     try {
-      final event = await _events.eventDetails(eventId);
+      final event = await _events.eventDetails(
+        eventId,
+        viaInvite: uri.queryParameters['invite'] == '1',
+      );
       if (!mounted) return;
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
@@ -168,6 +178,18 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final profile = _profile;
+    if (profile != null && !profile.hasCompletedOnboarding) {
+      return OnboardingScreen(
+        profile: profile,
+        repository: _profiles,
+        onCompleted: (completed) => setState(() {
+          _profile = completed;
+          _assistantEnabled = completed.assistantEnabled;
+          _discoverRevision++;
+        }),
+      );
+    }
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -252,6 +274,7 @@ class _AppShellState extends State<AppShell> {
                         _discoverRevision++;
                       });
                     },
+                    onSignOut: widget.onSignOut,
                   ),
                 ],
               ),

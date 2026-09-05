@@ -53,7 +53,7 @@ class ProfileSocialAppBar extends StatelessWidget {
   }
 }
 
-/// A calm profile summary that keeps identity and community activity distinct.
+/// A compact profile summary with identity, editing, and social stats.
 class ProfileBalancedOverview extends StatelessWidget {
   const ProfileBalancedOverview({
     required this.profile,
@@ -80,142 +80,127 @@ class ProfileBalancedOverview extends StatelessWidget {
         ? 'Community member'
         : profile.displayName.trim();
 
-    return AppSurface(
+    return Column(
       key: const Key('profile-overview'),
-      borderColor: colors.outlineVariant.withValues(alpha: 0.72),
-      borderRadius: 20,
-      padding: const EdgeInsets.fromLTRB(22, 24, 22, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.center,
-            child: ProfileAvatar(
-              key: const Key('profile-avatar'),
-              profile: profile,
-              imageUrl: avatarUrl,
-              headers: avatarHeaders,
-              size: 96,
-            ),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.center,
+          child: ProfileAvatar(
+            key: const Key('profile-avatar'),
+            profile: profile,
+            imageUrl: avatarUrl,
+            headers: avatarHeaders,
+            size: 84,
           ),
-          const SizedBox(height: 16),
-          Text(
-            displayName,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: colors.onSurface,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.3,
-            ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          displayName,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            color: colors.onSurface,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.2,
           ),
-          if (username.isNotEmpty) ...[
-            const SizedBox(height: 3),
-            Text(
-              '@$username',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colors.primary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-          if (city.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Align(
-              alignment: Alignment.center,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    CupertinoIcons.location,
-                    size: 14,
-                    color: colors.onSurfaceVariant,
+        ),
+        if (username.isNotEmpty || city.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 3,
+            children: [
+              if (username.isNotEmpty)
+                Text(
+                  '@$username',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.primary,
+                    fontWeight: FontWeight.w700,
                   ),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: Text(
+                ),
+              if (city.isNotEmpty)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.location,
+                      size: 13,
+                      color: colors.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
                       city,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          if (bio.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            Text(
-              bio,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: colors.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-          ],
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              key: const Key('profile-edit-action'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  ],
                 ),
-                side: BorderSide(color: colors.outlineVariant),
-              ),
-              onPressed: onEdit,
-              icon: const Icon(CupertinoIcons.pencil, size: 16),
-              label: const Text('Edit profile'),
-            ),
+            ],
           ),
-          const SizedBox(height: 18),
-          Container(
-            key: const Key('profile-activity-summary'),
-            padding: const EdgeInsets.fromLTRB(8, 18, 8, 2),
-            decoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  color: colors.outlineVariant.withValues(alpha: 0.8),
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _ProfileStat(value: stats?.postsCount, label: 'Posts'),
-                ),
-                _ProfileStatSeparator(color: colors.outlineVariant),
-                Expanded(
-                  child: _ProfileStat(
-                    value: stats?.followersCount,
-                    label: 'Followers',
-                  ),
-                ),
-                _ProfileStatSeparator(color: colors.outlineVariant),
-                Expanded(
-                  child: _ProfileStat(
-                    value: stats?.followingCount,
-                    label: 'Following',
-                  ),
-                ),
-              ],
+        ],
+        if (bio.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(
+            bio,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: colors.onSurfaceVariant,
+              height: 1.4,
             ),
           ),
         ],
-      ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.center,
+          child: TextButton.icon(
+            key: const Key('profile-edit-action'),
+            onPressed: onEdit,
+            icon: const Icon(CupertinoIcons.pencil, size: 15),
+            label: const Text('Edit profile'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          key: const Key('profile-activity-summary'),
+          padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: colors.outlineVariant.withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _ProfileStat(value: stats?.postsCount, label: 'Posts'),
+              ),
+              _ProfileStatSeparator(color: colors.outlineVariant),
+              Expanded(
+                child: _ProfileStat(
+                  value: stats?.followersCount,
+                  label: 'Followers',
+                ),
+              ),
+              _ProfileStatSeparator(color: colors.outlineVariant),
+              Expanded(
+                child: _ProfileStat(
+                  value: stats?.followingCount,
+                  label: 'Following',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -646,12 +631,6 @@ class ProfileOverviewHero extends StatelessWidget {
         const SizedBox(height: 16),
         FilledButton.icon(
           key: const Key('profile-edit-action'),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(48),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(13),
-            ),
-          ),
           onPressed: onEdit,
           icon: const Icon(CupertinoIcons.pencil, size: 17),
           label: const Text('Edit profile'),
@@ -716,23 +695,15 @@ class ProfileContributionsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     return Column(
       key: const Key('profile-contributions-header'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Community posts',
+          'Posts',
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'Posts shared with the community',
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
         ),
       ],
     );

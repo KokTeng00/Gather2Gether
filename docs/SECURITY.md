@@ -39,6 +39,16 @@
 - Device reminders are scheduled locally only after the member explicitly
   chooses a reminder time. Declining OS notification permission leaves the
   private in-app reminder available and does not weaken server authorization.
+- Remote notification tokens deny direct table access and are managed only by
+  owner-scoped registration functions. Manual sign-out removes the current
+  token; account deletion removes every associated token by cascade. A separate
+  scheduled Worker can claim only the bounded push outbox through service-role
+  functions. Invalid provider tokens are disabled and transient failures use a
+  bounded retry schedule.
+- Notification category preferences and quiet hours are checked while push rows
+  are claimed, so a compromised or stale client cannot bypass the member's
+  delivery choices. Quiet-hour evaluation uses a validated local UTC offset and
+  defers non-essential delivery rather than discarding the notification.
 - Profiles store only rounded coordinates; no background location or location
   history is collected.
 - Upcoming public events may appear on an organizer's profile. Past event
@@ -61,6 +71,9 @@
   collection, exact results are cached for six hours, and an atomic throttle
   allows at most one model attempt per member and feed type in that interval.
   Failure falls back to the database ranking.
+- Recommendation opt-outs, hidden categories, and per-content dismissals are
+  owner-scoped database state with no direct table access. The edge filters
+  dismissed content before any optional model reranking request.
 - Assistant messages deny direct table access. Security-definer RPCs scope
   history, deletion, rate limits, and replies to `auth.uid()`.
 - Assistant event lookup combines a GiST geography index, a GIN full-text index,
@@ -69,6 +82,23 @@
 - The OpenRouter key is an account-level Cloudflare Secrets Store binding on a
   private model Worker. Pages reaches it through a service binding; neither
   service logs, returns, or sends the key to the mobile client.
+- Optional event drafting, translation, and discussion summaries have strict
+  structured-output schemas and per-member hourly quotas. Translation and
+  summary source text is fetched through authorization-checked database
+  functions rather than accepted from the mobile request.
+- Natural-language event filters, event quality review, and moderation triage
+  use strict input and output schemas, bounded text, per-member quotas, and the
+  same private model-service boundary. Moderation triage only orders an existing
+  queue; it cannot mutate content, reports, or accounts.
+- Moderator access is derived from authenticated JWT app metadata and checked
+  again inside fixed database functions. Every report action records the actor,
+  action, target, and note in an append-only audit table unavailable to clients.
+- Data export is owner-scoped and includes the member's recommendation signals
+  and controls for transparency, while deliberately excluding push tokens,
+  private object-storage keys, credentials, model caches, and rate-limit state.
+- Offline event snapshots are stored per authenticated account in platform
+  secure storage. Offline mode is read-only and visibly labelled; RSVP, report,
+  moderation, profile, and hosting mutations still require the live API.
 - Auth sessions use Android Keystore encryption and iOS Keychain.
 - Hosted Supabase Auth disables email/password authentication; the app exposes
   only Google OAuth and creates profiles after the first successful Google
@@ -76,6 +106,11 @@
 - Android cloud backup is disabled for encrypted auth material.
 - Cloudflare serves HSTS, CSP, anti-framing, MIME-sniffing, referrer, and
   permissions-policy headers.
+- Cloudflare requests emit structured outcome logs containing request IDs,
+  routes, status, and duration but no JWTs, prompts, profile values, device
+  tokens, or provider credentials. Standalone Workers enable sampled traces;
+  together with the versioned health check, these support operational
+  monitoring without broadening data collection.
 - Terraform protects the Supabase project from accidental deletion.
 - The product has no payment or price data path.
 
@@ -98,14 +133,21 @@ The Flutter app may contain only:
 - the Supabase project URL;
 - the Supabase publishable key;
 - the public Cloudflare edge API URL.
+- Firebase's public mobile project, sender, app, API-key, and iOS bundle
+  identifiers.
 
 The Pages Function environment may contain the same public Supabase URL and
 publishable key. `GEOAPIFY_API_KEY` must be supplied as a Pages secret and is
 used only by the authenticated autocomplete route. The OpenRouter credential
 must be supplied only through the `OPENROUTER_API_KEY` account-level Secrets
-Store binding on the private model Worker. Neither Cloudflare service may
-contain a database password, Supabase personal access token, service-role key,
-or JWT signing secret.
+Store binding on the private model Worker. The push dispatcher is the sole
+exception for a Supabase service-role key: it stores that key and the dedicated
+Firebase service-account email/private key only as Worker secrets, and its code
+invokes only service-role outbox functions. The service-role credential itself
+can bypass RLS, so access to that Worker and its secrets must be tightly
+restricted and audited. Pages and the model Worker must not contain a database
+password, Supabase personal access token, service-role key, or JWT signing
+secret.
 
 Never place a Cloudflare token, Supabase personal access token, database
 password, service-role/secret key, or JWT signing secret in Dart code, web
@@ -136,10 +178,13 @@ project's database password or JWT secret.
 
 - Configure custom SMTP and verify confirmation/reset email flows.
 - Enable Supabase CAPTCHA and review Auth rate limits.
-- Add an admin moderation UI with MFA-protected admin accounts.
+- Require MFA and short-lived sessions for every moderator account before
+  assigning the moderator role in production.
 - Add image safety scanning and an image-aware moderation workflow before
   opening photo posting to a large public audience.
-- Add production error monitoring with PII scrubbing and retention limits.
+- Route the structured Cloudflare logs and standalone Worker traces to
+  production alerts; verify PII scrubbing, access control, sampling, and
+  retention limits in that sink.
 - Publish privacy, safety, acceptable-use, and data-deletion policies.
 - Perform dependency, RLS, and abuse-case reviews before each release.
 - Add per-user Cloudflare rate-limit bindings before opening registration at

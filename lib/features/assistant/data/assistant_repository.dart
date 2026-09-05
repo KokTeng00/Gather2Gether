@@ -81,6 +81,20 @@ class AssistantRepository {
 
   Future<void> clearHistory() => _request('DELETE', 'assistant/history');
 
+  Future<AssistantEventDraft> draftEvent({
+    required String prompt,
+    required String locale,
+  }) async {
+    final payload = _map(
+      await _request(
+        'POST',
+        'assistant/event-draft',
+        body: {'prompt': prompt.trim(), 'locale': locale},
+      ),
+    );
+    return AssistantEventDraft.fromJson(_map(payload['draft']));
+  }
+
   Future<Object?> _request(String method, String path, {Object? body}) async {
     final token = _accessTokenProvider();
     if (token == null || token.isEmpty) {

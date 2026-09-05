@@ -1,13 +1,20 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/location/location_service.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
+import 'package:gather2gether/features/profile/domain/member_controls.dart';
+import 'package:gather2gether/features/profile/domain/public_profile.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/edit_profile_screen.dart';
 import 'package:gather2gether/features/profile/presentation/profile_change_password_screen.dart';
 import 'package:gather2gether/features/profile/presentation/profile_widgets.dart';
+import 'package:gather2gether/features/profile/presentation/notification_preferences_screen.dart';
+import 'package:gather2gether/features/profile/presentation/recommendation_settings_screen.dart';
+import 'package:gather2gether/features/profile/presentation/report_status_screen.dart';
+import 'package:gather2gether/features/profile/presentation/moderation_dashboard_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 String _formatRadius(double value) => value == value.roundToDouble()
@@ -46,11 +53,21 @@ class ProfileSettingsScreen extends StatefulWidget {
 
 class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   late UserProfile _profile;
+  bool _isModerator = false;
+  bool _exporting = false;
 
   @override
   void initState() {
     super.initState();
     _profile = widget.profile;
+    _loadModeratorStatus();
+  }
+
+  Future<void> _loadModeratorStatus() async {
+    try {
+      final moderator = await widget.repository.isModerator();
+      if (mounted) setState(() => _isModerator = moderator);
+    } catch (_) {}
   }
 
   void _profileChanged(UserProfile profile) {
@@ -122,6 +139,70 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   Future<void> _openAbout() => Navigator.of(
     context,
   ).push<void>(MaterialPageRoute(builder: (_) => const _AboutScreen()));
+
+  Future<void> _openNotifications() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) =>
+          NotificationPreferencesScreen(repository: widget.repository),
+    ),
+  );
+
+  Future<void> _openRecommendations() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) =>
+          RecommendationSettingsScreen(repository: widget.repository),
+    ),
+  );
+
+  Future<void> _openReports() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => ReportStatusScreen(repository: widget.repository),
+    ),
+  );
+
+  Future<void> _openModeration() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => ModerationDashboardScreen(repository: widget.repository),
+    ),
+  );
+
+  Future<void> _exportData() async {
+    setState(() => _exporting = true);
+    try {
+      final export = await widget.repository.exportOwnData();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Your data export'),
+          content: const Text(
+            'Your portable JSON export is ready. Copy it, then store it somewhere private.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: export));
+                if (context.mounted) Navigator.of(context).pop();
+              },
+              child: const Text('Copy JSON'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not prepare your export.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
 
   String? _avatarUrlFor(UserProfile profile) {
     if (!profile.hasAvatar) return null;
@@ -281,6 +362,50 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 24),
+                    const _SettingsSectionLabel('Controls & data'),
+                    const SizedBox(height: 8),
+                    _SettingsGroup(
+                      children: [
+                        _SettingsRow(
+                          key: const Key('settings-notifications-row'),
+                          icon: CupertinoIcons.bell_fill,
+                          title: 'Notifications',
+                          description: 'Quiet hours and alert categories',
+                          onTap: _openNotifications,
+                        ),
+                        _SettingsRow(
+                          key: const Key('settings-recommendations-row'),
+                          icon: CupertinoIcons.sparkles,
+                          title: 'Recommendations',
+                          description: 'Personalization and hidden categories',
+                          onTap: _openRecommendations,
+                        ),
+                        _SettingsRow(
+                          key: const Key('settings-reports-row'),
+                          icon: CupertinoIcons.exclamationmark_shield_fill,
+                          title: 'Your reports',
+                          description: 'Follow the status of safety reports',
+                          onTap: _openReports,
+                        ),
+                        _SettingsRow(
+                          key: const Key('settings-export-row'),
+                          icon: CupertinoIcons.arrow_down_doc_fill,
+                          title: 'Export your data',
+                          description: 'Copy a portable private JSON snapshot',
+                          value: _exporting ? 'Preparing…' : null,
+                          onTap: _exporting ? null : _exportData,
+                        ),
+                        if (_isModerator)
+                          _SettingsRow(
+                            key: const Key('settings-moderation-row'),
+                            icon: CupertinoIcons.shield_lefthalf_fill,
+                            title: 'Moderation dashboard',
+                            description: 'Review and resolve community reports',
+                            onTap: _openModeration,
+                          ),
+                      ],
+                    ),
                     const SizedBox(height: 22),
                     Text(
                       'Settings are private to your account unless a page says otherwise.',
@@ -324,6 +449,7 @@ class _AccountProfileSettingsScreenState
     extends State<_AccountProfileSettingsScreen> {
   late UserProfile _profile;
   bool _signingOut = false;
+  bool _deletingAccount = false;
 
   @override
   void initState() {
@@ -365,6 +491,33 @@ class _AccountProfileSettingsScreenState
       );
     } finally {
       if (mounted) setState(() => _signingOut = false);
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    if (_deletingAccount) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _DeleteAccountDialog(),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _deletingAccount = true);
+    try {
+      await widget.repository.deleteAccount();
+    } on ProfileApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not delete your account.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deletingAccount = false);
     }
   }
 
@@ -470,6 +623,24 @@ class _AccountProfileSettingsScreenState
                           : const Icon(CupertinoIcons.square_arrow_right),
                       label: Text(_signingOut ? 'Signing out…' : 'Sign out'),
                     ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      key: const Key('settings-delete-account-button'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: colors.error,
+                      ),
+                      onPressed: _signingOut || _deletingAccount
+                          ? null
+                          : _deleteAccount,
+                      icon: _deletingAccount
+                          ? const CupertinoActivityIndicator()
+                          : const Icon(CupertinoIcons.delete),
+                      label: Text(
+                        _deletingAccount
+                            ? 'Deleting account…'
+                            : 'Delete account',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -479,6 +650,60 @@ class _AccountProfileSettingsScreenState
       ),
     );
   }
+}
+
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog();
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Delete your account?'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'This permanently removes your profile, hosted events, RSVPs, posts, photos, conversations, and feedback. This cannot be undone.',
+        ),
+        const SizedBox(height: 16),
+        const Text('Type DELETE to confirm.'),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('delete-account-confirmation-field'),
+          controller: _controller,
+          autofocus: true,
+          autocorrect: false,
+          textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(hintText: 'DELETE'),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('Keep account'),
+      ),
+      FilledButton(
+        key: const Key('confirm-delete-account-button'),
+        onPressed: () =>
+            Navigator.pop(context, _controller.text.trim() == 'DELETE'),
+        child: const Text('Delete permanently'),
+      ),
+    ],
+  );
 }
 
 class _PreferencesSettingsScreen extends StatefulWidget {
@@ -513,6 +738,10 @@ class _PreferencesSettingsScreenState
   double? _savedLatitude;
   double? _savedLongitude;
   late bool _assistantEnabled;
+  late Set<String> _interests;
+  late Set<String> _savedInterests;
+  late Set<String> _accessibilityPreferences;
+  late Set<String> _savedAccessibilityPreferences;
   bool _saving = false;
   bool _locating = false;
   bool _assistantSaving = false;
@@ -521,7 +750,14 @@ class _PreferencesSettingsScreenState
   bool get _hasChanges =>
       _radiusKm != _savedRadiusKm ||
       _latitude != _savedLatitude ||
-      _longitude != _savedLongitude;
+      _longitude != _savedLongitude ||
+      _personalizationHasChanges;
+
+  bool get _personalizationHasChanges =>
+      !_interests.containsAll(_savedInterests) ||
+      !_savedInterests.containsAll(_interests) ||
+      !_accessibilityPreferences.containsAll(_savedAccessibilityPreferences) ||
+      !_savedAccessibilityPreferences.containsAll(_accessibilityPreferences);
 
   @override
   void initState() {
@@ -538,6 +774,10 @@ class _PreferencesSettingsScreenState
     _savedLatitude = profile.approximateLatitude;
     _savedLongitude = profile.approximateLongitude;
     _assistantEnabled = profile.assistantEnabled;
+    _interests = {...profile.interests};
+    _savedInterests = {...profile.interests};
+    _accessibilityPreferences = {...profile.accessibilityPreferences};
+    _savedAccessibilityPreferences = {...profile.accessibilityPreferences};
     _locationPendingSave = false;
   }
 
@@ -553,7 +793,7 @@ class _PreferencesSettingsScreenState
         _locationPendingSave = true;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Area ready. Save it below to keep it.')),
+        const SnackBar(content: Text('Area ready. Tap Save to keep it.')),
       );
     } on LocationFailure catch (failure) {
       if (!mounted) return;
@@ -579,28 +819,40 @@ class _PreferencesSettingsScreenState
     if (_saving || _locating || !_hasChanges) return;
     setState(() => _saving = true);
     try {
-      final updated = await widget.repository.updateDiscoveryPreferences(
-        preferredRadiusKm: _radiusKm,
+      await widget.repository.completeOnboarding(
+        interests: _interests.toList(growable: false),
+        accessibilityPreferences: _accessibilityPreferences.toList(
+          growable: false,
+        ),
+        radiusKm: _radiusKm,
         latitude: _latitude,
         longitude: _longitude,
       );
       if (!mounted) return;
+      final updated = _profile.copyWith(
+        preferredRadiusKm: _radiusKm,
+        approximateLatitude: _latitude,
+        approximateLongitude: _longitude,
+        interests: _interests.toList(growable: false),
+        accessibilityPreferences: _accessibilityPreferences.toList(
+          growable: false,
+        ),
+      );
       setState(() {
         _profile = updated;
-        _savedRadiusKm = updated.preferredRadiusKm;
-        _savedLatitude = updated.approximateLatitude;
-        _savedLongitude = updated.approximateLongitude;
-        _radiusKm = updated.preferredRadiusKm;
-        _latitude = updated.approximateLatitude;
-        _longitude = updated.approximateLongitude;
+        _savedRadiusKm = _radiusKm;
+        _savedLatitude = _latitude;
+        _savedLongitude = _longitude;
+        _savedInterests = {..._interests};
+        _savedAccessibilityPreferences = {..._accessibilityPreferences};
         _locationPendingSave = false;
       });
       widget.onProfileChanged(updated);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Discovery preferences saved.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Preferences saved.')));
     } catch (_) {
-      _showError('Could not save your discovery preferences.');
+      _showError('Could not save your preferences.');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -643,12 +895,12 @@ class _PreferencesSettingsScreenState
       appBar: AppBar(
         title: const Text('Preferences'),
         actions: [
-          TextButton(
-            key: const Key('save-preferences-button'),
+          AppSaveAction(
+            buttonKey: const Key('save-preferences-button'),
+            saving: _saving,
             onPressed: _saving || _locating || !_hasChanges
                 ? null
                 : _savePreferences,
-            child: Text(_saving ? 'Saving…' : 'Save'),
           ),
           const SizedBox(width: 8),
         ],
@@ -682,6 +934,67 @@ class _PreferencesSettingsScreenState
                       onRadiusChanged: (value) =>
                           setState(() => _radiusKm = value),
                       onLocationPressed: _updateLocation,
+                    ),
+                    const SizedBox(height: 26),
+                    const ProfileSectionHeader(
+                      title: 'Event preferences',
+                      subtitle:
+                          'Shape recommendations and accessibility defaults in Discover.',
+                    ),
+                    const SizedBox(height: 11),
+                    Text(
+                      'Interests',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: memberInterestOptions
+                          .map(
+                            (interest) => FilterChip(
+                              label: Text(interest),
+                              selected: _interests.contains(interest),
+                              onSelected: _saving
+                                  ? null
+                                  : (selected) => setState(
+                                      () => selected
+                                          ? _interests.add(interest)
+                                          : _interests.remove(interest),
+                                    ),
+                            ),
+                          )
+                          .toList(growable: false),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Useful event details',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      children: memberAccessibilityOptions.entries
+                          .map(
+                            (entry) => FilterChip(
+                              label: Text(entry.value),
+                              selected: _accessibilityPreferences.contains(
+                                entry.key,
+                              ),
+                              onSelected: _saving
+                                  ? null
+                                  : (selected) => setState(
+                                      () => selected
+                                          ? _accessibilityPreferences.add(
+                                              entry.key,
+                                            )
+                                          : _accessibilityPreferences.remove(
+                                              entry.key,
+                                            ),
+                                    ),
+                            ),
+                          )
+                          .toList(growable: false),
                     ),
                     const SizedBox(height: 26),
                     const ProfileSectionHeader(
@@ -880,6 +1193,12 @@ class _PrivacyScreenState extends State<_PrivacyScreen> {
     }
   }
 
+  Future<void> _openBlockedUsers() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => _BlockedProfilesScreen(repository: widget.repository),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Privacy')),
@@ -927,6 +1246,20 @@ class _PrivacyScreenState extends State<_PrivacyScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
+                  const _SettingsSectionLabel('Community safety'),
+                  const SizedBox(height: 8),
+                  _SettingsGroup(
+                    children: [
+                      _SettingsRow(
+                        key: const Key('blocked-users-settings-row'),
+                        icon: CupertinoIcons.person_crop_circle_badge_xmark,
+                        title: 'Blocked members',
+                        description: 'Review and unblock members',
+                        onTap: _openBlockedUsers,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
                   const _SettingsSectionLabel('Your information'),
                   const SizedBox(height: 8),
                   const _InformationCard(
@@ -962,6 +1295,116 @@ class _PrivacyScreenState extends State<_PrivacyScreen> {
         ],
       ),
     ),
+  );
+}
+
+class _BlockedProfilesScreen extends StatefulWidget {
+  const _BlockedProfilesScreen({required this.repository});
+
+  final ProfileRepository repository;
+
+  @override
+  State<_BlockedProfilesScreen> createState() => _BlockedProfilesScreenState();
+}
+
+class _BlockedProfilesScreenState extends State<_BlockedProfilesScreen> {
+  List<BlockedProfile>? _profiles;
+  String? _error;
+  final Set<String> _updatingIds = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _profiles = null;
+      _error = null;
+    });
+    try {
+      final profiles = await widget.repository.blockedProfiles();
+      if (mounted) setState(() => _profiles = profiles);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load blocked members.');
+    }
+  }
+
+  Future<void> _unblock(BlockedProfile profile) async {
+    if (_updatingIds.contains(profile.id)) return;
+    setState(() => _updatingIds.add(profile.id));
+    try {
+      await widget.repository.setBlocked(profile.id, false);
+      if (!mounted) return;
+      setState(() {
+        _profiles = _profiles
+            ?.where((item) => item.id != profile.id)
+            .toList(growable: false);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${profile.displayName} unblocked.')),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not unblock this member.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updatingIds.remove(profile.id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Blocked members')),
+    body: _profiles == null && _error == null
+        ? const Center(child: CupertinoActivityIndicator())
+        : _error != null
+        ? Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(_error!),
+                const SizedBox(height: 8),
+                TextButton(onPressed: _load, child: const Text('Retry')),
+              ],
+            ),
+          )
+        : _profiles!.isEmpty
+        ? const Center(child: Text('You have not blocked anyone.'))
+        : ListView.separated(
+            key: const Key('blocked-users-list'),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            itemCount: _profiles!.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final profile = _profiles![index];
+              final initial = profile.displayName.trim().isEmpty
+                  ? '?'
+                  : String.fromCharCode(
+                      profile.displayName.trim().runes.first,
+                    ).toUpperCase();
+              return ListTile(
+                leading: CircleAvatar(child: Text(initial)),
+                title: Text(profile.displayName),
+                subtitle: profile.username.isEmpty
+                    ? null
+                    : Text('@${profile.username}'),
+                trailing: TextButton(
+                  onPressed: _updatingIds.contains(profile.id)
+                      ? null
+                      : () => _unblock(profile),
+                  child: Text(
+                    _updatingIds.contains(profile.id)
+                        ? 'Unblocking…'
+                        : 'Unblock',
+                  ),
+                ),
+              );
+            },
+          ),
   );
 }
 
@@ -1170,7 +1613,7 @@ class _SettingsRow extends StatelessWidget {
   final String title;
   final String description;
   final String? value;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

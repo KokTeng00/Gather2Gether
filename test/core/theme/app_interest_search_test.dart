@@ -28,7 +28,7 @@ void main() {
 
     expect(find.byIcon(CupertinoIcons.search), findsOneWidget);
     expect(find.byIcon(CupertinoIcons.sparkles), findsNothing);
-    expect(find.text('Search'), findsOneWidget);
+    expect(find.text('Search'), findsNothing);
 
     await tester.enterText(
       find.byKey(const Key('interest-search-field')),

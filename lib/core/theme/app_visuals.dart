@@ -104,6 +104,7 @@ class AppChoiceField extends StatelessWidget {
     required this.options,
     required this.onChanged,
     this.label = 'Category',
+    this.icon = CupertinoIcons.tag,
     this.enabled = true,
     super.key,
   });
@@ -112,6 +113,7 @@ class AppChoiceField extends StatelessWidget {
   final List<String> options;
   final ValueChanged<String> onChanged;
   final String label;
+  final IconData icon;
   final bool enabled;
 
   Future<void> _showChoices(BuildContext context) async {
@@ -145,27 +147,31 @@ class AppChoiceField extends StatelessWidget {
             child: Row(
               children: [
                 Icon(
-                  CupertinoIcons.tag,
+                  icon,
                   color: enabled
                       ? colors.primary
                       : colors.onSurface.withValues(alpha: 0.38),
                   size: 21,
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: enabled
-                        ? colors.onSurface
-                        : colors.onSurface.withValues(alpha: 0.45),
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: enabled
+                          ? colors.onSurface
+                          : colors.onSurface.withValues(alpha: 0.45),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     value,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.end,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -299,6 +305,7 @@ class AppInterestSearch extends StatelessWidget {
     required this.onClear,
     this.enabled = true,
     this.hintText = 'What are you interested in?',
+    this.trailing,
     super.key,
   });
 
@@ -307,67 +314,98 @@ class AppInterestSearch extends StatelessWidget {
   final VoidCallback onClear;
   final bool enabled;
   final String hintText;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: AppSurface(
-            borderRadius: 16,
-            child: ValueListenableBuilder<TextEditingValue>(
-              valueListenable: controller,
-              builder: (context, value, _) => TextField(
-                key: const Key('interest-search-field'),
-                controller: controller,
-                enabled: enabled,
-                textInputAction: TextInputAction.search,
-                maxLength: 240,
-                onSubmitted: onSubmitted,
-                decoration: InputDecoration(
-                  hintText: hintText,
-                  counterText: '',
-                  prefixIcon: Icon(
-                    CupertinoIcons.search,
-                    color: colors.onSurfaceVariant,
-                    size: 20,
-                  ),
-                  suffixIcon: value.text.trim().isEmpty
-                      ? null
-                      : IconButton(
+    return AppSurface(
+      borderRadius: 16,
+      child: ValueListenableBuilder<TextEditingValue>(
+        valueListenable: controller,
+        builder: (context, value, _) => TextField(
+          key: const Key('interest-search-field'),
+          controller: controller,
+          enabled: enabled,
+          textInputAction: TextInputAction.search,
+          maxLength: 240,
+          onSubmitted: onSubmitted,
+          decoration: InputDecoration(
+            hintText: hintText,
+            counterText: '',
+            prefixIcon: IconButton(
+              key: const Key('interest-search-submit'),
+              tooltip: 'Search',
+              onPressed: enabled ? () => onSubmitted(controller.text) : null,
+              icon: Icon(
+                CupertinoIcons.search,
+                color: colors.onSurfaceVariant,
+                size: 20,
+              ),
+            ),
+            suffixIcon: value.text.trim().isEmpty && trailing == null
+                ? null
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (value.text.trim().isNotEmpty)
+                        IconButton(
                           key: const Key('clear-interest-search'),
                           tooltip: 'Clear search',
                           onPressed: enabled ? onClear : null,
                           icon: const Icon(CupertinoIcons.xmark_circle_fill),
                         ),
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 15),
-                ),
-              ),
-            ),
+                      ?trailing,
+                    ],
+                  ),
+            filled: false,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 15),
           ),
         ),
-        const SizedBox(width: 10),
-        FilledButton(
-          key: const Key('interest-search-submit'),
-          onPressed: enabled ? () => onSubmitted(controller.text) : null,
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(82, 54),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          child: const Text('Search'),
-        ),
-      ],
+      ),
     );
   }
+}
+
+class AppSaveAction extends StatelessWidget {
+  const AppSaveAction({
+    required this.saving,
+    required this.onPressed,
+    this.buttonKey,
+    super.key,
+  });
+
+  final bool saving;
+  final VoidCallback? onPressed;
+  final Key? buttonKey;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: saving ? 'Saving' : 'Save',
+    button: true,
+    child: TextButton(
+      key: buttonKey,
+      onPressed: saving ? null : onPressed,
+      child: SizedBox(
+        width: 48,
+        height: 28,
+        child: Center(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 160),
+            child: saving
+                ? const CupertinoActivityIndicator(
+                    key: ValueKey('saving'),
+                    radius: 8,
+                  )
+                : const Text('Save', key: ValueKey('save')),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class AppBrandMark extends StatelessWidget {
@@ -809,26 +847,37 @@ class AppSection extends StatelessWidget {
     required this.title,
     required this.child,
     this.footer,
+    this.action,
     super.key,
   });
 
   final String title;
   final Widget child;
   final String? footer;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Padding(
-        padding: const EdgeInsets.only(left: 2, bottom: 9),
-        child: Text(
-          title,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurface,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.1,
-          ),
+        padding: const EdgeInsets.fromLTRB(2, 0, 2, 9),
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.1,
+              ),
+            ),
+            ?action,
+          ],
         ),
       ),
       AppSurface(borderRadius: 18, child: child),

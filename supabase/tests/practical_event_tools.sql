@@ -26,7 +26,8 @@ select public.set_profile_follow(
   '30000000-0000-4000-8000-000000000001', true
 );
 select public.create_saved_event_search(
-  'Nearby running', 'running', 10, 'Running', 'any', 'any', 0, false, false
+  'Nearby running', 'running', 10, 'Running', 'any', 'any', 0, false, false,
+  false, false, 'any', '', 'any', true
 );
 
 select set_config(

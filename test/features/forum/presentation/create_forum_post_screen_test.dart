@@ -5,8 +5,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/media/app_image_picker.dart';
 import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/features/forum/presentation/create_forum_post_screen.dart';
+import 'package:gather2gether/features/places/data/place_repository.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
+  testWidgets('discussion place search selects a venue and its exact address', (
+    tester,
+  ) async {
+    final places = PlaceRepository(
+      accessTokenProvider: () => 'test-token',
+      edgeApiUrl: 'https://example.test/api/v1',
+      httpClient: MockClient((request) async {
+        expect(request.url.queryParameters['text'], 'Mannheim UniSport Halle');
+        return http.Response(jsonEncode({'data': [{
+          'id': 'university-hall',
+          'name': 'Sporthalle der Universität',
+          'formatted_address': 'Theodor-Heuss-Anlage 15, 68165 Mannheim, Germany',
+          'latitude': 49.4785265,
+          'longitude': 8.4992394,
+          'result_type': 'amenity',
+        }]}), 200);
+      }),
+    );
+    await tester.pumpWidget(MaterialApp(home: CreateForumPostScreen(
+      imagePicker: _FakeImagePicker(), placeRepository: places,
+    )));
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('forum-add-place')));
+    await tester.tap(find.byKey(const Key('forum-add-place')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('forum-place-address')), 'Mannheim UniSport Halle');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    final suggestion = find.byKey(const ValueKey('place-suggestion-university-hall'));
+    await tester.ensureVisible(suggestion);
+    await tester.tap(suggestion);
+    await tester.pumpAndSettle();
+    final name = tester.widget<TextFormField>(find.byKey(const Key('forum-place-name')));
+    final address = tester.widget<TextFormField>(find.byKey(const Key('forum-place-address')));
+    expect(name.controller?.text, 'Sporthalle der Universität');
+    expect(address.controller?.text, 'Theodor-Heuss-Anlage 15, 68165 Mannheim, Germany');
+    await tester.ensureVisible(find.byKey(const Key('forum-save-place')));
+    await tester.tap(find.byKey(const Key('forum-save-place')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('forum-selected-place')), findsOneWidget);
+    expect(find.text('Sporthalle der Universität'), findsOneWidget);
+    expect(find.text('Theodor-Heuss-Anlage 15, 68165 Mannheim, Germany'), findsOneWidget);
+  });
+
   testWidgets('topic uses the simple app choice sheet', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: CreateForumPostScreen(imagePicker: _FakeImagePicker())),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gather2gether/core/constants/forum_constants.dart';
@@ -26,6 +28,7 @@ class _EventDiscussionScreenState extends State<EventDiscussionScreen> {
   List<EventDiscussionMessage> _messages = const [];
   bool _loading = true;
   bool _sending = false;
+  bool _summarizing = false;
   String? _error;
 
   @override
@@ -36,6 +39,9 @@ class _EventDiscussionScreenState extends State<EventDiscussionScreen> {
 
   @override
   void dispose() {
+    unawaited(
+      widget.repository.markDiscussionSeen(widget.event.id).catchError((_) {}),
+    );
     _controller.dispose();
     super.dispose();
   }
@@ -104,6 +110,106 @@ class _EventDiscussionScreenState extends State<EventDiscussionScreen> {
     }
   }
 
+  Future<void> _summarize() async {
+    if (_summarizing) return;
+    setState(() => _summarizing = true);
+    try {
+      final summary = await widget.repository.summarizeDiscussion(
+        widget.event.id,
+      );
+      if (!mounted) return;
+      setState(() => _summarizing = false);
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Discussion summary'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SelectableText(
+                  summary.summary,
+                  key: const Key('event-discussion-summary-result'),
+                ),
+                if (summary.actionItems.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Action items',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  for (final item in summary.actionItems)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 5),
+                      child: Text('• $item'),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } on EdgeApiException catch (error) {
+      if (mounted) _show(error.message);
+    } finally {
+      if (mounted) setState(() => _summarizing = false);
+    }
+  }
+
+  Future<void> _summarizeChanges() async {
+    if (_summarizing) return;
+    setState(() => _summarizing = true);
+    try {
+      final changes = await widget.repository.discussionChanges(
+        widget.event.id,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text('What changed · ${changes.messageCount} new'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SelectableText(
+                  changes.summary,
+                  key: const Key('event-discussion-changes-result'),
+                ),
+                if (changes.actionItems.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  for (final item in changes.actionItems)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 5),
+                      child: Text('• $item'),
+                    ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } on EdgeApiException catch (error) {
+      if (mounted) _show(error.message);
+    } finally {
+      if (mounted) setState(() => _summarizing = false);
+    }
+  }
+
   void _show(String message) {
     ScaffoldMessenger.of(
       context,
@@ -113,7 +219,27 @@ class _EventDiscussionScreenState extends State<EventDiscussionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.event.title)),
+      appBar: AppBar(
+        title: Text(widget.event.title),
+        actions: [
+          IconButton(
+            key: const Key('event-discussion-changes-action'),
+            tooltip: 'What changed since last visit',
+            onPressed: _messages.isEmpty || _summarizing
+                ? null
+                : _summarizeChanges,
+            icon: const Icon(CupertinoIcons.clock),
+          ),
+          IconButton(
+            key: const Key('event-discussion-summary-action'),
+            tooltip: 'Summarize discussion',
+            onPressed: _messages.length < 2 || _summarizing ? null : _summarize,
+            icon: _summarizing
+                ? const CupertinoActivityIndicator()
+                : const Icon(CupertinoIcons.sparkles),
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CupertinoActivityIndicator())
           : _error != null

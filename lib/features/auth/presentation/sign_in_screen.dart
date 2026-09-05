@@ -229,12 +229,8 @@ class _SignInPanel extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               backgroundColor: colors.surfaceContainerLowest,
               foregroundColor: colors.onSurface,
-              minimumSize: const Size.fromHeight(58),
               side: BorderSide(
                 color: colors.outlineVariant.withValues(alpha: 0.95),
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(17),
               ),
             ),
             icon: isSigningIn

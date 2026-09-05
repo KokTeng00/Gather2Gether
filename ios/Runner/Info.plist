@@ -58,6 +58,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Gather2Gether uses your location while the app is open to show nearby events and set an event location.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

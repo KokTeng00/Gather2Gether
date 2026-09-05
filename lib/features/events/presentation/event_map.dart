@@ -70,10 +70,12 @@ class _EventMapState extends State<EventMap> {
 
   void _onMapCreated(MapLibreMapController controller) {
     _controller = controller;
+    _styleLoaded = false;
     controller.onCircleTapped.add(_onCircleTapped);
   }
 
   void _onStyleLoaded() {
+    if (!mounted) return;
     _styleLoaded = true;
     unawaited(_renderAnnotations());
   }
@@ -164,6 +166,7 @@ class _EventMapState extends State<EventMap> {
 
     try {
       await controller.clearFills();
+      if (!_isCurrentRender(controller, generation)) return;
       await controller.clearCircles();
       if (!_isCurrentRender(controller, generation)) return;
 
@@ -239,6 +242,12 @@ class _EventMapState extends State<EventMap> {
               Positioned.fill(
                 child: MapLibreMap(
                   styleString: AppConfig.mapStyleUrl,
+                  // Keep native horizontal wrapping when crossing the Pacific.
+                  cameraTargetBounds: CameraTargetBounds.unbounded,
+                  annotationOrder: const [
+                    AnnotationType.fill,
+                    AnnotationType.circle,
+                  ],
                   gestureRecognizers: eventMapGestureRecognizers(),
                   initialCameraPosition: CameraPosition(
                     target: LatLng(widget.latitude, widget.longitude),

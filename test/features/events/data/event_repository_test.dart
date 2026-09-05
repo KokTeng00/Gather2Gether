@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gather2gether/features/events/data/event_offline_cache.dart';
 import 'package:gather2gether/features/events/data/event_repository.dart';
 import 'package:gather2gether/features/events/domain/event_filters.dart';
+import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -64,6 +66,10 @@ void main() {
         expect(body['event_language'], 'English');
         expect(body['age_guidance'], 'adults');
         expect(body['what_to_bring'], 'Water');
+        expect(body['status'], 'published');
+        expect(body['visibility'], 'public');
+        expect(body['repeat_interval'], 'none');
+        expect(body['repeat_count'], 1);
         expect(body['p_title'], isNull);
         return http.Response(jsonEncode({'id': eventId}), 201);
       });
@@ -193,13 +199,21 @@ void main() {
   });
 
   test(
-    'discovery sends category, time, availability, and following filters',
+    'discovery sends practical, accessibility, and following filters',
     () async {
       final client = MockClient((request) async {
         expect(request.url.queryParameters['category'], 'Games');
         expect(request.url.queryParameters['time_filter'], 'evening');
         expect(request.url.queryParameters['spots_only'], 'true');
         expect(request.url.queryParameters['following_only'], 'true');
+        expect(request.url.queryParameters['beginner_friendly_only'], 'true');
+        expect(
+          request.url.queryParameters['wheelchair_accessible_only'],
+          'true',
+        );
+        expect(request.url.queryParameters['event_setting'], 'outdoor');
+        expect(request.url.queryParameters['event_language'], 'English');
+        expect(request.url.queryParameters['age_guidance'], 'all_ages');
         expect(
           request.url.queryParameters['timezone_offset_minutes'],
           isNotNull,
@@ -221,6 +235,11 @@ void main() {
           timeFilter: 'evening',
           spotsOnly: true,
           followingOnly: true,
+          beginnerFriendlyOnly: true,
+          wheelchairAccessibleOnly: true,
+          eventSetting: 'outdoor',
+          eventLanguage: 'English',
+          ageGuidance: 'all_ages',
         ),
       );
     },
@@ -312,6 +331,160 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'co-hosts, translations, and summaries use narrow event routes',
+    () async {
+      final paths = <String>[];
+      final client = MockClient((request) async {
+        paths.add('${request.method} ${request.url.path}');
+        if (request.url.path.endsWith('/cohosts') && request.method == 'GET') {
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {
+                  'profile_id': '11111111-1111-4111-8111-111111111111',
+                  'display_name': 'Alex',
+                  'username': 'alex',
+                  'role': 'Owner',
+                  'viewer_can_edit': true,
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/cohosts')) {
+          expect(jsonDecode(request.body), {'username': '@maya'});
+          return http.Response(
+            jsonEncode({'profile_id': '55555555-5555-4555-8555-555555555555'}),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/translation')) {
+          expect(jsonDecode(request.body), {'target_language': 'German'});
+          return http.Response(
+            jsonEncode({'translation': 'Titel: Morgenlauf'}),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/discussion-summary')) {
+          return http.Response(
+            jsonEncode({
+              'summary': 'Meet at the gate.',
+              'action_items': ['Bring water.'],
+            }),
+            200,
+          );
+        }
+        throw StateError('Unexpected request: ${request.url}');
+      });
+      final repository = EventRepository(
+        httpClient: client,
+        accessTokenProvider: () => 'access-token',
+        edgeApiUrl: apiUrl,
+      );
+
+      expect((await repository.cohosts(eventId)).single.role, 'Owner');
+      await repository.setCohost(eventId, '@maya', true);
+      expect(
+        await repository.translateEvent(eventId, 'German'),
+        contains('Morgen'),
+      );
+      expect((await repository.summarizeDiscussion(eventId)).actionItems, [
+        'Bring water.',
+      ]);
+      expect(paths, [
+        'GET /api/v1/events/$eventId/cohosts',
+        'PUT /api/v1/events/$eventId/cohosts',
+        'POST /api/v1/events/$eventId/translation',
+        'POST /api/v1/events/$eventId/discussion-summary',
+      ]);
+    },
+  );
+
+  test(
+    'offline reads use the current account cache after a server failure',
+    () async {
+      final cached = EventSummary.fromJson(eventJson(eventId));
+      final repository = EventRepository(
+        httpClient: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'error': {
+                'code': 'temporarily_unavailable',
+                'message': 'Try again.',
+              },
+            }),
+            503,
+          ),
+        ),
+        accessTokenProvider: () => _testJwt,
+        edgeApiUrl: apiUrl,
+        offlineCache: _FakeOfflineCache([cached]),
+      );
+
+      final events = await repository.myEvents('going');
+
+      expect(events.single.id, eventId);
+      expect(repository.lastReadWasOffline, isTrue);
+    },
+  );
+
+  test(
+    'authentication failures never fall back to cached event data',
+    () async {
+      final cached = EventSummary.fromJson(eventJson(eventId));
+      final repository = EventRepository(
+        httpClient: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'error': {
+                'code': 'authentication_required',
+                'message': 'Sign in.',
+              },
+            }),
+            401,
+          ),
+        ),
+        accessTokenProvider: () => _testJwt,
+        edgeApiUrl: apiUrl,
+        offlineCache: _FakeOfflineCache([cached]),
+      );
+
+      await expectLater(
+        repository.eventDetails(eventId),
+        throwsA(
+          isA<EdgeApiException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            401,
+          ),
+        ),
+      );
+      expect(repository.lastReadWasOffline, isFalse);
+    },
+  );
+}
+
+const _testJwt =
+    'e30.eyJzdWIiOiIxMTExMTExMS0xMTExLTQxMTEtODExMS0xMTExMTExMTExMTEifQ.signature';
+
+class _FakeOfflineCache extends EventOfflineCache {
+  _FakeOfflineCache(this.events);
+
+  final List<EventSummary> events;
+
+  @override
+  Future<List<EventSummary>?> readEvents(String userId, String scope) async =>
+      events;
+
+  @override
+  Future<void> writeEvents(
+    String userId,
+    String scope,
+    List<EventSummary> events,
+  ) async {}
 }
 
 Map<String, dynamic> eventJson(String eventId) => {

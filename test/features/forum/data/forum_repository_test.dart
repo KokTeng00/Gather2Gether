@@ -287,6 +287,26 @@ void main() {
     expect(state.likeCount, 4);
   });
 
+  test('not-for-me hides only the selected forum recommendation', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/v1/recommendations/hide');
+      expect(request.headers['authorization'], 'Bearer access-token');
+      expect(jsonDecode(request.body), {
+        'content_kind': 'forum_post',
+        'content_id': postId,
+      });
+      return http.Response(jsonEncode({'hidden': true}), 200);
+    });
+    final repository = ForumRepository(
+      httpClient: client,
+      accessTokenProvider: () => 'access-token',
+      edgeApiUrl: apiUrl,
+    );
+
+    await repository.hidePostRecommendation(postId);
+  });
+
   test('forum rate-limit response is preserved for the UI', () async {
     final client = MockClient(
       (_) async => http.Response(

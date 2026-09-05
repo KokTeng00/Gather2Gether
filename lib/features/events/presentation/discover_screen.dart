@@ -41,6 +41,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   bool _loading = true;
   bool _showMap = false;
   bool _maintenance = false;
+  bool _offline = false;
   String? _locationNotice;
   String? _interest;
   EventDiscoveryFilters _filters = const EventDiscoveryFilters();
@@ -71,6 +72,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       _radiusKm = profile.preferredRadiusKm;
       _latitude = profile.approximateLatitude;
       _longitude = profile.approximateLongitude;
+      _filters = _filters.copyWith(
+        beginnerFriendlyOnly:
+            _filters.beginnerFriendlyOnly ||
+            profile.accessibilityPreferences.contains('beginner_friendly'),
+        wheelchairAccessibleOnly:
+            _filters.wheelchairAccessibleOnly ||
+            profile.accessibilityPreferences.contains('wheelchair_accessible'),
+      );
       if (_latitude != null && _longitude != null) await _loadEvents();
     } catch (_) {
       _maintenance = true;
@@ -141,6 +150,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         setState(() {
           _results = results;
           _maintenance = false;
+          _offline = _events.lastReadWasOffline;
         });
       }
     } catch (_) {
@@ -152,15 +162,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   Future<void> _refresh() async {
     setState(() => _loading = true);
-    await _loadEvents();
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _selectRadius(double value) async {
-    setState(() {
-      _radiusKm = value;
-      _loading = true;
-    });
     await _loadEvents();
     if (mounted) setState(() => _loading = false);
   }
@@ -182,22 +183,32 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Future<void> _openFilters() async {
-    final selected = await showModalBottomSheet<EventDiscoveryFilters>(
+    final selected = await showModalBottomSheet<_EventFilterSelection>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,
-      builder: (_) => _EventFilterSheet(initial: _filters),
+      builder: (_) => _EventFilterSheet(
+        initial: _filters,
+        initialRadiusKm: _radiusKm,
+        canUseSearchAlerts: _latitude != null && _longitude != null,
+      ),
     );
-    if (selected == null) return;
+    if (selected == null || !mounted) return;
     setState(() {
-      _filters = selected;
-      _loading = true;
+      _filters = selected.filters;
+      _radiusKm = selected.radiusKm;
     });
+    if (selected.openSearchAlerts) {
+      final appliedAlert = await _openSearchAlerts();
+      if (appliedAlert) return;
+    }
+    if (!mounted) return;
+    setState(() => _loading = true);
     await _loadEvents();
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _openSearchAlerts() async {
+  Future<bool> _openSearchAlerts() async {
     final selected = await showModalBottomSheet<SavedEventSearch>(
       context: context,
       useSafeArea: true,
@@ -209,7 +220,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         filters: _filters,
       ),
     );
-    if (selected == null) return;
+    if (selected == null || !mounted) return false;
     _interestController.text = selected.interest;
     setState(() {
       _interest = selected.interest.trim().isEmpty ? null : selected.interest;
@@ -219,6 +230,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     });
     await _loadEvents();
     if (mounted) setState(() => _loading = false);
+    return true;
   }
 
   void _setShowMap(bool value) {
@@ -262,29 +274,25 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 child: AppPageHeader(
                   title: 'Discover',
                   subtitle: 'Find something worth going out for.',
+                  actions: [
+                    AppCircleButton(
+                      key: const Key('create-event-action'),
+                      icon: CupertinoIcons.calendar_badge_plus,
+                      tooltip: 'Create event',
+                      onPressed: widget.onCreate,
+                    ),
+                  ],
                 ),
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              sliver: SliverToBoxAdapter(
-                child: _ViewControls(
-                  showMap: _showMap,
-                  radiusKm: _radiusKm,
-                  loading: _loading,
-                  onViewChanged: _setShowMap,
-                  onRadiusChanged: _selectRadius,
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               sliver: SliverToBoxAdapter(
                 child: AppInterestSearch(
                   key: const Key('event-interest-search'),
                   controller: _interestController,
                   enabled: !_loading && _latitude != null,
-                  hintText: 'Search events',
+                  hintText: 'What would you like to do?',
                   onSubmitted: _applyInterest,
                   onClear: _clearInterest,
                 ),
@@ -293,65 +301,81 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
               sliver: SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Row(
                   children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          FilterChip(
-                            key: const Key('event-filter-action'),
-                            selected: _filters.isActive,
-                            avatar: const Icon(
-                              CupertinoIcons.slider_horizontal_3,
-                              size: 16,
-                            ),
-                            label: Text(
-                              _filters.isActive ? 'Filters on' : 'Filters',
-                            ),
-                            onSelected: _loading ? null : (_) => _openFilters(),
-                          ),
-                          const SizedBox(width: 8),
-                          ActionChip(
-                            key: const Key('search-alerts-action'),
-                            avatar: const Icon(CupertinoIcons.bell, size: 16),
-                            label: const Text('Search alerts'),
-                            onPressed: _latitude == null
-                                ? null
-                                : _openSearchAlerts,
-                          ),
-                        ],
+                    Expanded(
+                      child: Text(
+                        _interest == null
+                            ? 'Nearby · ${_radiusKm.toInt()} km'
+                            : 'Results · ${_radiusKm.toInt()} km',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _interest == null
-                                ? 'Nearby events'
-                                : 'Search results',
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700),
-                          ),
+                    SizedBox.square(
+                      dimension: 40,
+                      child: IconButton(
+                        key: const Key('event-filter-action'),
+                        tooltip: 'Filters',
+                        style: IconButton.styleFrom(
+                          backgroundColor: _filters.isActive
+                              ? Theme.of(context).colorScheme.secondaryContainer
+                              : Colors.transparent,
                         ),
-                        FilledButton.tonalIcon(
-                          key: const Key('create-event-action'),
-                          onPressed: widget.onCreate,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size(0, 46),
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                          ),
-                          icon: const Icon(CupertinoIcons.calendar_badge_plus),
-                          label: const Text('Create event'),
+                        onPressed: _loading ? null : _openFilters,
+                        icon: const Icon(
+                          CupertinoIcons.slider_horizontal_3,
+                          size: 19,
                         ),
-                      ],
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    SizedBox.square(
+                      dimension: 40,
+                      child: IconButton(
+                        key: const Key('event-view-action'),
+                        padding: EdgeInsets.zero,
+                        tooltip: _showMap
+                            ? 'Show events list'
+                            : 'Show event map',
+                        style: IconButton.styleFrom(
+                          backgroundColor: _showMap
+                              ? Theme.of(context).colorScheme.secondaryContainer
+                              : Colors.transparent,
+                        ),
+                        onPressed:
+                            _loading || _latitude == null || _longitude == null
+                            ? null
+                            : () => _setShowMap(!_showMap),
+                        icon: Icon(
+                          _showMap
+                              ? CupertinoIcons.list_bullet
+                              : CupertinoIcons.map,
+                          size: 19,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
+            if (_offline)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                sliver: SliverToBoxAdapter(
+                  child: MaterialBanner(
+                    content: const Text(
+                      'Showing your most recent saved events while offline.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: _refresh,
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             if (_loading)
               const SliverFillRemaining(
                 hasScrollBody: false,
@@ -447,86 +471,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 }
 
-class _ViewControls extends StatelessWidget {
-  const _ViewControls({
-    required this.showMap,
-    required this.radiusKm,
-    required this.loading,
-    required this.onViewChanged,
-    required this.onRadiusChanged,
-  });
-
-  final bool showMap;
-  final double radiusKm;
-  final bool loading;
-  final ValueChanged<bool> onViewChanged;
-  final ValueChanged<double> onRadiusChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: CupertinoSlidingSegmentedControl<bool>(
-            groupValue: showMap,
-            padding: const EdgeInsets.all(3),
-            backgroundColor: Theme.of(context).colorScheme.surface,
-            thumbColor: Theme.of(context).colorScheme.secondaryContainer,
-            children: const {
-              false: Padding(
-                padding: EdgeInsets.symmetric(vertical: 7),
-                child: Text('Events'),
-              ),
-              true: Padding(
-                padding: EdgeInsets.symmetric(vertical: 7),
-                child: Text('Map'),
-              ),
-            },
-            onValueChanged: (value) {
-              if (!loading && value != null) onViewChanged(value);
-            },
-          ),
-        ),
-        const SizedBox(width: 10),
-        PopupMenuButton<double>(
-          enabled: !loading,
-          initialValue: radiusKm,
-          onSelected: onRadiusChanged,
-          itemBuilder: (_) => [5.0, 10.0, 25.0, 50.0]
-              .map(
-                (value) => PopupMenuItem(
-                  value: value,
-                  child: Text('Within ${value.toInt()} km'),
-                ),
-              )
-              .toList(),
-          child: Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 13),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
-            ),
-            child: Row(
-              children: [
-                const Icon(CupertinoIcons.slider_horizontal_3, size: 17),
-                const SizedBox(width: 6),
-                Text(
-                  '${radiusKm.toInt()} km',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _EventRow extends StatelessWidget {
   const _EventRow({required this.event, required this.onTap});
 
@@ -610,10 +554,28 @@ class _EventRow extends StatelessWidget {
   }
 }
 
+class _EventFilterSelection {
+  const _EventFilterSelection({
+    required this.filters,
+    required this.radiusKm,
+    this.openSearchAlerts = false,
+  });
+
+  final EventDiscoveryFilters filters;
+  final double radiusKm;
+  final bool openSearchAlerts;
+}
+
 class _EventFilterSheet extends StatefulWidget {
-  const _EventFilterSheet({required this.initial});
+  const _EventFilterSheet({
+    required this.initial,
+    required this.initialRadiusKm,
+    required this.canUseSearchAlerts,
+  });
 
   final EventDiscoveryFilters initial;
+  final double initialRadiusKm;
+  final bool canUseSearchAlerts;
 
   @override
   State<_EventFilterSheet> createState() => _EventFilterSheetState();
@@ -625,6 +587,20 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
   late String _timeFilter = widget.initial.timeFilter;
   late bool _spotsOnly = widget.initial.spotsOnly;
   late bool _followingOnly = widget.initial.followingOnly;
+  late bool _beginnerFriendlyOnly = widget.initial.beginnerFriendlyOnly;
+  late bool _wheelchairAccessibleOnly = widget.initial.wheelchairAccessibleOnly;
+  late String _eventSetting = widget.initial.eventSetting;
+  late String _ageGuidance = widget.initial.ageGuidance;
+  late double _radiusKm = widget.initialRadiusKm;
+  late final TextEditingController _languageController = TextEditingController(
+    text: widget.initial.eventLanguage,
+  );
+
+  @override
+  void dispose() {
+    _languageController.dispose();
+    super.dispose();
+  }
 
   EventDiscoveryFilters get _value => EventDiscoveryFilters(
     category: _category,
@@ -632,7 +608,19 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
     timeFilter: _timeFilter,
     spotsOnly: _spotsOnly,
     followingOnly: _followingOnly,
+    beginnerFriendlyOnly: _beginnerFriendlyOnly,
+    wheelchairAccessibleOnly: _wheelchairAccessibleOnly,
+    eventSetting: _eventSetting,
+    eventLanguage: _languageController.text.trim(),
+    ageGuidance: _ageGuidance,
   );
+
+  _EventFilterSelection _selection({bool openSearchAlerts = false}) =>
+      _EventFilterSelection(
+        filters: _value,
+        radiusKm: _radiusKm,
+        openSearchAlerts: openSearchAlerts,
+      );
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -651,7 +639,7 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
             children: [
               Expanded(
                 child: Text(
-                  'Filter events',
+                  'Filters',
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
               ),
@@ -662,84 +650,202 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
                   _timeFilter = 'any';
                   _spotsOnly = false;
                   _followingOnly = false;
+                  _beginnerFriendlyOnly = false;
+                  _wheelchairAccessibleOnly = false;
+                  _eventSetting = 'any';
+                  _languageController.clear();
+                  _ageGuidance = 'any';
+                  _radiusKm = widget.initialRadiusKm;
                 }),
                 child: const Text('Reset'),
               ),
             ],
           ),
+          const SizedBox(height: 14),
+          AppSurface(
+            padding: EdgeInsets.zero,
+            borderRadius: 18,
+            child: Column(
+              children: [
+                AppChoiceField(
+                  key: const Key('event-category-filter'),
+                  label: 'Category',
+                  icon: CupertinoIcons.square_grid_2x2,
+                  value: _category ?? 'All categories',
+                  options: const ['All categories', ...eventCategories],
+                  onChanged: (value) => setState(
+                    () => _category = value == 'All categories' ? null : value,
+                  ),
+                ),
+                const Divider(height: 1, indent: 50),
+                AppChoiceField(
+                  key: const Key('event-distance-filter'),
+                  label: 'Distance',
+                  icon: CupertinoIcons.location,
+                  value: '${_radiusKm.toInt()} km',
+                  options: const ['5 km', '10 km', '25 km', '50 km'],
+                  onChanged: (value) => setState(
+                    () => _radiusKm = double.parse(value.split(' ').first),
+                  ),
+                ),
+                const Divider(height: 1, indent: 50),
+                AppChoiceField(
+                  key: const Key('event-date-filter'),
+                  label: 'Date',
+                  icon: CupertinoIcons.calendar,
+                  value: eventDateFilterLabel(_dateFilter),
+                  options: const [
+                    'Any date',
+                    'Today',
+                    'Tomorrow',
+                    'This weekend',
+                  ],
+                  onChanged: (value) => setState(
+                    () => _dateFilter = switch (value) {
+                      'Today' => 'today',
+                      'Tomorrow' => 'tomorrow',
+                      'This weekend' => 'weekend',
+                      _ => 'any',
+                    },
+                  ),
+                ),
+                const Divider(height: 1, indent: 50),
+                AppChoiceField(
+                  key: const Key('event-time-filter'),
+                  label: 'Time',
+                  icon: CupertinoIcons.clock,
+                  value: eventTimeFilterLabel(_timeFilter),
+                  options: const [
+                    'Any time',
+                    'Morning',
+                    'Afternoon',
+                    'Evening',
+                  ],
+                  onChanged: (value) => setState(
+                    () => _timeFilter = switch (value) {
+                      'Morning' => 'morning',
+                      'Afternoon' => 'afternoon',
+                      'Evening' => 'evening',
+                      _ => 'any',
+                    },
+                  ),
+                ),
+                const Divider(height: 1, indent: 50),
+                AppChoiceField(
+                  key: const Key('event-setting-filter'),
+                  label: 'Setting',
+                  icon: CupertinoIcons.building_2_fill,
+                  value: eventSettingFilterLabel(_eventSetting),
+                  options: const ['Any setting', 'Indoor', 'Outdoor', 'Mixed'],
+                  onChanged: (value) => setState(
+                    () => _eventSetting = switch (value) {
+                      'Indoor' => 'indoor',
+                      'Outdoor' => 'outdoor',
+                      'Mixed' => 'mixed',
+                      _ => 'any',
+                    },
+                  ),
+                ),
+                const Divider(height: 1, indent: 50),
+                AppChoiceField(
+                  key: const Key('event-age-filter'),
+                  label: 'Age guidance',
+                  icon: CupertinoIcons.person_2_fill,
+                  value: eventAgeFilterLabel(_ageGuidance),
+                  options: const [
+                    'Any age guidance',
+                    'All ages',
+                    'Family friendly',
+                    'Teens',
+                    'Adults only',
+                  ],
+                  onChanged: (value) => setState(
+                    () => _ageGuidance = switch (value) {
+                      'All ages' => 'all_ages',
+                      'Family friendly' => 'families',
+                      'Teens' => 'teens',
+                      'Adults only' => 'adults',
+                      _ => 'any',
+                    },
+                  ),
+                ),
+                const Divider(height: 1, indent: 50),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextField(
+                    key: const Key('event-language-filter'),
+                    controller: _languageController,
+                    maxLength: 80,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Language',
+                      hintText: 'Any language',
+                      counterText: '',
+                      prefixIcon: Icon(CupertinoIcons.globe),
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          AppSurface(
+            padding: EdgeInsets.zero,
+            borderRadius: 18,
+            child: Column(
+              children: [
+                SwitchListTile.adaptive(
+                  key: const Key('event-spots-filter'),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  value: _spotsOnly,
+                  title: const Text('Available spots only'),
+                  onChanged: (value) => setState(() => _spotsOnly = value),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                SwitchListTile.adaptive(
+                  key: const Key('event-following-filter'),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  value: _followingOnly,
+                  title: const Text('Hosts I follow only'),
+                  onChanged: (value) => setState(() => _followingOnly = value),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                SwitchListTile.adaptive(
+                  key: const Key('event-beginner-filter'),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  value: _beginnerFriendlyOnly,
+                  title: const Text('Beginner-friendly only'),
+                  onChanged: (value) =>
+                      setState(() => _beginnerFriendlyOnly = value),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                SwitchListTile.adaptive(
+                  key: const Key('event-wheelchair-filter'),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  value: _wheelchairAccessibleOnly,
+                  title: const Text('Wheelchair-accessible only'),
+                  onChanged: (value) =>
+                      setState(() => _wheelchairAccessibleOnly = value),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
-          DropdownButtonFormField<String?>(
-            key: const Key('event-category-filter'),
-            initialValue: _category,
-            decoration: const InputDecoration(labelText: 'Category'),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('All categories'),
-              ),
-              for (final category in eventCategories)
-                DropdownMenuItem<String?>(
-                  value: category,
-                  child: Text(category),
-                ),
-            ],
-            onChanged: (value) => setState(() => _category = value),
-          ),
-          const SizedBox(height: 20),
-          Text('Date', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final value in const ['any', 'today', 'tomorrow', 'weekend'])
-                ChoiceChip(
-                  label: Text(eventDateFilterLabel(value)),
-                  selected: _dateFilter == value,
-                  onSelected: (_) => setState(() => _dateFilter = value),
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Text('Time', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final value in const [
-                'any',
-                'morning',
-                'afternoon',
-                'evening',
-              ])
-                ChoiceChip(
-                  label: Text(eventTimeFilterLabel(value)),
-                  selected: _timeFilter == value,
-                  onSelected: (_) => setState(() => _timeFilter = value),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SwitchListTile.adaptive(
-            key: const Key('event-spots-filter'),
-            contentPadding: EdgeInsets.zero,
-            value: _spotsOnly,
-            title: const Text('Only events with available spots'),
-            onChanged: (value) => setState(() => _spotsOnly = value),
-          ),
-          SwitchListTile.adaptive(
-            key: const Key('event-following-filter'),
-            contentPadding: EdgeInsets.zero,
-            value: _followingOnly,
-            title: const Text('Only hosts I follow'),
-            onChanged: (value) => setState(() => _followingOnly = value),
-          ),
-          const SizedBox(height: 12),
           FilledButton(
             key: const Key('apply-event-filters'),
-            onPressed: () => Navigator.pop(context, _value),
+            onPressed: () => Navigator.pop(context, _selection()),
             child: const Text('Show events'),
+          ),
+          const SizedBox(height: 4),
+          TextButton.icon(
+            key: const Key('search-alerts-action'),
+            onPressed: widget.canUseSearchAlerts
+                ? () =>
+                      Navigator.pop(context, _selection(openSearchAlerts: true))
+                : null,
+            icon: const Icon(CupertinoIcons.bell),
+            label: const Text('Search alerts'),
           ),
         ],
       ),
@@ -772,6 +878,13 @@ class _SearchAlertsSheet extends StatefulWidget {
       if (filters.timeFilter != 'any') eventTimeFilterLabel(filters.timeFilter),
       if (filters.spotsOnly) 'Open spots',
       if (filters.followingOnly) 'Following',
+      if (filters.beginnerFriendlyOnly) 'Beginner friendly',
+      if (filters.wheelchairAccessibleOnly) 'Wheelchair accessible',
+      if (filters.eventSetting != 'any')
+        eventSettingFilterLabel(filters.eventSetting),
+      if (filters.eventLanguage.trim().isNotEmpty) filters.eventLanguage.trim(),
+      if (filters.ageGuidance != 'any')
+        eventAgeFilterLabel(filters.ageGuidance),
     ];
     return String.fromCharCodes(parts.join(' · ').runes.take(80));
   }
@@ -789,6 +902,7 @@ class _SearchAlertsSheetState extends State<_SearchAlertsSheet> {
   List<SavedEventSearch>? _searches;
   String? _error;
   bool _creating = false;
+  final Set<String> _updatingIds = <String>{};
 
   @override
   void initState() {
@@ -864,6 +978,69 @@ class _SearchAlertsSheetState extends State<_SearchAlertsSheet> {
               'Search alerts are unavailable right now. Please try again later.',
         );
       }
+    }
+  }
+
+  Future<void> _toggle(SavedEventSearch search) async {
+    await _update(
+      search,
+      alertsEnabled: !search.alertsEnabled,
+      success: search.alertsEnabled ? 'Alert paused.' : 'Alert resumed.',
+    );
+  }
+
+  Future<void> _replace(SavedEventSearch search) => _update(
+    search,
+    interest: widget.interest,
+    radiusKm: widget.radiusKm,
+    filters: widget.filters,
+    success: 'Alert updated with the current search.',
+  );
+
+  Future<void> _rename(SavedEventSearch search) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _RenameSearchAlertDialog(initialName: search.name),
+    );
+    if (name == null || name.isEmpty || name == search.name) return;
+    await _update(search, name: name, success: 'Alert renamed.');
+  }
+
+  Future<void> _update(
+    SavedEventSearch search, {
+    String? name,
+    String? interest,
+    double? radiusKm,
+    EventDiscoveryFilters? filters,
+    bool? alertsEnabled,
+    required String success,
+  }) async {
+    if (_updatingIds.contains(search.id)) return;
+    setState(() {
+      _updatingIds.add(search.id);
+      _error = null;
+    });
+    try {
+      await widget.repository.updateSavedSearch(
+        search: search,
+        name: name,
+        interest: interest,
+        radiusKm: radiusKm,
+        filters: filters,
+        alertsEnabled: alertsEnabled,
+      );
+      await _load(showProgress: false);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(success)));
+      }
+    } on EdgeApiException {
+      if (mounted) {
+        setState(() => _error = 'Could not update this search alert.');
+      }
+    } finally {
+      if (mounted) setState(() => _updatingIds.remove(search.id));
     }
   }
 
@@ -979,24 +1156,122 @@ class _SearchAlertsSheetState extends State<_SearchAlertsSheet> {
                         search.filters.category!,
                       eventDateFilterLabel(search.filters.dateFilter),
                       if (search.filters.followingOnly) 'Following',
+                      if (search.filters.beginnerFriendlyOnly)
+                        'Beginner friendly',
+                      if (search.filters.wheelchairAccessibleOnly)
+                        'Wheelchair accessible',
+                      if (search.filters.eventSetting != 'any')
+                        eventSettingFilterLabel(search.filters.eventSetting),
+                      if (search.filters.eventLanguage.isNotEmpty)
+                        search.filters.eventLanguage,
+                      if (search.filters.ageGuidance != 'any')
+                        eventAgeFilterLabel(search.filters.ageGuidance),
+                      if (!search.alertsEnabled) 'Paused',
                     ].join(' · ');
                     return ListTile(
                       key: ValueKey('saved-search-${search.id}'),
-                      leading: const Icon(CupertinoIcons.bell_fill),
+                      leading: Icon(
+                        search.alertsEnabled
+                            ? CupertinoIcons.bell_fill
+                            : CupertinoIcons.bell_slash_fill,
+                      ),
                       title: Text(search.name),
                       subtitle: Text(details),
                       onTap: () => Navigator.pop(context, search),
-                      trailing: IconButton(
-                        tooltip: 'Delete saved search',
-                        onPressed: () => _delete(search),
-                        icon: const Icon(CupertinoIcons.delete),
-                      ),
+                      trailing: _updatingIds.contains(search.id)
+                          ? const CupertinoActivityIndicator()
+                          : PopupMenuButton<String>(
+                              tooltip: 'Manage search alert',
+                              onSelected: (action) async {
+                                switch (action) {
+                                  case 'toggle':
+                                    await _toggle(search);
+                                    break;
+                                  case 'rename':
+                                    await _rename(search);
+                                    break;
+                                  case 'replace':
+                                    await _replace(search);
+                                    break;
+                                  case 'delete':
+                                    await _delete(search);
+                                    break;
+                                }
+                              },
+                              itemBuilder: (_) => [
+                                PopupMenuItem(
+                                  value: 'toggle',
+                                  child: Text(
+                                    search.alertsEnabled
+                                        ? 'Pause alert'
+                                        : 'Resume alert',
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'rename',
+                                  child: Text('Rename'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'replace',
+                                  child: Text('Use current search'),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete'),
+                                ),
+                              ],
+                            ),
                     );
                   },
                 ),
         ),
       ],
     ),
+  );
+}
+
+class _RenameSearchAlertDialog extends StatefulWidget {
+  const _RenameSearchAlertDialog({required this.initialName});
+
+  final String initialName;
+
+  @override
+  State<_RenameSearchAlertDialog> createState() =>
+      _RenameSearchAlertDialogState();
+}
+
+class _RenameSearchAlertDialogState extends State<_RenameSearchAlertDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialName,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _controller.text.trim());
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Rename alert'),
+    content: TextField(
+      key: const Key('rename-search-alert-field'),
+      controller: _controller,
+      autofocus: true,
+      maxLength: 80,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _submit(),
+      decoration: const InputDecoration(labelText: 'Alert name'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: _submit, child: const Text('Save')),
+    ],
   );
 }
 

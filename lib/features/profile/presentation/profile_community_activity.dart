@@ -121,30 +121,21 @@ class _EmptyActivityMessage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 30, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
       child: Column(
         children: [
           Icon(
             CupertinoIcons.chat_bubble_2,
-            size: 30,
+            size: 26,
             color: colors.primary.withValues(alpha: 0.82),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             'No community posts yet',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
             ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            'Discussions and local tips you share will appear here.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colors.onSurfaceVariant,
-              height: 1.4,
-            ),
           ),
         ],
       ),

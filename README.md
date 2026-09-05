@@ -8,38 +8,59 @@ Android and iOS.
 ## MVP features
 
 - Google-only account creation and sign-in through Supabase Auth
+- Guided first-run setup for interests, accessibility needs, discovery radius,
+  and optional approximate home area
 - Foreground-only location permission
 - PostGIS nearby-event search at 5, 10, 25, or 50 km, with date, time,
-  category, available-place, and followed-organizer filters
-- A single Search alerts view for creating, applying, and removing reusable
-  discovery alerts, plus a dedicated feed for followed organizers
+  category, available-place, followed-organizer, indoor/outdoor, language,
+  age, beginner-friendly, and wheelchair-accessible filters
+- Editable Search alerts that can be renamed, refreshed from the current
+  filters, paused, resumed, and delivered as in-app or remote notifications
 - Draggable Gather Guide with private chat history, nearby-event questions, app
   help, preparation tips, a closable panel, and a profile settings toggle
 - Global OpenFreeMap vector map with tappable event markers and map/list switching
-- Free event creation with worldwide Geoapify address completion, venue,
-  date/time, capacity, accessibility and suitability details, plus a
-  pre-filled Create again action
-- Plans hub for Going, Maybe/Waitlist, Hosting, Saved, and Past events
+- Free event creation with worldwide Geoapify address completion, drafts,
+  public or unlisted invitations, bounded weekly/monthly recurrence, co-hosts,
+  accessibility and suitability details, plus a pre-filled Create again action
+- Plans hub for Going, Maybe/Waitlist, Hosting, Drafts, Saved, and Past events
 - Atomic Join/Tentative/Waitlist/Cancel RSVP updates with automatic promotion
-- Device and in-app reminders, native calendar handoff, and map directions
+- Device, in-app, and FCM remote reminders, native calendar handoff, and map
+  directions; notification taps open the relevant event
+- Category-level notification controls with local-time quiet hours enforced by
+  the server-side delivery claim as well as the mobile settings UI
 - Organizer editing, cancellation, attendee announcements, RSVP reconfirmation,
-  and automatic release/promotion of unconfirmed places
+  automatic release/promotion of unconfirmed places, recurring-series edit
+  scopes, an attendance roster, and a host outcome dashboard
 - Saved events, moderated attendee questions, attendance confirmation, and
   private post-event feedback
 - Privacy-aware attendee lists, per-event attendee visibility, and discussion
   notification muting that keeps essential event updates enabled
 - Shareable invitation landing pages with authenticated mobile deep links
 - High-accuracy hybrid event and discussion recommendations from recent views,
-  RSVPs, likes, and replies, with nearby/fresh cold-start feeds
+  RSVPs, likes, and replies, with nearby/fresh cold-start feeds, plain-language
+  recommendation reasons, per-item “Not for me”, category hiding, and reset or
+  full opt-out controls
 - Cloudflare edge API for event validation and request orchestration
 - Profile and approximate home area (coordinates rounded to about 1 km)
 - Professional profile with avatar, community activity, upcoming hosted events,
   owner-controlled past-event visibility, real contribution counts, identity
   editing, and grouped preference/security/privacy/account settings
-- Event reporting and user-blocking database foundations
+- Report, block/unblock, blocked-member management, and permanent account
+  deletion controls, plus a portable in-app account-data export
 - Authenticated forum posts, replies, reports, block filtering, and abuse limits
+- Member-visible report status, a role-gated moderator queue and audit trail,
+  and optional AI prioritization that leaves enforcement to a human moderator
 - Privacy-safe community JPEGs and public-place tags, backed by private R2
   storage and authenticated media routes
+- Optional AI-assisted event drafting, on-demand event translation, and
+  reviewable discussion summaries with action items, natural-language event
+  filters, and pre-publish event quality checks; every result remains editable
+  or explicitly user-triggered
+- Account-scoped encrypted offline snapshots for event discovery, plans, and
+  event details, with explicit offline banners and no offline mutations
+- Per-event discussion read cursors with an on-demand “What changed” summary
+- Structured Pages/API logs, model/push logs with sampled traces, a versioned
+  health contract, a production smoke check, and pull-request release gates
 - No price fields, payment SDK, or payment collection
 
 ## Architecture
@@ -67,6 +88,8 @@ Pages Function -> internal service binding -> model Worker
                          Cloudflare Secrets Store
                                       |
                    OpenRouter / Gemini + Voyage Rerank 2.5
+
+Supabase notification outbox -> scheduled Cloudflare Worker -> FCM / APNs
 
 Terraform
   Supabase project/settings + Cloudflare Pages project
@@ -125,6 +148,12 @@ order, so feeds remain available without AI. Cold-start members also stay
 entirely on the local nearby/fresh ranking. Signals older than 180 days are
 removed as members continue using the app.
 
+Members remain in control of this personalization. They can disable ranking,
+hide categories, dismiss individual event or discussion recommendations, and
+reset those choices. Hidden IDs and preferences are applied before model
+reranking. The API also returns a short deterministic reason for recommended
+events; it is explanatory UI, not a model-generated claim.
+
 Community presentation interleaves three personalized discussions with one
 latest active discussion. IDs are de-duplicated across both sources; if either
 source is exhausted, the other fills the remainder of the 30-item feed. Search
@@ -142,7 +171,7 @@ Requirements:
 - Flutter 3.38+ and Dart 3.10+
 - Android Studio/SDK for Android
 - JDK 21+ for Android builds (required by the MapLibre Android plugin)
-- A full Xcode installation for iOS builds
+- A full Xcode installation for iOS 15+ builds
 
 ```bash
 cp .env.example.json .env.json
@@ -158,9 +187,12 @@ at a locally installed JDK 21 or newer:
 flutter config --jdk-dir /path/to/jdk-21-or-newer
 ```
 
-Only the public Supabase URL, publishable key, Cloudflare edge API URL, and
-optional public map style URL belong in `.env.json`. The file is ignored to
-prevent accidental environment drift between developers.
+Only the public Supabase URL, publishable key, Cloudflare edge API URL,
+optional public map style URL, and Firebase mobile client identifiers belong
+in `.env.json`. Firebase's platform API keys identify a mobile app; they are not
+the server credential used to send messages. Restrict them to the matching app
+IDs in Google Cloud. The file is ignored to prevent accidental environment
+drift between developers.
 
 ### Map and address setup
 
@@ -222,6 +254,51 @@ npx supabase@latest start
 The Google client secret belongs only in Google/Supabase configuration. Never
 add it to `.env.json`, Dart defines, the Flutter bundle, or source control.
 
+### Remote notification setup
+
+Create Android and iOS apps in one Firebase project using the package/bundle ID
+`com.gather2gether.gather2gether`, enable the FCM HTTP v1 API, and copy their
+public project, sender, API-key, and app-ID values into `.env.json`. The app
+initializes Firebase from these Dart defines, registers a token only after
+Supabase sign-in, tracks token refreshes, and removes the current token before a
+manual sign-out. If the Firebase values are absent, the app continues with its
+private in-app inbox and local reminders.
+
+For iOS, open `ios/Runner.xcworkspace`, enable the Push Notifications capability
+and the Background Modes for Background fetch and Remote notifications, then
+upload an APNs `.p8` authentication key for the iOS app in Firebase. Keep
+Firebase method swizzling enabled. Test Apple delivery on a physical device.
+
+Create a dedicated Google service account with only the Firebase Cloud Messaging
+API Admin role (`roles/firebasecloudmessaging.admin`). Set its `client_email` and
+`private_key`, plus the Supabase service-role key, as masked secrets on the
+scheduled Worker. Never copy the service-account JSON or Supabase service-role
+key into `.env.json`.
+
+Update `FIREBASE_PROJECT_ID` in `wrangler.push.jsonc`, then configure and deploy
+the dispatcher using Node 22 or newer:
+
+```bash
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config wrangler.push.jsonc
+npx wrangler secret put FIREBASE_SERVICE_ACCOUNT_EMAIL --config wrangler.push.jsonc
+npx wrangler secret put FIREBASE_PRIVATE_KEY --config wrangler.push.jsonc
+npm run deploy:push
+```
+
+The one-minute Cron Trigger generates due event reminders, claims delivery rows
+with `FOR UPDATE SKIP LOCKED`, sends through FCM HTTP v1, disables invalid tokens,
+and retries transient failures with bounded exponential backoff. Delivery is
+at-least-once, so provider/network failure around acknowledgement can rarely
+produce a duplicate notification.
+
+### Moderator setup
+
+The moderation dashboard appears only when the signed-in user's trusted JWT
+`app_metadata.role` is `moderator` or `admin`; the database repeats that check
+for every queue read and action. Assign this metadata only through a trusted
+Supabase admin environment after requiring MFA for that account. Never accept a
+moderator role from user-editable profile fields or `user_metadata`.
+
 ## Verification
 
 ```bash
@@ -229,6 +306,8 @@ flutter analyze
 flutter test
 npm run test:edge
 npm run check:edge
+npm run check:assistant
+npm run check:push
 flutter build apk --debug --dart-define-from-file=.env.json
 ```
 
@@ -239,7 +318,22 @@ notification preferences, and RSVP reconfirmation:
 ```bash
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
   -f supabase/tests/practical_event_tools.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
+  -f supabase/tests/push_delivery.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
+  -f supabase/tests/product_operations.sql
 ```
+
+After deploying API version 2, verify the unauthenticated production health
+contract (override `GATHER2GETHER_API_URL` for a custom domain):
+
+```bash
+npm run check:production
+```
+
+`.github/workflows/verify.yml` runs formatting, analysis, Flutter tests, edge
+tests, and all three Cloudflare dry-run builds for every pull request and main
+branch push.
 
 The disposable live-system smoke test creates two temporary users and verifies
 Cloudflare Functions, Supabase auth/profile creation, event discovery,
@@ -283,9 +377,10 @@ npx supabase@latest db push --dry-run
 npx supabase@latest db push
 ```
 
-Deploy the private model Worker first, then the `/functions` edge API. Cloudflare
-requires the service-binding target and the Terraform-managed `USER_MEDIA` R2
-bucket to exist before Pages is deployed:
+Deploy the private model Worker first, then the `/functions` edge API and the
+separately credentialed push dispatcher. Cloudflare requires the service-binding
+target and the Terraform-managed `USER_MEDIA` R2 bucket to exist before Pages is
+deployed:
 
 ```bash
 npm exec --yes --package=node@22 --package=wrangler@latest -- \

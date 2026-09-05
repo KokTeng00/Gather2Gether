@@ -52,3 +52,4 @@ node_modules/
 # Local deployment tool caches
 .wrangler/
 supabase/.temp/
+supabase/.branches/

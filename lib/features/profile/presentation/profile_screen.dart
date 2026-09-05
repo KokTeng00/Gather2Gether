@@ -248,7 +248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 36),
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 26),
                         child: ProfileBalancedOverview(
                           profile: profile,
                           stats: _stats,
@@ -278,7 +278,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 640),
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                     child:
                         activity ??
                         ProfileCommunityActivity(

@@ -467,6 +467,12 @@ test('only media routes require the R2 binding', async () => {
     if (call.url.endsWith('/rpc/list_forum_posts')) {
       return Response.json([]);
     }
+    if (call.url.endsWith('/rpc/get_recommendation_preferences')) {
+      return Response.json([{enabled: true, hidden_categories: [], hidden_count: 0}]);
+    }
+    if (call.url.endsWith('/rpc/list_hidden_recommendation_ids')) {
+      return Response.json([]);
+    }
     throw new Error(`Unexpected RPC: ${call.url}`);
   });
 

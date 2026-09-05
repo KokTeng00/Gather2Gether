@@ -9,6 +9,9 @@
     "test:edge": "node --test edge_test/*.test.mjs",
     "check:edge": "wrangler pages functions build --outdir .wrangler/functions-build",
     "check:assistant": "wrangler deploy --config wrangler.assistant.jsonc --dry-run --outdir .wrangler/assistant-build",
+    "check:push": "wrangler deploy --config wrangler.push.jsonc --dry-run --outdir .wrangler/push-build",
+    "check:production": "node scripts/production_smoke_check.mjs",
+    "deploy:push": "wrangler deploy --config wrangler.push.jsonc",
     "deploy:cloudflare": "wrangler deploy --config wrangler.assistant.jsonc && wrangler pages deploy cloudflare/public --branch main"
   },
   "devDependencies": {

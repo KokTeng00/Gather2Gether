@@ -24,6 +24,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   PublicProfile? _profile;
   bool _loading = true;
   bool _updatingFollow = false;
+  bool _blocking = false;
   String? _error;
 
   @override
@@ -82,6 +83,44 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   }
 
+  Future<void> _blockProfile() async {
+    final profile = _profile;
+    if (profile == null || profile.viewerIsSelf || _blocking) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Block ${profile.displayName}?'),
+        content: const Text(
+          'You will no longer see each other’s events, profiles, or community activity. You can unblock them later in Privacy settings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _blocking = true);
+    try {
+      await _repository.setBlocked(profile.id, true);
+      if (mounted) Navigator.of(context).pop();
+    } on ProfileApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _blocking = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
@@ -92,6 +131,19 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               ? '@${profile!.username}'
               : 'Profile',
         ),
+        actions: [
+          if (profile != null && !profile.viewerIsSelf)
+            PopupMenuButton<String>(
+              key: const Key('public-profile-menu'),
+              enabled: !_blocking,
+              onSelected: (value) {
+                if (value == 'block') _blockProfile();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'block', child: Text('Block member')),
+              ],
+            ),
+        ],
       ),
       body: _loading && profile == null
           ? const Center(child: CupertinoActivityIndicator(radius: 14))
@@ -265,10 +317,6 @@ class _PublicProfileHero extends StatelessWidget {
                   ? OutlinedButton(
                       key: const Key('profile-follow-button'),
                       style: OutlinedButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
                         side: BorderSide(color: colors.outlineVariant),
                       ),
                       onPressed: updatingFollow ? null : onFollow,
@@ -276,12 +324,6 @@ class _PublicProfileHero extends StatelessWidget {
                     )
                   : FilledButton(
                       key: const Key('profile-follow-button'),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
                       onPressed: updatingFollow ? null : onFollow,
                       child: Text(updatingFollow ? 'Saving…' : 'Follow'),
                     ),

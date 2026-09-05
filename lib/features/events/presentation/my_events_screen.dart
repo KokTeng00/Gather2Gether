@@ -6,11 +6,11 @@ import 'package:gather2gether/features/events/data/event_reminder_service.dart';
 import 'package:gather2gether/features/events/domain/event_lifecycle.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/events/presentation/event_detail_screen.dart';
+import 'package:gather2gether/features/events/presentation/create_event_screen.dart';
 import 'package:intl/intl.dart';
 
-const _planFilters = <String>['going', 'tentative', 'hosting', 'saved', 'past'];
-
-const _planLabels = <String>['Going', 'Maybe', 'Hosting', 'Saved', 'Past'];
+const _planFilters = <String>['upcoming', 'saved', 'past'];
+const _planLabels = <String>['Upcoming', 'Saved', 'Past'];
 
 class MyEventsScreen extends StatefulWidget {
   const MyEventsScreen({this.repository, super.key});
@@ -29,6 +29,9 @@ class _MyEventsScreenState extends State<MyEventsScreen>
   List<EventSummary> _events = const [];
   bool _loading = true;
   String? _error;
+  bool _offline = false;
+  int _selectedTab = 0;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -48,38 +51,87 @@ class _MyEventsScreenState extends State<MyEventsScreen>
   }
 
   void _tabChanged() {
-    if (!_tabs.indexIsChanging) _load();
+    if (_selectedTab == _tabs.index) return;
+    _selectedTab = _tabs.index;
+    _load();
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final filter = _planFilters[_selectedTab];
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final events = await _repository.myEvents(_planFilters[_tabs.index]);
+      final filters = filter == 'upcoming'
+          ? const ['going', 'tentative', 'hosting', 'drafts']
+          : [filter];
+      final results = <({List<EventSummary> events, bool offline})>[];
+      // The repository exposes offline status for its last read. Capture it
+      // before starting the next request so mixed live/cached reads stay clear.
+      for (final filter in filters) {
+        final events = await _repository.myEvents(filter);
+        if (!mounted || generation != _loadGeneration) return;
+        results.add((events: events, offline: _repository.lastReadWasOffline));
+      }
+      // A host can also RSVP. Show each plan once in the combined timeline.
+      final eventsById = <String, EventSummary>{
+        for (final result in results)
+          for (final event in result.events) event.id: event,
+      };
+      final events = eventsById.values.toList();
+      if (filter == 'upcoming') {
+        events.sort((a, b) {
+          final aDraft = a.eventStatus == 'draft';
+          final bDraft = b.eventStatus == 'draft';
+          if (aDraft != bDraft) return aDraft ? 1 : -1;
+          final dateOrder = a.startAt.compareTo(b.startAt);
+          return dateOrder != 0 ? dateOrder : a.id.compareTo(b.id);
+        });
+      }
       for (final event in events) {
+        if (!mounted || generation != _loadGeneration) return;
         if (event.isCancelled || event.reminderAt == null) {
-          if (event.isCancelled) await _deviceReminders.cancel(event.id);
+          if (event.isCancelled) {
+            await _deviceReminders.cancel(event.id);
+          }
         } else {
           await _deviceReminders.schedule(event, event.reminderAt!);
         }
       }
-      if (mounted) setState(() => _events = events);
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _events = events;
+          _offline = results.any((result) => result.offline);
+        });
+      }
     } on EdgeApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _error = error.message);
+      }
     } catch (_) {
-      if (mounted) setState(() => _error = 'Your plans are unavailable.');
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _error = 'Your plans are unavailable.');
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _openEvent(EventSummary event) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) =>
-            EventDetailScreen(event: event, repository: _repository),
+        fullscreenDialog: event.eventStatus == 'draft',
+        builder: (routeContext) => event.eventStatus == 'draft'
+            ? CreateEventScreen(
+                initialEvent: event,
+                eventRepository: _repository,
+                onCreated: () => Navigator.pop(routeContext),
+              )
+            : EventDetailScreen(event: event, repository: _repository),
       ),
     );
     if (mounted) await _load();
@@ -105,7 +157,7 @@ class _MyEventsScreenState extends State<MyEventsScreen>
                 const Expanded(
                   child: AppPageHeader(
                     title: 'Plans',
-                    subtitle: 'Everything you saved, joined, or host.',
+                    subtitle: 'Your next plans, all in one place.',
                   ),
                 ),
                 IconButton(
@@ -120,8 +172,6 @@ class _MyEventsScreenState extends State<MyEventsScreen>
           TabBar(
             key: const Key('my-events-tabs'),
             controller: _tabs,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             tabs: [for (final label in _planLabels) Tab(text: label)],
           ),
@@ -143,21 +193,34 @@ class _MyEventsScreenState extends State<MyEventsScreen>
       );
     }
     if (_events.isEmpty) {
-      return _EmptyPlans(filter: _planFilters[_tabs.index]);
+      return _EmptyPlans(filter: _planFilters[_selectedTab]);
     }
-    return RefreshIndicator.adaptive(
-      onRefresh: _load,
-      child: ListView.separated(
-        key: const Key('my-events-list'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
-        itemCount: _events.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (context, index) {
-          final event = _events[index];
-          return _PlanCard(event: event, onTap: () => _openEvent(event));
-        },
-      ),
+    return Column(
+      children: [
+        if (_offline)
+          MaterialBanner(
+            content: const Text(
+              'Showing your most recent saved plans offline.',
+            ),
+            actions: [TextButton(onPressed: _load, child: const Text('Retry'))],
+          ),
+        Expanded(
+          child: RefreshIndicator.adaptive(
+            onRefresh: _load,
+            child: ListView.separated(
+              key: const Key('my-events-list'),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
+              itemCount: _events.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final event = _events[index];
+                return _PlanCard(event: event, onTap: () => _openEvent(event));
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -172,15 +235,17 @@ class _PlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final visual = CategoryVisual.resolve(context, event.category);
-    final status = switch (event.userRsvpStatus) {
-      'waitlisted' => 'Waitlist #${event.waitlistPosition ?? '—'}',
-      'tentative' => 'Maybe',
-      'joined' => 'Going',
-      'attended' => 'Attended',
-      _ when event.viewerIsOrganizer => 'Hosting',
-      _ when event.isSaved => 'Saved',
-      _ => null,
-    };
+    final status = event.eventStatus == 'draft'
+        ? 'Draft'
+        : switch (event.userRsvpStatus) {
+            _ when event.viewerIsOrganizer => 'Hosting',
+            'waitlisted' => 'Waitlist #${event.waitlistPosition ?? '—'}',
+            'tentative' => 'Maybe',
+            'joined' => 'Going',
+            'attended' => 'Attended',
+            _ when event.isSaved => 'Saved',
+            _ => null,
+          };
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(
@@ -230,6 +295,8 @@ class _PlanCard extends StatelessWidget {
                     Text(
                       event.isCancelled
                           ? 'Cancelled'
+                          : event.eventStatus == 'draft'
+                          ? '${event.venueName} · Draft'
                           : '${event.venueName}${status == null ? '' : ' · $status'}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -273,9 +340,7 @@ class _EmptyPlans extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final message = switch (filter) {
-      'going' => 'Events you join will appear here.',
-      'tentative' => 'Maybe responses and waitlists will appear here.',
-      'hosting' => 'Events you create will appear here.',
+      'upcoming' => 'Events you join or create will appear here.',
       'saved' => 'Save an event to keep it here without committing.',
       _ => 'Completed plans will appear here.',
     };

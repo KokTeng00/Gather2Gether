@@ -20,6 +20,48 @@ class EventAnnouncement {
   final DateTime createdAt;
 }
 
+class EventCohost {
+  const EventCohost({
+    required this.profileId,
+    required this.displayName,
+    required this.username,
+    required this.role,
+    required this.viewerCanEdit,
+  });
+
+  factory EventCohost.fromJson(Map<String, dynamic> json) => EventCohost(
+    profileId: json['profile_id'] as String,
+    displayName: (json['display_name'] as String?) ?? 'Community member',
+    username: (json['username'] as String?) ?? '',
+    role: (json['role'] as String?) ?? 'Co-host',
+    viewerCanEdit: json['viewer_can_edit'] == true,
+  );
+
+  final String profileId;
+  final String displayName;
+  final String username;
+  final String role;
+  final bool viewerCanEdit;
+}
+
+class EventDiscussionSummary {
+  const EventDiscussionSummary({
+    required this.summary,
+    required this.actionItems,
+  });
+
+  factory EventDiscussionSummary.fromJson(Map<String, dynamic> json) =>
+      EventDiscussionSummary(
+        summary: json['summary'] as String,
+        actionItems: (json['action_items'] as List<dynamic>)
+            .cast<String>()
+            .toList(growable: false),
+      );
+
+  final String summary;
+  final List<String> actionItems;
+}
+
 class EventDiscussionMessage {
   const EventDiscussionMessage({
     required this.id,

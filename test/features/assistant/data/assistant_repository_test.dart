@@ -122,4 +122,44 @@ void main() {
       ),
     );
   });
+
+  test('event drafting returns a typed editable draft', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/v1/assistant/event-draft');
+      expect(jsonDecode(request.body), {
+        'prompt': 'A relaxed photo walk for beginners',
+        'locale': 'en-DE',
+      });
+      return http.Response(
+        jsonEncode({
+          'draft': {
+            'title': 'Beginner photo walk',
+            'description': 'Practise photography together.',
+            'category': 'Photography',
+            'beginner_friendly': true,
+            'event_setting': 'outdoor',
+            'event_language': 'English',
+            'age_guidance': 'all_ages',
+            'what_to_bring': 'A phone or camera',
+          },
+        }),
+        200,
+      );
+    });
+    final repository = AssistantRepository(
+      httpClient: client,
+      accessTokenProvider: () => 'access-token',
+      edgeApiUrl: apiUrl,
+    );
+
+    final draft = await repository.draftEvent(
+      prompt: ' A relaxed photo walk for beginners ',
+      locale: 'en-DE',
+    );
+
+    expect(draft.title, 'Beginner photo walk');
+    expect(draft.category, 'Photography');
+    expect(draft.beginnerFriendly, isTrue);
+  });
 }

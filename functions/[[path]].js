@@ -6,7 +6,7 @@ export function onRequest(context) {
   const invite = INVITE_PATH.exec(url.pathname);
   if ((request?.method ?? 'GET') === 'GET' && invite !== null) {
     const eventId = invite[1].toLowerCase();
-    const appLink = `gather2gether://event/${eventId}`;
+    const appLink = `gather2gether://event/${eventId}?invite=1`;
     return new Response(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Gather2Gether invitation</title><style>

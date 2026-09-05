@@ -5,6 +5,7 @@ import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/profile/domain/profile_stats.dart';
 import 'package:gather2gether/features/profile/domain/public_profile.dart';
+import 'package:gather2gether/features/profile/domain/member_controls.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -42,6 +43,11 @@ class ProfileRepository {
   static const _profileFields =
       'display_name, username, bio, city, preferred_radius_km, '
       'approximate_latitude, approximate_longitude, assistant_enabled, '
+      'show_past_events_public, avatar_image_key, username_changed_at, updated_at, '
+      'interests, accessibility_preferences, onboarding_completed_at';
+  static const _preOperationsProfileFields =
+      'display_name, username, bio, city, preferred_radius_km, '
+      'approximate_latitude, approximate_longitude, assistant_enabled, '
       'show_past_events_public, avatar_image_key, username_changed_at, updated_at';
   static const _prePastVisibilityProfileFields =
       'display_name, username, bio, city, preferred_radius_km, '
@@ -72,6 +78,13 @@ class ProfileRepository {
       final response = await _fetchOwnProfileRow(userId, _profileFields);
       return UserProfile.fromJson(response);
     } on PostgrestException catch (error) {
+      if (_isMissingOperationsColumn(error)) {
+        final response = await _fetchOwnProfileRow(
+          userId,
+          _preOperationsProfileFields,
+        );
+        return UserProfile.fromJson(response);
+      }
       // Keep read-only profile screens available during the short deployment
       // window between shipping the app and applying profile migrations.
       if (_isMissingPastVisibilityColumn(error)) {
@@ -116,17 +129,11 @@ class ProfileRepository {
     required String bio,
     required String city,
   }) async {
-    final userId = _requireUserId();
-    bool? showPastEventsPublic;
+    _requireUserId();
+    UserProfile? currentProfile;
     try {
-      final visibility = await _fetchOwnProfileRow(
-        userId,
-        'show_past_events_public',
-      );
-      showPastEventsPublic = visibility['show_past_events_public'] == true;
-    } on PostgrestException catch (error) {
-      if (!_isMissingPastVisibilityColumn(error)) rethrow;
-    }
+      currentProfile = await fetchOwnProfile();
+    } catch (_) {}
     try {
       final response = await _client.rpc(
         'update_own_profile_identity',
@@ -138,9 +145,14 @@ class ProfileRepository {
         },
       );
       final updated = UserProfile.fromJson(_singleRow(response));
-      return showPastEventsPublic == null
+      return currentProfile == null
           ? updated
-          : updated.copyWith(showPastEventsPublic: showPastEventsPublic);
+          : updated.copyWith(
+              showPastEventsPublic: currentProfile.showPastEventsPublic,
+              interests: currentProfile.interests,
+              accessibilityPreferences: currentProfile.accessibilityPreferences,
+              onboardingCompletedAt: currentProfile.onboardingCompletedAt,
+            );
     } on PostgrestException catch (error) {
       throw switch (error.message) {
         'profile_username_cooldown' => const ProfileApiException(
@@ -296,6 +308,174 @@ class ProfileRepository {
     return payload['following'] == true;
   }
 
+  Future<bool> setBlocked(String profileId, bool blocked) async {
+    final payload = _responseMap(
+      await _edgeRequest(
+        blocked ? 'PUT' : 'DELETE',
+        'profiles/${Uri.encodeComponent(profileId)}/block',
+      ),
+    );
+    return payload['blocked'] == true;
+  }
+
+  Future<List<BlockedProfile>> blockedProfiles() async {
+    final payload = _responseMap(await _edgeRequest('GET', 'blocks'));
+    final rows = payload['data'];
+    if (rows is! List<dynamic>) {
+      throw const FormatException('Invalid blocked profiles response.');
+    }
+    return rows
+        .map((row) => BlockedProfile.fromJson(_responseMap(row)))
+        .toList(growable: false);
+  }
+
+  Future<void> completeOnboarding({
+    required List<String> interests,
+    required List<String> accessibilityPreferences,
+    required double radiusKm,
+    double? latitude,
+    double? longitude,
+  }) => _edgeRequest(
+    'POST',
+    'onboarding',
+    body: {
+      'interests': interests,
+      'accessibility_preferences': accessibilityPreferences,
+      'radius_km': radiusKm,
+      'latitude': latitude,
+      'longitude': longitude,
+    },
+  );
+
+  Future<NotificationPreferences> notificationPreferences() async {
+    final payload = _responseMap(
+      await _edgeRequest('GET', 'notification-preferences'),
+    );
+    return NotificationPreferences.fromJson(_responseMap(payload['data']));
+  }
+
+  Future<void> updateNotificationPreferences(
+    NotificationPreferences preferences,
+  ) => _edgeRequest(
+    'PUT',
+    'notification-preferences',
+    body: preferences
+        .copyWith(
+          timezoneOffsetMinutes: DateTime.now().timeZoneOffset.inMinutes,
+        )
+        .toJson(),
+  );
+
+  Future<RecommendationPreferences> recommendationPreferences() async {
+    final payload = _responseMap(
+      await _edgeRequest('GET', 'recommendations/preferences'),
+    );
+    return RecommendationPreferences.fromJson(_responseMap(payload['data']));
+  }
+
+  Future<void> updateRecommendationPreferences({
+    required bool enabled,
+    required List<String> hiddenCategories,
+  }) => _edgeRequest(
+    'PUT',
+    'recommendations/preferences',
+    body: {'enabled': enabled, 'hidden_categories': hiddenCategories},
+  );
+
+  Future<void> resetRecommendationControls() =>
+      _edgeRequest('DELETE', 'recommendations/preferences');
+
+  Future<List<MemberReport>> ownReports() async {
+    final payload = _responseMap(await _edgeRequest('GET', 'reports/mine'));
+    final rows = payload['data'];
+    if (rows is! List<dynamic>) {
+      throw const FormatException('Invalid report status response.');
+    }
+    return rows
+        .map((row) => MemberReport.fromJson(_responseMap(row)))
+        .toList(growable: false);
+  }
+
+  Future<String> exportOwnData() async {
+    final payload = _responseMap(await _edgeRequest('GET', 'account/export'));
+    return const JsonEncoder.withIndent('  ').convert(payload['data']);
+  }
+
+  Future<bool> isModerator() async {
+    final payload = _responseMap(
+      await _edgeRequest('GET', 'moderation/status'),
+    );
+    return payload['moderator'] == true;
+  }
+
+  Future<Map<String, int>> moderationOverview() async {
+    final payload = _responseMap(
+      await _edgeRequest('GET', 'moderation/overview'),
+    );
+    final data = _responseMap(payload['data']);
+    return data.map(
+      (key, value) => MapEntry(key, (value as num?)?.toInt() ?? 0),
+    );
+  }
+
+  Future<List<ModerationReport>> moderationReports({
+    String status = 'open',
+  }) async {
+    final payload = _responseMap(
+      await _edgeRequest(
+        'GET',
+        'moderation/reports?status=${Uri.encodeQueryComponent(status)}',
+      ),
+    );
+    final rows = payload['data'];
+    if (rows is! List<dynamic>) {
+      throw const FormatException('Invalid moderation report response.');
+    }
+    return rows
+        .map((row) => ModerationReport.fromJson(_responseMap(row)))
+        .toList(growable: false);
+  }
+
+  Future<Map<String, ({String priority, String reason})>>
+  triageReports() async {
+    final payload = _responseMap(
+      await _edgeRequest('POST', 'moderation/triage'),
+    );
+    final rows = payload['data'];
+    if (rows is! List<dynamic>) {
+      throw const FormatException('Invalid moderation triage response.');
+    }
+    return {
+      for (final row in rows)
+        if (row is Map && row['report_id'] is String)
+          row['report_id'] as String: (
+            priority: row['priority'] as String,
+            reason: row['reason'] as String,
+          ),
+    };
+  }
+
+  Future<void> moderateReport({
+    required String reportKind,
+    required String reportId,
+    required String action,
+    String note = '',
+  }) => _edgeRequest(
+    'POST',
+    'moderation/action',
+    body: {
+      'report_kind': reportKind,
+      'report_id': reportId,
+      'action': action,
+      'note': note.trim(),
+    },
+  );
+
+  Future<void> deleteAccount() async {
+    await _edgeRequest('DELETE', 'account', body: {'confirmation': 'DELETE'});
+    await _client.auth.signOut();
+  }
+
   String publicAvatarUrl(PublicProfile profile) {
     final base = _edgeApiUrl.endsWith('/')
         ? _edgeApiUrl.substring(0, _edgeApiUrl.length - 1)
@@ -313,7 +493,11 @@ class ProfileRepository {
         : {'Authorization': 'Bearer $token'};
   }
 
-  Future<Object?> _edgeRequest(String method, String path) async {
+  Future<Object?> _edgeRequest(
+    String method,
+    String path, {
+    Map<String, Object?>? body,
+  }) async {
     final token = _accessToken;
     if (token == null || token.isEmpty) {
       throw const ProfileApiException(
@@ -329,7 +513,9 @@ class ProfileRepository {
       ..headers.addAll({
         'Authorization': 'Bearer $token',
         'Accept': 'application/json',
+        if (body != null) 'Content-Type': 'application/json',
       });
+    if (body != null) request.body = jsonEncode(body);
     final streamed = await _httpClient.send(request).timeout(_timeout);
     final response = await http.Response.fromStream(streamed);
     Object? payload;
@@ -430,6 +616,13 @@ class ProfileRepository {
 
   bool _isMissingPastVisibilityColumn(PostgrestException error) {
     return error.message.toLowerCase().contains('show_past_events_public');
+  }
+
+  bool _isMissingOperationsColumn(PostgrestException error) {
+    final message = error.message.toLowerCase();
+    return message.contains('interests') ||
+        message.contains('accessibility_preferences') ||
+        message.contains('onboarding_completed_at');
   }
 
   Map<String, dynamic> _singleRow(Object? response) {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:gather2gether/core/constants/event_categories.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/core/validation/validators.dart';
+import 'package:gather2gether/features/assistant/data/assistant_repository.dart';
 import 'package:gather2gether/features/events/data/event_repository.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/places/data/place_repository.dart';
@@ -31,16 +32,20 @@ class CreateEventScreen extends StatefulWidget {
     required this.onCreated,
     this.placeRepository,
     this.eventRepository,
+    this.assistantRepository,
     this.initialEvent,
     this.templateEvent,
+    this.editScope = 'this',
     super.key,
   }) : assert(initialEvent == null || templateEvent == null);
 
   final VoidCallback onCreated;
   final PlaceRepository? placeRepository;
   final EventRepository? eventRepository;
+  final AssistantRepository? assistantRepository;
   final EventSummary? initialEvent;
   final EventSummary? templateEvent;
+  final String editScope;
 
   @override
   State<CreateEventScreen> createState() => _CreateEventScreenState();
@@ -56,6 +61,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   late final TextEditingController _languageController;
   late final TextEditingController _whatToBringController;
   late final EventRepository _events;
+  late final AssistantRepository _assistant;
   late final PlaceRepository _places;
 
   String _category = eventCategories.first;
@@ -66,10 +72,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   double? _longitude;
   bool _addressMatched = false;
   bool _submitting = false;
+  bool _generatingDraft = false;
   bool _beginnerFriendly = false;
   bool _wheelchairAccessible = false;
   String _eventSetting = 'Not specified';
   String _ageGuidance = 'All ages';
+  String _visibility = 'Public';
+  String _repeat = 'Does not repeat';
 
   @override
   void initState() {
@@ -85,6 +94,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     _languageController = TextEditingController(text: event?.eventLanguage);
     _whatToBringController = TextEditingController(text: event?.whatToBring);
     _events = widget.eventRepository ?? EventRepository();
+    _assistant = widget.assistantRepository ?? AssistantRepository();
     _places = widget.placeRepository ?? PlaceRepository();
     if (event != null) {
       _category = event.category;
@@ -117,6 +127,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         'adults' => 'Adults only',
         _ => 'All ages',
       };
+      _visibility = event.eventVisibility == 'unlisted'
+          ? 'Unlisted · invite only'
+          : 'Public';
     }
   }
 
@@ -204,10 +217,56 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     });
   }
 
-  Future<void> _submit() async {
+  Future<void> _draftWithAi() async {
+    if (_generatingDraft || _submitting) return;
+    final prompt = await showDialog<String>(
+      context: context,
+      builder: (_) => const _EventIdeaDialog(),
+    );
+    if (prompt == null || !mounted) return;
+    setState(() => _generatingDraft = true);
+    try {
+      final draft = await _assistant.draftEvent(
+        prompt: prompt,
+        locale: Localizations.localeOf(context).toLanguageTag(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _titleController.text = draft.title;
+        _descriptionController.text = draft.description;
+        _category = draft.category;
+        _beginnerFriendly = draft.beginnerFriendly;
+        _eventSetting = switch (draft.eventSetting) {
+          'indoor' => 'Indoor',
+          'outdoor' => 'Outdoor',
+          'mixed' => 'Mixed',
+          _ => 'Not specified',
+        };
+        _languageController.text = draft.eventLanguage;
+        _ageGuidance = switch (draft.ageGuidance) {
+          'families' => 'Family friendly',
+          'teens' => 'Teens',
+          'adults' => 'Adults only',
+          _ => 'All ages',
+        };
+        _whatToBringController.text = draft.whatToBring;
+      });
+      _showError('Draft added. Review the details before publishing.');
+    } on AssistantApiException catch (error) {
+      _showError(error.message);
+    } on TimeoutException {
+      _showError('Drafting took too long. Please try again.');
+    } catch (_) {
+      _showError('Could not create a draft right now.');
+    } finally {
+      if (mounted) setState(() => _generatingDraft = false);
+    }
+  }
+
+  Future<void> _submit({required bool publish}) async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     if (_latitude == null || _longitude == null) {
-      _showError('Set the event location before publishing.');
+      _showError('Set the event location before saving.');
       return;
     }
     final startAt = _combine(_date, _startTime);
@@ -224,44 +283,29 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     FocusScope.of(context).unfocus();
     setState(() => _submitting = true);
     try {
-      final input = CreateEventInput(
-        title: _titleController.text,
-        description: _descriptionController.text,
-        category: _category,
-        venueName: _venueController.text,
-        address: _addressController.text,
-        latitude: _latitude!,
-        longitude: _longitude!,
+      final input = _eventInput(
+        publish: publish,
         startAt: startAt,
         endAt: endAt,
-        maxParticipants: int.parse(_limitController.text),
-        beginnerFriendly: _beginnerFriendly,
-        wheelchairAccessible: _wheelchairAccessible,
-        eventSetting: switch (_eventSetting) {
-          'Indoor' => 'indoor',
-          'Outdoor' => 'outdoor',
-          'Mixed' => 'mixed',
-          _ => 'unspecified',
-        },
-        eventLanguage: _languageController.text,
-        ageGuidance: switch (_ageGuidance) {
-          'Family friendly' => 'families',
-          'Teens' => 'teens',
-          'Adults only' => 'adults',
-          _ => 'all_ages',
-        },
-        whatToBring: _whatToBringController.text,
       );
       final event = widget.initialEvent;
       if (event == null) {
         await _events.createEvent(input);
+      } else if (event.eventSeriesId != null && widget.editScope != 'this') {
+        await _events.updateEventSeries(event.id, widget.editScope, input);
       } else {
         await _events.updateEvent(event.id, input);
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(event == null ? 'Event published.' : 'Event updated.'),
+          content: Text(
+            publish
+                ? (_repeat == 'Does not repeat' || event != null
+                      ? 'Event published.'
+                      : 'Event series published.')
+                : (event == null ? 'Draft saved.' : 'Draft updated.'),
+          ),
         ),
       );
       widget.onCreated();
@@ -275,6 +319,55 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       if (mounted) setState(() => _submitting = false);
     }
   }
+
+  CreateEventInput _eventInput({
+    required bool publish,
+    required DateTime startAt,
+    required DateTime endAt,
+  }) => CreateEventInput(
+    title: _titleController.text,
+    description: _descriptionController.text,
+    category: _category,
+    venueName: _venueController.text,
+    address: _addressController.text,
+    latitude: _latitude!,
+    longitude: _longitude!,
+    startAt: startAt,
+    endAt: endAt,
+    maxParticipants: int.tryParse(_limitController.text) ?? 2,
+    beginnerFriendly: _beginnerFriendly,
+    wheelchairAccessible: _wheelchairAccessible,
+    eventSetting: switch (_eventSetting) {
+      'Indoor' => 'indoor',
+      'Outdoor' => 'outdoor',
+      'Mixed' => 'mixed',
+      _ => 'unspecified',
+    },
+    eventLanguage: _languageController.text,
+    ageGuidance: switch (_ageGuidance) {
+      'Family friendly' => 'families',
+      'Teens' => 'teens',
+      'Adults only' => 'adults',
+      _ => 'all_ages',
+    },
+    whatToBring: _whatToBringController.text,
+    status: publish ? 'published' : 'draft',
+    visibility: _visibility == 'Unlisted · invite only' ? 'unlisted' : 'public',
+    repeatInterval: !publish || widget.initialEvent != null
+        ? 'none'
+        : switch (_repeat) {
+            'Weekly · 4 events' => 'weekly',
+            'Monthly · 3 events' => 'monthly',
+            _ => 'none',
+          },
+    repeatCount: !publish || widget.initialEvent != null
+        ? 1
+        : switch (_repeat) {
+            'Weekly · 4 events' => 4,
+            'Monthly · 3 events' => 3,
+            _ => 1,
+          },
+  );
 
   void _showError(String message) {
     if (!mounted) return;
@@ -301,10 +394,10 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       appBar: AppBar(
         title: Text(
           widget.initialEvent != null
-              ? 'Edit Event'
+              ? 'Edit event'
               : widget.templateEvent != null
-              ? 'Create Again'
-              : 'New Event',
+              ? 'Create again'
+              : 'New event',
         ),
         leading: IconButton(
           tooltip: 'Close',
@@ -318,30 +411,45 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           key: _formKey,
           child: ListView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 36),
             children: [
               Text(
                 widget.initialEvent != null
-                    ? 'Update the plan'
-                    : widget.templateEvent != null
-                    ? 'Run it again'
-                    : 'Make a plan',
-                style: Theme.of(context).textTheme.displaySmall,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                widget.initialEvent != null
-                    ? 'Attendees will receive an in-app update when you save.'
+                    ? 'Update the details below. Attendees will be notified when you save.'
                     : widget.templateEvent != null
                     ? 'The previous details are ready. Check the new date and publish.'
-                    : 'Add the essentials. People can join as soon as you publish.',
-                style: TextStyle(
+                    : 'Add the essentials first. You can include more detail before publishing.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.4,
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
               AppSection(
-                title: 'About',
+                title: 'Basics',
+                action:
+                    widget.initialEvent == null && widget.templateEvent == null
+                    ? TextButton.icon(
+                        key: const Key('event-ai-draft-button'),
+                        onPressed: _generatingDraft || _submitting
+                            ? null
+                            : _draftWithAi,
+                        style: TextButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: _generatingDraft
+                            ? const CupertinoActivityIndicator(radius: 7)
+                            : const Icon(CupertinoIcons.pencil, size: 17),
+                        label: Text(
+                          _generatingDraft ? 'Writing…' : 'Help me write',
+                        ),
+                      )
+                    : null,
                 child: Column(
                   children: [
                     TextFormField(
@@ -350,7 +458,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       maxLength: 120,
                       decoration: _fieldDecoration(
                         'Event title',
-                        CupertinoIcons.sparkles,
+                        CupertinoIcons.textformat,
                       ).copyWith(counterText: ''),
                       validator: (value) => Validators.requiredText(
                         value,
@@ -385,9 +493,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
               const SizedBox(height: 24),
               AppSection(
-                title: 'Where',
+                title: 'Location',
                 footer:
-                    'Choose a suggested address so its global map pin matches.',
+                    'Choose a suggested address so people can find the right place.',
                 child: Column(
                   children: [
                     TextFormField(
@@ -423,7 +531,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
               const SizedBox(height: 24),
               AppSection(
-                title: 'When',
+                title: 'Date and time',
                 child: Column(
                   children: [
                     _ActionRow(
@@ -451,11 +559,21 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
               const SizedBox(height: 24),
               AppSection(
-                title: 'Good to know',
+                title: 'Details',
                 footer:
-                    'These details help people quickly decide whether the event works for them.',
+                    'Optional details help people decide whether the event works for them.',
                 child: Column(
                   children: [
+                    TextFormField(
+                      controller: _limitController,
+                      keyboardType: TextInputType.number,
+                      decoration: _fieldDecoration(
+                        'Maximum number of people',
+                        CupertinoIcons.person_2,
+                      ),
+                      validator: Validators.participantLimit,
+                    ),
+                    const Divider(indent: 52),
                     SwitchListTile.adaptive(
                       key: const Key('event-beginner-friendly'),
                       value: _beginnerFriendly,
@@ -540,21 +658,42 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               ),
               const SizedBox(height: 24),
               AppSection(
-                title: 'Group size',
-                footer: 'Choose between 2 and 500 people.',
-                child: TextFormField(
-                  controller: _limitController,
-                  keyboardType: TextInputType.number,
-                  decoration: _fieldDecoration(
-                    'Participant limit',
-                    CupertinoIcons.person_2,
-                  ),
-                  validator: Validators.participantLimit,
+                title: 'Visibility',
+                footer: _visibility == 'Unlisted · invite only'
+                    ? 'Only people with your invite link can open this event. It will not appear in Discover.'
+                    : 'Public events can appear in Discover and search alerts.',
+                child: Column(
+                  children: [
+                    AppChoiceField(
+                      key: const Key('event-visibility-field'),
+                      value: _visibility,
+                      options: const ['Public', 'Unlisted · invite only'],
+                      label: 'Who can find it',
+                      enabled: !_submitting,
+                      onChanged: (value) => setState(() => _visibility = value),
+                    ),
+                    if (widget.initialEvent == null) ...[
+                      const Divider(indent: 52),
+                      AppChoiceField(
+                        key: const Key('event-repeat-field'),
+                        value: _repeat,
+                        options: const [
+                          'Does not repeat',
+                          'Weekly · 4 events',
+                          'Monthly · 3 events',
+                        ],
+                        label: 'Repeat',
+                        enabled: !_submitting,
+                        onChanged: (value) => setState(() => _repeat = value),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const SizedBox(height: 28),
               FilledButton.icon(
-                onPressed: _submitting ? null : _submit,
+                key: const Key('publish-event-button'),
+                onPressed: _submitting ? null : () => _submit(publish: true),
                 icon: _submitting
                     ? CupertinoActivityIndicator(
                         color: Theme.of(context).colorScheme.onPrimary,
@@ -565,11 +704,25 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       ? (widget.initialEvent == null
                             ? 'Publishing…'
                             : 'Saving…')
-                      : (widget.initialEvent == null
-                            ? 'Publish Free Event'
-                            : 'Save Changes'),
+                      : (widget.initialEvent?.eventStatus == 'draft'
+                            ? 'Publish event'
+                            : widget.initialEvent == null
+                            ? (_repeat == 'Does not repeat'
+                                  ? 'Publish event'
+                                  : 'Publish event series')
+                            : 'Save changes'),
                 ),
               ),
+              if (widget.initialEvent == null ||
+                  widget.initialEvent?.eventStatus == 'draft') ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  key: const Key('save-event-draft-button'),
+                  onPressed: _submitting ? null : () => _submit(publish: false),
+                  icon: const Icon(CupertinoIcons.doc),
+                  label: const Text('Save draft'),
+                ),
+              ],
               const SizedBox(height: 10),
               Text(
                 'Every event on Gather2Gether is free.',
@@ -585,6 +738,64 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       ),
     );
   }
+}
+
+class _EventIdeaDialog extends StatefulWidget {
+  const _EventIdeaDialog();
+
+  @override
+  State<_EventIdeaDialog> createState() => _EventIdeaDialogState();
+}
+
+class _EventIdeaDialogState extends State<_EventIdeaDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Start with an idea'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Tell us what you want to organize. We’ll fill in editable basics, but leave the place and time to you.',
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('event-ai-idea-field'),
+          controller: _controller,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 6,
+          maxLength: 1000,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            hintText: 'A relaxed photo walk for beginners…',
+          ),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        key: const Key('event-ai-generate-button'),
+        onPressed: () {
+          final prompt = _controller.text.trim();
+          Navigator.pop(context, prompt.length >= 10 ? prompt : null);
+        },
+        child: const Text('Fill the basics'),
+      ),
+    ],
+  );
 }
 
 class _ActionRow extends StatelessWidget {

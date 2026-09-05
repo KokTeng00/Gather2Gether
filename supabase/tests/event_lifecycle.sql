@@ -146,11 +146,19 @@ begin
 end;
 $$;
 
+select set_config(
+  'request.jwt.claim.sub', '10000000-0000-4000-8000-000000000003', true
+);
+
 set local role authenticated;
 update public.profiles
 set show_past_events_public = true
 where id = '10000000-0000-4000-8000-000000000003';
 reset role;
+
+select set_config(
+  'request.jwt.claim.sub', '10000000-0000-4000-8000-000000000002', true
+);
 
 do $$
 begin

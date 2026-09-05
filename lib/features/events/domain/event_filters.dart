@@ -5,6 +5,11 @@ class EventDiscoveryFilters {
     this.timeFilter = 'any',
     this.spotsOnly = false,
     this.followingOnly = false,
+    this.beginnerFriendlyOnly = false,
+    this.wheelchairAccessibleOnly = false,
+    this.eventSetting = 'any',
+    this.eventLanguage = '',
+    this.ageGuidance = 'any',
   });
 
   final String? category;
@@ -12,13 +17,23 @@ class EventDiscoveryFilters {
   final String timeFilter;
   final bool spotsOnly;
   final bool followingOnly;
+  final bool beginnerFriendlyOnly;
+  final bool wheelchairAccessibleOnly;
+  final String eventSetting;
+  final String eventLanguage;
+  final String ageGuidance;
 
   bool get isActive =>
       category != null ||
       dateFilter != 'any' ||
       timeFilter != 'any' ||
       spotsOnly ||
-      followingOnly;
+      followingOnly ||
+      beginnerFriendlyOnly ||
+      wheelchairAccessibleOnly ||
+      eventSetting != 'any' ||
+      eventLanguage.trim().isNotEmpty ||
+      ageGuidance != 'any';
 
   ({DateTime? startFrom, DateTime? startBefore}) dateRange(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
@@ -56,12 +71,23 @@ class EventDiscoveryFilters {
     String? timeFilter,
     bool? spotsOnly,
     bool? followingOnly,
+    bool? beginnerFriendlyOnly,
+    bool? wheelchairAccessibleOnly,
+    String? eventSetting,
+    String? eventLanguage,
+    String? ageGuidance,
   }) => EventDiscoveryFilters(
     category: clearCategory ? null : category ?? this.category,
     dateFilter: dateFilter ?? this.dateFilter,
     timeFilter: timeFilter ?? this.timeFilter,
     spotsOnly: spotsOnly ?? this.spotsOnly,
     followingOnly: followingOnly ?? this.followingOnly,
+    beginnerFriendlyOnly: beginnerFriendlyOnly ?? this.beginnerFriendlyOnly,
+    wheelchairAccessibleOnly:
+        wheelchairAccessibleOnly ?? this.wheelchairAccessibleOnly,
+    eventSetting: eventSetting ?? this.eventSetting,
+    eventLanguage: eventLanguage ?? this.eventLanguage,
+    ageGuidance: ageGuidance ?? this.ageGuidance,
   );
 }
 
@@ -89,6 +115,11 @@ class SavedEventSearch {
         timeFilter: (json['time_filter'] as String?) ?? 'any',
         spotsOnly: json['spots_only'] == true,
         followingOnly: json['following_only'] == true,
+        beginnerFriendlyOnly: json['beginner_friendly_only'] == true,
+        wheelchairAccessibleOnly: json['wheelchair_accessible_only'] == true,
+        eventSetting: (json['event_setting'] as String?) ?? 'any',
+        eventLanguage: (json['event_language'] as String?) ?? '',
+        ageGuidance: (json['age_guidance'] as String?) ?? 'any',
       ),
       alertsEnabled: json['alerts_enabled'] != false,
       createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
@@ -116,4 +147,19 @@ String eventTimeFilterLabel(String value) => switch (value) {
   'afternoon' => 'Afternoon',
   'evening' => 'Evening',
   _ => 'Any time',
+};
+
+String eventSettingFilterLabel(String value) => switch (value) {
+  'indoor' => 'Indoor',
+  'outdoor' => 'Outdoor',
+  'mixed' => 'Mixed',
+  _ => 'Any setting',
+};
+
+String eventAgeFilterLabel(String value) => switch (value) {
+  'all_ages' => 'All ages',
+  'families' => 'Family friendly',
+  'teens' => 'Teens',
+  'adults' => 'Adults only',
+  _ => 'Any age guidance',
 };

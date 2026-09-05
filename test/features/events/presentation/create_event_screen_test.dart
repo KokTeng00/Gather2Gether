@@ -2,13 +2,66 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gather2gether/features/assistant/data/assistant_repository.dart';
+import 'package:gather2gether/features/assistant/domain/assistant_message.dart';
 import 'package:gather2gether/features/events/presentation/create_event_screen.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/places/data/place_repository.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+class _FakeAssistantRepository extends AssistantRepository {
+  _FakeAssistantRepository()
+    : super(
+        accessTokenProvider: () => 'token',
+        edgeApiUrl: 'https://example.test/api/v1',
+      );
+
+  @override
+  Future<AssistantEventDraft> draftEvent({
+    required String prompt,
+    required String locale,
+  }) async => const AssistantEventDraft(
+    title: 'Beginner photo walk',
+    description: 'Practise street photography together at a relaxed pace.',
+    category: 'Photography',
+    beginnerFriendly: true,
+    eventSetting: 'outdoor',
+    eventLanguage: 'English',
+    ageGuidance: 'all_ages',
+    whatToBring: 'A phone or camera',
+  );
+}
+
 void main() {
+  testWidgets('new event hierarchy stays usable on a compact phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: const TextScaler.linear(1.4)),
+          child: child!,
+        ),
+        home: CreateEventScreen(onCreated: () {}),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('New event'), findsOneWidget);
+    expect(find.text('Basics'), findsOneWidget);
+    expect(find.byKey(const Key('event-ai-draft-button')), findsOneWidget);
+    expect(find.byKey(const Key('event-ai-quality-button')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('event category uses the simple app choice sheet', (
     tester,
   ) async {
@@ -19,6 +72,10 @@ void main() {
 
     expect(find.byKey(const Key('event-category-field')), findsOneWidget);
     expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byKey(const Key('event-ai-quality-button')), findsNothing);
+    expect(find.text('Check event quality with AI'), findsNothing);
+    expect(find.text('Basics'), findsOneWidget);
+    expect(find.text('Make a plan'), findsNothing);
 
     await tester.tap(find.byKey(const Key('event-category-field')));
     await tester.pumpAndSettle();
@@ -163,8 +220,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('Create Again'), findsOneWidget);
-    expect(find.text('Run it again'), findsOneWidget);
+    expect(find.text('Create again'), findsOneWidget);
     expect(find.text('Morning Run'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.byKey(const Key('event-beginner-friendly')),
@@ -178,4 +234,59 @@ void main() {
     );
     expect(language.controller?.text, 'English');
   });
+
+  testWidgets('AI drafting fills editable fields without publishing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CreateEventScreen(
+          onCreated: () {},
+          assistantRepository: _FakeAssistantRepository(),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('event-ai-draft-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('event-ai-idea-field')),
+      'A welcoming photography walk for complete beginners',
+    );
+    await tester.tap(find.byKey(const Key('event-ai-generate-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Beginner photo walk'), findsOneWidget);
+    expect(find.text('Photography'), findsOneWidget);
+    expect(
+      find.text('Draft added. Review the details before publishing.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'publishing controls expose unlisted and bounded repeat options',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: CreateEventScreen(onCreated: () {})),
+      );
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('event-visibility-field')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byKey(const Key('event-visibility-field')), findsOneWidget);
+      expect(find.byKey(const Key('event-repeat-field')), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('save-event-draft-button')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byKey(const Key('save-event-draft-button')), findsOneWidget);
+    },
+  );
 }

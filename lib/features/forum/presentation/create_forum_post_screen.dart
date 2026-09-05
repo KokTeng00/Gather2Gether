@@ -7,17 +7,22 @@ import 'package:gather2gether/core/media/app_image_picker.dart';
 import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/forum/data/forum_repository.dart';
+import 'package:gather2gether/features/places/data/place_repository.dart';
+import 'package:gather2gether/features/places/presentation/place_autocomplete_field.dart';
 
 class CreateForumPostScreen extends StatefulWidget {
   const CreateForumPostScreen({
     super.key,
     ForumRepository? repository,
     AppImagePicker? imagePicker,
+    PlaceRepository? placeRepository,
   }) : _repository = repository,
-       _imagePicker = imagePicker;
+       _imagePicker = imagePicker,
+       _placeRepository = placeRepository;
 
   final ForumRepository? _repository;
   final AppImagePicker? _imagePicker;
+  final PlaceRepository? _placeRepository;
 
   @override
   State<CreateForumPostScreen> createState() => _CreateForumPostScreenState();
@@ -29,6 +34,7 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
   final _body = TextEditingController();
   late final ForumRepository _repository;
   late final AppImagePicker _imagePicker;
+  late final PlaceRepository _places;
   String _category = forumCategories.first;
   PreparedImage? _image;
   String? _placeName;
@@ -41,6 +47,7 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
     super.initState();
     _repository = widget._repository ?? ForumRepository();
     _imagePicker = widget._imagePicker ?? AppImagePicker();
+    _places = widget._placeRepository ?? PlaceRepository();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_recoverLostImage());
     });
@@ -143,6 +150,7 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
       useSafeArea: true,
       showDragHandle: true,
       builder: (_) => _PlaceEditorSheet(
+        repository: _places,
         initialName: _placeName,
         initialAddress: _placeAddress,
       ),
@@ -640,8 +648,13 @@ class _PlaceDraft {
 }
 
 class _PlaceEditorSheet extends StatefulWidget {
-  const _PlaceEditorSheet({this.initialName, this.initialAddress});
+  const _PlaceEditorSheet({
+    required this.repository,
+    this.initialName,
+    this.initialAddress,
+  });
 
+  final PlaceRepository repository;
   final String? initialName;
   final String? initialAddress;
 
@@ -734,20 +747,25 @@ class _PlaceEditorSheetState extends State<_PlaceEditorSheet> {
                 validator: _validateName,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                key: const Key('forum-place-address'),
+              PlaceAutocompleteField(
+                fieldKey: const Key('forum-place-address'),
                 controller: _address,
-                maxLength: 300,
-                textCapitalization: TextCapitalization.words,
-                textInputAction: TextInputAction.done,
+                repository: widget.repository,
+                onTextChanged: () {},
+                onSelected: (place) {
+                  final venueName = place.suggestedVenueName;
+                  if (_name.text.trim().isEmpty && venueName != null) {
+                    _name.text = venueName;
+                  }
+                },
                 decoration: const InputDecoration(
                   labelText: 'Public address',
-                  hintText: 'Street, city',
+                  hintText: 'Search for a venue or address',
                   prefixIcon: Icon(CupertinoIcons.map_pin_ellipse),
                   counterText: '',
                 ),
                 validator: _validateAddress,
-                onFieldSubmitted: (_) => _save(),
+                onSubmitted: (_) => _save(),
               ),
               const SizedBox(height: 14),
               Container(

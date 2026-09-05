@@ -22,6 +22,20 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+function recommendationControlResponse(address) {
+  if (address.endsWith('/rpc/get_recommendation_preferences')) {
+    return Response.json([{
+      enabled: true,
+      hidden_categories: [],
+      hidden_count: 0,
+    }]);
+  }
+  if (address.endsWith('/rpc/list_hidden_recommendation_ids')) {
+    return Response.json([]);
+  }
+  return null;
+}
+
 test('health endpoint runs at Cloudflare without Supabase authentication', async () => {
   globalThis.fetch = async () => {
     throw new Error('health must not call Supabase');
@@ -37,13 +51,215 @@ test('health endpoint runs at Cloudflare without Supabase authentication', async
   assert.equal(response.headers.get('cache-control'), 'no-store');
 });
 
-test('nearby endpoint uses the personalized feed with only validated RPC parameters', async () => {
+test('push device registration forwards only validated device details', async () => {
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
     calls.push({url: String(url), options});
     if (String(url).endsWith('/auth/v1/user')) {
       return Response.json({id: userId});
     }
+    return Response.json(searchId);
+  };
+
+  const response = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/push/devices', {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        token: 'fcm-device-token-with-enough-entropy',
+        platform: 'android',
+        locale: 'en-GB',
+      }),
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json().then(({registered}) => registered), true);
+  assert.match(calls[1].url, /\/rest\/v1\/rpc\/register_push_device$/);
+  assert.deepEqual(JSON.parse(calls[1].options.body), {
+    p_token: 'fcm-device-token-with-enough-entropy',
+    p_platform: 'android',
+    p_locale: 'en-GB',
+  });
+});
+
+test('push device removal is scoped through the authenticated RPC', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({url: String(url), options});
+    if (String(url).endsWith('/auth/v1/user')) {
+      return Response.json({id: userId});
+    }
+    return Response.json(true);
+  };
+
+  const response = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/push/devices', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({token: 'fcm-device-token-with-enough-entropy'}),
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).removed, true);
+  assert.match(calls[1].url, /\/rest\/v1\/rpc\/unregister_push_device$/);
+});
+
+test('notification and recommendation controls use fixed member-scoped RPCs', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/update_notification_preferences')) return Response.json(true);
+    if (address.endsWith('/rpc/update_recommendation_preferences')) return Response.json(true);
+    if (address.endsWith('/rpc/hide_recommendation')) return Response.json(true);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const notificationResponse = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/notification-preferences', {
+      method: 'PUT',
+      headers: {Authorization: 'Bearer user-token', 'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        push_enabled: true,
+        reminders_enabled: true,
+        announcements_enabled: false,
+        discussion_enabled: false,
+        recommendations_enabled: true,
+        quiet_start_minute: 1320,
+        quiet_end_minute: 420,
+        timezone_offset_minutes: 120,
+      }),
+    }),
+    env,
+  );
+  const preferenceResponse = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/recommendations/preferences', {
+      method: 'PUT',
+      headers: {Authorization: 'Bearer user-token', 'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: false, hidden_categories: ['Sports']}),
+    }),
+    env,
+  );
+  const hideResponse = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/recommendations/hide', {
+      method: 'POST',
+      headers: {Authorization: 'Bearer user-token', 'Content-Type': 'application/json'},
+      body: JSON.stringify({content_kind: 'event', content_id: eventId}),
+    }),
+    env,
+  );
+
+  assert.deepEqual(
+    [notificationResponse.status, preferenceResponse.status, hideResponse.status],
+    [200, 200, 200],
+  );
+  const notificationCall = calls.find((call) =>
+    call.url.endsWith('/rpc/update_notification_preferences')
+  );
+  assert.deepEqual(JSON.parse(notificationCall.options.body), {
+    p_push_enabled: true,
+    p_reminders_enabled: true,
+    p_announcements_enabled: false,
+    p_discussion_enabled: false,
+    p_recommendations_enabled: true,
+    p_quiet_start_minute: 1320,
+    p_quiet_end_minute: 420,
+    p_timezone_offset_minutes: 120,
+  });
+  const preferenceCall = calls.find((call) =>
+    call.url.endsWith('/rpc/update_recommendation_preferences')
+  );
+  assert.deepEqual(JSON.parse(preferenceCall.options.body), {
+    p_enabled: false,
+    p_hidden_categories: ['Sports'],
+  });
+  const hideCall = calls.find((call) => call.url.endsWith('/rpc/hide_recommendation'));
+  assert.deepEqual(JSON.parse(hideCall.options.body), {
+    p_content_kind: 'event',
+    p_content_id: eventId,
+  });
+});
+
+test('personalization opt-out uses non-personalized event and community feeds', async () => {
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const address = String(url);
+    calls.push(address);
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/get_recommendation_preferences')) {
+      return Response.json([{
+        enabled: false,
+        hidden_categories: ['Safety'],
+        hidden_count: 0,
+      }]);
+    }
+    if (address.endsWith('/rpc/list_hidden_recommendation_ids')) {
+      return Response.json([]);
+    }
+    if (address.endsWith('/rpc/nearby_events')) {
+      return Response.json([{id: eventId, category: 'Running', title: 'Nearby run'}]);
+    }
+    if (address.endsWith('/rpc/list_forum_posts')) {
+      return Response.json([
+        {id: postId, category: 'Safety', title: 'Hidden category'},
+        {id: postId2, category: 'General', title: 'Latest discussion'},
+      ]);
+    }
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+  const noModel = {
+    fetch: async () => {
+      throw new Error('Model reranking must not run after opt-out.');
+    },
+  };
+
+  const events = await handleApiRequest(
+    new Request(
+      'https://gather2gether.pages.dev/api/v1/events/nearby?latitude=52.52&longitude=13.405&radius_km=10',
+      {headers: {Authorization: 'Bearer user-token'}},
+    ),
+    {...env, ASSISTANT_MODEL: noModel},
+  );
+  const forum = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/forum/posts', {
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    {...env, ASSISTANT_MODEL: noModel},
+  );
+
+  assert.equal(events.status, 200);
+  assert.equal((await events.json()).data[0].recommendation_reason, 'Near your chosen area');
+  assert.equal(forum.status, 200);
+  assert.deepEqual((await forum.json()).data.map((post) => post.id), [postId2]);
+  assert.equal(calls.some((address) =>
+    address.endsWith('/rpc/recommend_personalized_events')
+  ), false);
+  assert.equal(calls.some((address) =>
+    address.endsWith('/rpc/recommend_personalized_forum_posts')
+  ), false);
+});
+
+test('nearby endpoint uses the personalized feed with only validated RPC parameters', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) {
+      return Response.json({id: userId});
+    }
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     return Response.json([{id: eventId, title: 'Nearby event'}]);
   };
 
@@ -57,9 +273,11 @@ test('nearby endpoint uses the personalized feed with only validated RPC paramet
   const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 2);
-  assert.match(calls[1].url, /\/rest\/v1\/rpc\/recommend_personalized_events$/);
-  assert.deepEqual(JSON.parse(calls[1].options.body), {
+  assert.equal(calls.length, 4);
+  const recommendationCall = calls.find((call) =>
+    call.url.endsWith('/rpc/recommend_personalized_events')
+  );
+  assert.deepEqual(JSON.parse(recommendationCall.options.body), {
     p_latitude: 52.52,
     p_longitude: 13.405,
     p_radius_km: 10,
@@ -102,6 +320,8 @@ test('nearby feed cross-encoder reranks a bounded shortlist and caches the blend
     const address = String(url);
     calls.push({url: address, options});
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/rpc/recommend_personalized_events')) {
       return Response.json(candidates);
     }
@@ -178,6 +398,8 @@ test('nearby feed uses an exact cached rerank without calling the model', async 
   globalThis.fetch = async (url) => {
     const address = String(url);
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/rpc/recommend_personalized_events')) {
       return Response.json([
         {id: eventId, title: 'First'},
@@ -222,6 +444,8 @@ test('nearby feed does not call the model again while the rerank throttle is act
   globalThis.fetch = async (url) => {
     const address = String(url);
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/rpc/recommend_personalized_events')) {
       return Response.json([
         {id: eventId, title: 'First'},
@@ -270,6 +494,8 @@ test('place autocomplete stays global, applies a proximity bias, and hides the p
     const address = String(url);
     calls.push({url: address, options});
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.startsWith('https://api.geoapify.com/v1/geocode/autocomplete')) {
       return Response.json({
         results: [
@@ -305,7 +531,7 @@ test('place autocomplete stays global, applies a proximity bias, and hides the p
   assert.equal(upstream.searchParams.get('text'), 'Kunsthalle');
   assert.equal(upstream.searchParams.get('bias'), 'proximity:8.47,49.48');
   assert.equal(upstream.searchParams.get('lang'), 'de');
-  assert.equal(upstream.searchParams.get('limit'), '5');
+  assert.equal(upstream.searchParams.get('limit'), '10');
   assert.equal(upstream.searchParams.has('filter'), false);
   assert.equal(payload.data[0].formatted_address, 'Friedrichsplatz 4, 68165 Mannheim, Germany');
   assert.equal(payload.data[0].timezone, 'Europe/Berlin');
@@ -366,6 +592,8 @@ test('event interest search uses the indexed hybrid recommendation RPC', async (
     const address = String(url);
     calls.push({url: address, options});
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/functions/v1/embed')) return Response.json({embedding});
     if (address.endsWith('/rpc/recommend_nearby_events_v2')) {
       return Response.json([{id: eventId, title: 'Gentle forest walk'}]);
@@ -382,12 +610,13 @@ test('event interest search uses the indexed hybrid recommendation RPC', async (
   );
 
   assert.equal(response.status, 200);
-  assert.equal(calls.length, 3);
-  assert.deepEqual(JSON.parse(calls[1].options.body), {
+  assert.equal(calls.length, 5);
+  const embeddingCall = calls.find((call) => call.url.endsWith('/functions/v1/embed'));
+  assert.deepEqual(JSON.parse(embeddingCall.options.body), {
     input: 'quiet outdoor activities',
   });
-  const rpcBody = JSON.parse(calls[2].options.body);
-  assert.match(calls[2].url, /\/rpc\/recommend_nearby_events_v2$/);
+  const hybridCall = calls.find((call) => call.url.endsWith('/rpc/recommend_nearby_events_v2'));
+  const rpcBody = JSON.parse(hybridCall.options.body);
   assert.equal(rpcBody.p_query_embedding.length, 384);
   assert.equal(rpcBody.p_query, 'quiet outdoor activities');
   assert.equal(rpcBody.p_limit, 30);
@@ -401,7 +630,9 @@ test('event indexing embeds title, category, venue, address, and description', a
     const address = String(url);
     calls.push({url: address, options});
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
-    if (address.endsWith('/rpc/create_event_v2')) return Response.json(eventId);
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
+    if (address.endsWith('/rpc/create_event_v3')) return Response.json([eventId]);
     if (address.endsWith('/functions/v1/embed')) return Response.json({embedding});
     if (address.endsWith('/rpc/set_event_embedding')) return Response.json(true);
     throw new Error(`Unexpected fetch: ${address}`);
@@ -479,6 +710,8 @@ test('following discovery uses the dedicated feed and applies practical filters'
     const address = String(url);
     calls.push({url: address, options});
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/rpc/list_followed_nearby_events')) {
       return Response.json([
         {
@@ -517,8 +750,10 @@ test('following discovery uses the dedicated feed and applies practical filters'
 
   assert.equal(response.status, 200);
   assert.deepEqual(payload.data.map((event) => event.id), [eventId]);
-  assert.match(calls[1].url, /\/rpc\/list_followed_nearby_events$/);
-  assert.deepEqual(JSON.parse(calls[1].options.body), {
+  const followedCall = calls.find((call) =>
+    call.url.endsWith('/rpc/list_followed_nearby_events')
+  );
+  assert.deepEqual(JSON.parse(followedCall.options.body), {
     p_latitude: 52.52,
     p_longitude: 13.405,
     p_radius_km: 10,
@@ -572,7 +807,107 @@ test('saved event searches persist only validated discovery settings', async () 
     p_timezone_offset_minutes: 60,
     p_spots_only: true,
     p_following_only: false,
+    p_beginner_friendly_only: false,
+    p_wheelchair_accessible_only: false,
+    p_event_setting: 'any',
+    p_event_language: '',
+    p_age_guidance: 'any',
+    p_alerts_enabled: true,
   });
+});
+
+test('practical event filters are applied through a bounded detail RPC', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
+    if (address.endsWith('/rpc/recommend_personalized_events')) {
+      return Response.json([
+        {id: eventId, title: 'Indoor games'},
+        {id: eventId2, title: 'Accessible park walk'},
+      ]);
+    }
+    if (address.endsWith('/rpc/filter_event_ids_by_details')) {
+      return Response.json([eventId2]);
+    }
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const response = await handleApiRequest(
+    new Request(
+      'https://gather2gether.pages.dev/api/v1/events/nearby' +
+        '?latitude=52.52&longitude=13.405&radius_km=10' +
+        '&beginner_friendly_only=true&wheelchair_accessible_only=true' +
+        '&event_setting=outdoor&event_language=English&age_guidance=all_ages',
+      {headers: {Authorization: 'Bearer user-token'}},
+    ),
+    env,
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.data.map((event) => event.id), [eventId2]);
+  const detailFilterCall = calls.find((call) =>
+    call.url.endsWith('/rpc/filter_event_ids_by_details')
+  );
+  assert.deepEqual(JSON.parse(detailFilterCall.options.body), {
+    p_event_ids: [eventId, eventId2],
+    p_beginner_friendly_only: true,
+    p_wheelchair_accessible_only: true,
+    p_event_setting: 'outdoor',
+    p_event_language: 'English',
+    p_age_guidance: 'all_ages',
+  });
+});
+
+test('saved searches can be renamed, replaced, paused, and resumed', async () => {
+  let rpcBody;
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/update_saved_event_search')) {
+      rpcBody = JSON.parse(options.body);
+      return Response.json(true);
+    }
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const response = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/event-searches/${searchId}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: 'Accessible walks',
+        interest: 'walking',
+        radius_km: 25,
+        category: null,
+        date_filter: 'any',
+        time_filter: 'morning',
+        timezone_offset_minutes: 60,
+        spots_only: true,
+        following_only: false,
+        beginner_friendly_only: true,
+        wheelchair_accessible_only: true,
+        event_setting: 'outdoor',
+        event_language: 'English',
+        age_guidance: 'all_ages',
+        alerts_enabled: false,
+      }),
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(rpcBody.p_search_id, searchId);
+  assert.equal(rpcBody.p_alerts_enabled, false);
+  assert.equal(rpcBody.p_wheelchair_accessible_only, true);
+  assert.equal(rpcBody.p_name, 'Accessible walks');
 });
 
 test('search alerts list through the authenticated collection route', async () => {
@@ -604,10 +939,10 @@ test('attendee privacy, discussion muting, and RSVP confirmation use fixed RPCs'
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
     const rpcName = address.split('/rpc/')[1];
     rpcNames.push(rpcName);
-    if (rpcName === 'list_event_attendees') return Response.json([]);
+    if (rpcName === 'list_event_attendees_v2') return Response.json([]);
     if (rpcName === 'set_event_attendee_visibility') return Response.json(true);
     if (rpcName === 'set_event_discussion_notifications') return Response.json(false);
-    if (rpcName === 'request_event_rsvp_reconfirmation') {
+    if (rpcName === 'request_event_rsvp_reconfirmation_v2') {
       return Response.json('2098-12-31T18:00:00Z');
     }
     if (rpcName === 'confirm_event_rsvp') return Response.json('2099-01-01T00:00:00Z');
@@ -649,12 +984,102 @@ test('attendee privacy, discussion muting, and RSVP confirmation use fixed RPCs'
 
   assert.deepEqual(responses.map((response) => response.status), [200, 200, 200, 200, 200]);
   assert.deepEqual(rpcNames, [
-    'list_event_attendees',
+    'list_event_attendees_v2',
     'set_event_attendee_visibility',
     'set_event_discussion_notifications',
-    'request_event_rsvp_reconfirmation',
+    'request_event_rsvp_reconfirmation_v2',
     'confirm_event_rsvp',
   ]);
+});
+
+test('host dashboard and attendance stay behind organizer RPCs', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/get_event_host_dashboard')) {
+      return Response.json({joined_count: 4, attended_count: 2, no_show_count: 1});
+    }
+    if (address.endsWith('/rpc/set_event_attendance')) return Response.json(true);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const dashboard = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/events/${eventId}/host-dashboard`, {
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    env,
+  );
+  const attendance = await handleApiRequest(
+    new Request(
+      `https://gather2gether.pages.dev/api/v1/events/${eventId}/attendance/${postId}`,
+      {
+        method: 'PUT',
+        headers: {Authorization: 'Bearer user-token', 'Content-Type': 'application/json'},
+        body: JSON.stringify({status: 'attended'}),
+      },
+    ),
+    env,
+  );
+
+  assert.equal(dashboard.status, 200);
+  assert.equal((await dashboard.json()).data.attended_count, 2);
+  assert.equal(attendance.status, 200);
+  const attendanceCall = calls.find((call) => call.url.endsWith('/rpc/set_event_attendance'));
+  assert.deepEqual(JSON.parse(attendanceCall.options.body), {
+    p_event_id: eventId,
+    p_profile_id: postId,
+    p_status: 'attended',
+  });
+});
+
+test('event owners manage co-hosts through username-only RPC contracts', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/list_event_cohosts')) {
+      return Response.json([{
+        profile_id: userId,
+        display_name: 'Owner',
+        username: 'owner',
+        role: 'Owner',
+        viewer_can_edit: true,
+      }]);
+    }
+    if (address.endsWith('/rpc/set_event_cohost')) return Response.json(postId);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const listed = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/events/${eventId}/cohosts`, {
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    env,
+  );
+  const added = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/events/${eventId}/cohosts`, {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({username: '@alex_local'}),
+    }),
+    env,
+  );
+
+  assert.equal(listed.status, 200);
+  assert.equal((await listed.json()).data[0].role, 'Owner');
+  assert.equal(added.status, 200);
+  const addCall = calls.find((call) => call.url.endsWith('/rpc/set_event_cohost'));
+  assert.deepEqual(JSON.parse(addCall.options.body), {
+    p_event_id: eventId,
+    p_username: '@alex_local',
+    p_enabled: true,
+  });
 });
 
 test('RSVP endpoint maps database capacity failures to a safe conflict', async () => {
@@ -697,7 +1122,7 @@ test('my events uses a fixed member-scoped filter RPC', async () => {
   );
 
   assert.equal(response.status, 200);
-  assert.match(calls[1].url, /\/rpc\/list_my_events$/);
+  assert.match(calls[1].url, /\/rpc\/list_my_events_v2$/);
   assert.deepEqual(JSON.parse(calls[1].options.body), {p_filter: 'saved'});
 });
 
@@ -799,6 +1224,8 @@ test('forum list authenticates and uses the personalized feed RPC', async () => 
     const address = String(url);
     calls.push({url: address, options});
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/rpc/recommend_personalized_forum_posts')) {
       return Response.json([{id: postId, title: 'Weekend hiking group'}]);
     }
@@ -817,13 +1244,17 @@ test('forum list authenticates and uses the personalized feed RPC', async () => 
   const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.match(calls[1].url, /\/rest\/v1\/rpc\/recommend_personalized_forum_posts$/);
-  assert.deepEqual(JSON.parse(calls[1].options.body), {
+  const personalizedCall = calls.find((call) =>
+    call.url.endsWith('/rpc/recommend_personalized_forum_posts')
+  );
+  assert.match(personalizedCall.url, /\/rest\/v1\/rpc\/recommend_personalized_forum_posts$/);
+  assert.deepEqual(JSON.parse(personalizedCall.options.body), {
     p_limit: 30,
     p_before: null,
   });
-  assert.match(calls[2].url, /\/rest\/v1\/rpc\/list_forum_posts$/);
-  assert.deepEqual(JSON.parse(calls[2].options.body), {
+  const latestCall = calls.find((call) => call.url.endsWith('/rpc/list_forum_posts'));
+  assert.match(latestCall.url, /\/rest\/v1\/rpc\/list_forum_posts$/);
+  assert.deepEqual(JSON.parse(latestCall.options.body), {
     p_limit: 30,
     p_before: null,
   });
@@ -845,6 +1276,8 @@ test('community feed interleaves three recommendations with one latest post', as
   globalThis.fetch = async (url) => {
     const address = String(url);
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/rpc/recommend_personalized_forum_posts')) {
       return Response.json(recommended);
     }
@@ -895,6 +1328,8 @@ test('community feed keeps its deterministic order when AI reranking is unavaila
   globalThis.fetch = async (url) => {
     const address = String(url);
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/rpc/recommend_personalized_forum_posts')) {
       return Response.json(originalOrder);
     }
@@ -947,7 +1382,7 @@ test('opening an event records a non-blocking de-duplicated view signal', async 
     if (address.endsWith('/rpc/process_due_event_reconfirmations')) {
       return Response.json(0);
     }
-    if (address.endsWith('/rpc/get_event_details_v2')) {
+    if (address.endsWith('/rpc/get_event_details_v3')) {
       return Response.json([{id: eventId, title: 'Morning Run'}]);
     }
     if (address.endsWith('/rpc/record_recommendation_view')) {
@@ -966,6 +1401,13 @@ test('opening an event records a non-blocking de-duplicated view signal', async 
   await Promise.all(tasks);
 
   assert.equal(response.status, 200);
+  const detailsCall = calls.find((call) =>
+    call.url.endsWith('/rpc/get_event_details_v3')
+  );
+  assert.deepEqual(JSON.parse(detailsCall.options.body), {
+    p_event_id: eventId,
+    p_via_invite: false,
+  });
   const viewCall = calls.find((call) =>
     call.url.endsWith('/rpc/record_recommendation_view')
   );
@@ -973,6 +1415,68 @@ test('opening an event records a non-blocking de-duplicated view signal', async 
     p_content_kind: 'event',
     p_content_id: eventId,
   });
+});
+
+test('invite access and bounded recurrence are explicit in the event API', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/process_due_event_reconfirmations')) {
+      return Response.json(0);
+    }
+    if (address.endsWith('/rpc/get_event_details_v3')) {
+      return Response.json([{id: eventId, event_visibility: 'unlisted'}]);
+    }
+    if (address.endsWith('/rpc/create_event_v3')) {
+      return Response.json([eventId, eventId2, eventId3]);
+    }
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const invited = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/events/${eventId}?invite=1`, {
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    env,
+  );
+  const created = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/events', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'Monthly supper',
+        description: 'Three relaxed community suppers.',
+        category: 'Social',
+        venue_name: 'Neighbourhood hall',
+        address: 'Main street, Mannheim',
+        latitude: 49.49,
+        longitude: 8.47,
+        start_at: '2099-01-01T18:00:00Z',
+        end_at: '2099-01-01T20:00:00Z',
+        max_participants: 20,
+        visibility: 'unlisted',
+        repeat_interval: 'monthly',
+        repeat_count: 3,
+      }),
+    }),
+    env,
+  );
+
+  assert.equal(invited.status, 200);
+  const detailCall = calls.find((call) => call.url.endsWith('/rpc/get_event_details_v3'));
+  assert.equal(JSON.parse(detailCall.options.body).p_via_invite, true);
+  assert.equal(created.status, 201);
+  assert.deepEqual((await created.json()).ids, [eventId, eventId2, eventId3]);
+  const createCall = calls.find((call) => call.url.endsWith('/rpc/create_event_v3'));
+  const createBody = JSON.parse(createCall.options.body);
+  assert.equal(createBody.p_visibility, 'unlisted');
+  assert.equal(createBody.p_repeat_interval, 'monthly');
+  assert.equal(createBody.p_repeat_count, 3);
 });
 
 test('forum detail includes like state and records its view in the background', async () => {
@@ -1057,6 +1561,8 @@ test('community interest search uses the indexed hybrid feed RPC', async () => {
     calls.push({url: address, options});
     if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
     if (address.endsWith('/functions/v1/embed')) return Response.json({embedding});
+    const controls = recommendationControlResponse(address);
+    if (controls !== null) return controls;
     if (address.endsWith('/rpc/recommend_forum_posts_v2')) {
       return Response.json([{id: postId, title: 'Learn together'}]);
     }
@@ -1072,8 +1578,11 @@ test('community interest search uses the indexed hybrid feed RPC', async () => {
   );
 
   assert.equal(response.status, 200);
-  assert.match(calls[2].url, /\/rpc\/recommend_forum_posts_v2$/);
-  const rpcBody = JSON.parse(calls[2].options.body);
+  const recommendationCall = calls.find((call) =>
+    call.url.endsWith('/rpc/recommend_forum_posts_v2')
+  );
+  assert.match(recommendationCall.url, /\/rpc\/recommend_forum_posts_v2$/);
+  const rpcBody = JSON.parse(recommendationCall.options.body);
   assert.equal(rpcBody.p_query_embedding.length, 384);
   assert.equal(rpcBody.p_query, 'people learning new skills');
 });
@@ -1152,6 +1661,114 @@ test('profile follow endpoint derives the follower from the authenticated user',
     p_following: true,
   });
   assert.deepEqual(await response.json(), {following: true});
+});
+
+test('profile block controls and blocked-member listing use fixed authenticated RPCs', async () => {
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/list_blocked_profiles')) {
+      return Response.json([{
+        id: postId,
+        display_name: 'Alex',
+        username: 'alex_local',
+        blocked_at: '2026-09-04T10:00:00Z',
+      }]);
+    }
+    if (address.endsWith('/rpc/set_profile_block')) return Response.json(true);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const blocked = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/profiles/${postId}/block`, {
+      method: 'PUT',
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    env,
+  );
+  const listed = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/blocks', {
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    env,
+  );
+
+  assert.equal(blocked.status, 200);
+  assert.deepEqual(await blocked.json(), {blocked: true});
+  const blockCall = calls.find((call) => call.url.endsWith('/rpc/set_profile_block'));
+  assert.deepEqual(JSON.parse(blockCall.options.body), {
+    p_profile_id: postId,
+    p_blocked: true,
+  });
+  assert.equal(listed.status, 200);
+  assert.equal((await listed.json()).data[0].username, 'alex_local');
+  assert.equal(calls.some((call) => call.url.endsWith('/rpc/list_blocked_profiles')), true);
+});
+
+test('account deletion requires an exact confirmation and cleans only owned media', async () => {
+  const calls = [];
+  const deletedKeys = [];
+  const avatarKey = `avatars/${userId}/${eventId}.jpg`;
+  const postKey = `posts/${userId}/${postId}.jpg`;
+  const foreignKey = `posts/${postId}/${eventId}.jpg`;
+  const deletionEnv = {
+    ...env,
+    USER_MEDIA: {
+      get: async () => null,
+      put: async () => {},
+      delete: async (key) => deletedKeys.push(key),
+    },
+  };
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/delete_own_account')) {
+      return Response.json({
+        avatar_image_key: avatarKey,
+        forum_image_keys: [postKey, foreignKey],
+      });
+    }
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+
+  const rejected = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/account', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({confirmation: 'delete'}),
+    }),
+    deletionEnv,
+  );
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).error.code, 'account_deletion_confirmation');
+
+  const response = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/account', {
+      method: 'DELETE',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({confirmation: 'DELETE'}),
+    }),
+    deletionEnv,
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {deleted: true});
+  const deleteCall = calls.find((call) => call.url.endsWith('/rpc/delete_own_account'));
+  assert.deepEqual(JSON.parse(deleteCall.options.body), {p_confirmation: 'DELETE'});
+  assert.deepEqual(new Set(deletedKeys), new Set([
+    avatarKey,
+    postKey,
+    `staging/forum/${userId}/current.jpg`,
+  ]));
 });
 
 test('profile event history uses only the target profile and allow-listed filter', async () => {
@@ -1371,6 +1988,214 @@ test('assistant searches indexed nearby events before calling the configured mod
   assert.equal(modelBody.event_matches[0].title, 'Morning Run');
   assert.equal(payload.message.content, 'Morning Run is about 850 m away.');
   assert.equal(payload.event_matches[0].id, eventId);
+});
+
+test('AI drafting is rate-limited and returns a validated editable draft', async () => {
+  const calls = [];
+  let serviceBody;
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/claim_ai_tool_use')) return Response.json(true);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+  const draft = {
+    title: 'Beginner photo walk',
+    description: 'A relaxed practice walk.',
+    category: 'Photography',
+    beginner_friendly: true,
+    event_setting: 'outdoor',
+    event_language: 'English',
+    age_guidance: 'all_ages',
+    what_to_bring: 'A phone or camera',
+  };
+
+  const response = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/assistant/event-draft', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt: 'A welcoming photography walk for complete beginners',
+        locale: 'en-DE',
+      }),
+    }),
+    {
+      ...env,
+      ASSISTANT_MODEL: {
+        fetch: async (request) => {
+          assert.equal(new URL(request.url).pathname, '/event-draft');
+          serviceBody = await request.json();
+          return Response.json(draft);
+        },
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).draft, draft);
+  const claim = calls.find((call) => call.url.endsWith('/rpc/claim_ai_tool_use'));
+  assert.deepEqual(JSON.parse(claim.options.body), {p_tool: 'event_draft'});
+  assert.equal(serviceBody.locale, 'en-DE');
+});
+
+test('natural filters and quality review use bounded assistant service contracts', async () => {
+  const modelCalls = [];
+  globalThis.fetch = async (url) => {
+    const address = String(url);
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/claim_ai_tool_use')) return Response.json(true);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+  const assistantModel = {
+    fetch: async (request) => {
+      const path = new URL(request.url).pathname;
+      const body = await request.json();
+      modelCalls.push({path, body});
+      if (path === '/event-filters') {
+        return Response.json({
+          interest: 'beginner photography',
+          category: 'Photography',
+          date_filter: 'weekend',
+          time_filter: 'morning',
+          spots_only: true,
+          following_only: false,
+          beginner_friendly_only: true,
+          wheelchair_accessible_only: false,
+          event_setting: 'outdoor',
+          event_language: '',
+          age_guidance: 'any',
+          radius_km: 25,
+        });
+      }
+      return Response.json({
+        ready: true,
+        issues: [{field: 'description', severity: 'info', message: 'Clear and specific.'}],
+      });
+    },
+  };
+
+  const filters = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/assistant/event-filters', {
+      method: 'POST',
+      headers: {Authorization: 'Bearer user-token', 'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        query: 'Beginner photography outdoors this weekend',
+        locale: 'en-DE',
+      }),
+    }),
+    {...env, ASSISTANT_MODEL: assistantModel},
+  );
+  const quality = await handleApiRequest(
+    new Request('https://gather2gether.pages.dev/api/v1/assistant/event-quality', {
+      method: 'POST',
+      headers: {Authorization: 'Bearer user-token', 'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        title: 'Photo walk',
+        description: 'A relaxed photo walk for neighbours.',
+        category: 'Photography',
+        venue_name: 'River gate',
+        address: 'River Street, Mannheim',
+        start_at: '2099-01-01T10:00:00Z',
+        end_at: '2099-01-01T12:00:00Z',
+        max_participants: 12,
+        what_to_bring: 'A phone or camera',
+      }),
+    }),
+    {...env, ASSISTANT_MODEL: assistantModel},
+  );
+
+  assert.equal(filters.status, 200);
+  assert.equal((await filters.json()).filters.radius_km, 25);
+  assert.equal(quality.status, 200);
+  assert.equal((await quality.json()).quality.ready, true);
+  assert.deepEqual(modelCalls.map((call) => call.path), ['/event-filters', '/event-quality']);
+  assert.deepEqual(modelCalls[0].body, {
+    query: 'Beginner photography outdoors this weekend',
+    locale: 'en-DE',
+  });
+  assert.equal(modelCalls[1].body.event.max_participants, 12);
+});
+
+test('event translation and discussion summaries use authorized database content', async () => {
+  const calls = [];
+  const servicePaths = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    calls.push({url: address, options});
+    if (address.endsWith('/auth/v1/user')) return Response.json({id: userId});
+    if (address.endsWith('/rpc/get_event_details_v3')) {
+      return Response.json([{
+        title: 'Morning Run',
+        description: 'An easy social run.',
+        what_to_bring: 'Water',
+      }]);
+    }
+    if (address.endsWith('/rpc/list_event_discussion')) {
+      return Response.json([
+        {author_name: 'Alex', body: 'Meet by the north gate.'},
+        {author_name: 'Maya', body: 'I will bring cups.'},
+      ]);
+    }
+    if (address.endsWith('/rpc/claim_ai_tool_use')) return Response.json(true);
+    throw new Error(`Unexpected fetch: ${address}`);
+  };
+  const toolEnv = {
+    ...env,
+    ASSISTANT_MODEL: {
+      fetch: async (request) => {
+        const path = new URL(request.url).pathname;
+        servicePaths.push(path);
+        if (path === '/translate') {
+          const body = await request.json();
+          assert.equal(body.target_language, 'German');
+          assert.equal(body.text.includes('Morning Run'), true);
+          return Response.json({translation: 'Titel: Morgenlauf'});
+        }
+        if (path === '/summarize') {
+          const body = await request.json();
+          assert.equal(body.messages.length, 2);
+          return Response.json({
+            summary: 'Meet at the north gate.',
+            action_items: ['Maya brings cups.'],
+          });
+        }
+        throw new Error(`Unexpected service path: ${path}`);
+      },
+    },
+  };
+
+  const translated = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/events/${eventId}/translation`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer user-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({target_language: 'German'}),
+    }),
+    toolEnv,
+  );
+  const summarized = await handleApiRequest(
+    new Request(`https://gather2gether.pages.dev/api/v1/events/${eventId}/discussion-summary`, {
+      method: 'POST',
+      headers: {Authorization: 'Bearer user-token'},
+    }),
+    toolEnv,
+  );
+
+  assert.equal(translated.status, 200);
+  assert.equal((await translated.json()).translation, 'Titel: Morgenlauf');
+  assert.equal(summarized.status, 200);
+  assert.deepEqual((await summarized.json()).action_items, ['Maya brings cups.']);
+  assert.deepEqual(servicePaths, ['/translate', '/summarize']);
+  const claims = calls
+    .filter((call) => call.url.endsWith('/rpc/claim_ai_tool_use'))
+    .map((call) => JSON.parse(call.options.body).p_tool);
+  assert.deepEqual(claims, ['translation', 'summary']);
 });
 
 test('assistant answers app questions without performing an event search', async () => {

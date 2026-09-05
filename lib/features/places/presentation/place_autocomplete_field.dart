@@ -16,6 +16,9 @@ class PlaceAutocompleteField extends StatefulWidget {
     this.latitude,
     this.longitude,
     this.enabled = true,
+    this.fieldKey = const Key('event-address-field'),
+    this.decoration,
+    this.onSubmitted,
     super.key,
   });
 
@@ -27,6 +30,9 @@ class PlaceAutocompleteField extends StatefulWidget {
   final double? latitude;
   final double? longitude;
   final bool enabled;
+  final Key fieldKey;
+  final InputDecoration? decoration;
+  final ValueChanged<String>? onSubmitted;
 
   @override
   State<PlaceAutocompleteField> createState() => _PlaceAutocompleteFieldState();
@@ -64,6 +70,7 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
       return;
     }
     setState(() {
+      _suggestions = const [];
       _error = null;
       _loading = false;
     });
@@ -144,31 +151,37 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextFormField(
-          key: const Key('event-address-field'),
+          key: widget.fieldKey,
           controller: widget.controller,
           focusNode: _focusNode,
           enabled: widget.enabled,
           keyboardType: TextInputType.streetAddress,
+          textInputAction: TextInputAction.done,
           textCapitalization: TextCapitalization.words,
           autofillHints: const [AutofillHints.fullStreetAddress],
-          decoration: InputDecoration(
-            hintText: 'Search for a venue or address',
-            prefixIcon: const Icon(CupertinoIcons.map_pin_ellipse),
-            suffixIcon: _loading
-                ? const Padding(
-                    padding: EdgeInsets.all(14),
-                    child: CupertinoActivityIndicator(),
-                  )
-                : null,
-            filled: false,
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            errorBorder: InputBorder.none,
-            focusedErrorBorder: InputBorder.none,
-          ),
+          decoration:
+              (widget.decoration ??
+                      const InputDecoration(
+                        hintText: 'Search for a venue or address',
+                        prefixIcon: Icon(CupertinoIcons.map_pin_ellipse),
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                      ))
+                  .copyWith(
+                    suffixIcon: _loading
+                        ? const Padding(
+                            padding: EdgeInsets.all(14),
+                            child: CupertinoActivityIndicator(),
+                          )
+                        : null,
+                  ),
           validator: widget.validator,
           onChanged: _onChanged,
+          onFieldSubmitted: widget.onSubmitted,
         ),
         if (_suggestions.isNotEmpty)
           DecoratedBox(

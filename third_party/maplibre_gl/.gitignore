@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+.dart_tool/
+.gradle/
+build/
+local.properties
+pubspec.lock

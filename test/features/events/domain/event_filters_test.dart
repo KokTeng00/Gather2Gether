@@ -27,14 +27,47 @@ void main() {
     expect(range.startBefore, DateTime(2026, 9, 7));
   });
 
-  test('filter activity includes following and availability choices', () {
+  test('filter activity includes practical accessibility choices', () {
     expect(const EventDiscoveryFilters().isActive, isFalse);
     expect(
       const EventDiscoveryFilters(
         spotsOnly: true,
         followingOnly: true,
+        beginnerFriendlyOnly: true,
+        wheelchairAccessibleOnly: true,
+        eventSetting: 'outdoor',
+        eventLanguage: 'English',
+        ageGuidance: 'adults',
       ).isActive,
       isTrue,
     );
+  });
+
+  test('saved search restores every practical filter', () {
+    final search = SavedEventSearch.fromJson({
+      'id': '88888888-8888-4888-8888-888888888888',
+      'name': 'Accessible outdoors',
+      'interest': 'walking',
+      'radius_km': 10,
+      'category': 'Hiking',
+      'date_filter': 'weekend',
+      'time_filter': 'morning',
+      'spots_only': true,
+      'following_only': false,
+      'beginner_friendly_only': true,
+      'wheelchair_accessible_only': true,
+      'event_setting': 'outdoor',
+      'event_language': 'English',
+      'age_guidance': 'all_ages',
+      'alerts_enabled': false,
+      'created_at': '2026-09-04T08:00:00Z',
+    });
+
+    expect(search.filters.beginnerFriendlyOnly, isTrue);
+    expect(search.filters.wheelchairAccessibleOnly, isTrue);
+    expect(search.filters.eventSetting, 'outdoor');
+    expect(search.filters.eventLanguage, 'English');
+    expect(search.filters.ageGuidance, 'all_ages');
+    expect(search.alertsEnabled, isFalse);
   });
 }

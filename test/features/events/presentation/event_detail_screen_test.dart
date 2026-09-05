@@ -16,9 +16,13 @@ class _FakeEventRepository extends EventRepository {
   EventSummary current;
   int saveCalls = 0;
   int confirmCalls = 0;
+  int translationCalls = 0;
 
   @override
-  Future<EventSummary> eventDetails(String eventId) async => current;
+  Future<EventSummary> eventDetails(
+    String eventId, {
+    bool viaInvite = false,
+  }) async => current;
 
   @override
   Future<List<EventAnnouncement>> announcements(String eventId) async => [
@@ -56,6 +60,23 @@ class _FakeEventRepository extends EventRepository {
     current = current.copyWith(viewerReconfirmedAt: confirmedAt);
     return confirmedAt;
   }
+
+  @override
+  Future<String> translateEvent(String eventId, String targetLanguage) async {
+    translationCalls++;
+    return 'Titel: Morgenlauf\nBeschreibung: Ein lockerer Lauf.';
+  }
+
+  @override
+  Future<List<EventCohost>> cohosts(String eventId) async => const [
+    EventCohost(
+      profileId: '11111111-1111-4111-8111-111111111111',
+      displayName: 'Alex',
+      username: 'alex',
+      role: 'Owner',
+      viewerCanEdit: true,
+    ),
+  ];
 }
 
 EventSummary event({
@@ -121,19 +142,24 @@ void main() {
     expect(find.byKey(const Key('event-reminder-action')), findsOneWidget);
     expect(find.byKey(const Key('event-discussion-action')), findsOneWidget);
     await tester.scrollUntilVisible(
+      find.text('Meet beside the north entrance.'),
+      250,
+    );
+    expect(find.text('Meet beside the north entrance.'), findsOneWidget);
+    await tester.scrollUntilVisible(
       find.byKey(const Key('event-edit-action')),
       300,
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('event-edit-action')), findsOneWidget);
     expect(find.byKey(const Key('event-announce-action')), findsOneWidget);
+    expect(find.byKey(const Key('event-cohosts-action')), findsOneWidget);
     expect(
       find.byKey(const Key('event-request-reconfirmation-action')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('event-create-again-action')), findsOneWidget);
     expect(find.byKey(const Key('event-cancel-action')), findsOneWidget);
-    expect(find.text('Meet beside the north entrance.'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('event-save-action')));
     await tester.pumpAndSettle();
@@ -181,5 +207,31 @@ void main() {
     expect(find.byKey(const Key('event-attendee-visibility')), findsOneWidget);
     expect(find.text('Beginner-friendly'), findsOneWidget);
     expect(find.text('Wheelchair accessible'), findsOneWidget);
+  });
+
+  testWidgets('event details can be translated on demand', (tester) async {
+    final repository = _FakeEventRepository(event());
+    await _pumpEvent(tester, repository);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('event-translate-action')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(find.byKey(const Key('event-translate-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('event-translate-action')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('event-translation-language-field')),
+      'German',
+    );
+    await tester.tap(find.byKey(const Key('event-translate-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(repository.translationCalls, 1);
+    expect(find.byKey(const Key('event-translation-result')), findsOneWidget);
+    expect(find.textContaining('Morgenlauf'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

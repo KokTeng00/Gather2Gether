@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:gather2gether/config/app_config.dart';
+import 'package:gather2gether/features/events/data/event_offline_cache.dart';
 import 'package:gather2gether/features/events/domain/event_filters.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/events/domain/event_lifecycle.dart';
+import 'package:gather2gether/features/events/domain/event_operations.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -27,6 +30,10 @@ class CreateEventInput {
     this.eventLanguage = '',
     this.ageGuidance = 'all_ages',
     this.whatToBring = '',
+    this.status = 'published',
+    this.visibility = 'public',
+    this.repeatInterval = 'none',
+    this.repeatCount = 1,
   });
 
   final String title;
@@ -45,6 +52,10 @@ class CreateEventInput {
   final String eventLanguage;
   final String ageGuidance;
   final String whatToBring;
+  final String status;
+  final String visibility;
+  final String repeatInterval;
+  final int repeatCount;
 
   Map<String, Object> toApiJson() => {
     'title': title.trim(),
@@ -63,6 +74,10 @@ class CreateEventInput {
     'event_language': eventLanguage.trim(),
     'age_guidance': ageGuidance,
     'what_to_bring': whatToBring.trim(),
+    'status': status,
+    'visibility': visibility,
+    'repeat_interval': repeatInterval,
+    'repeat_count': repeatCount,
   };
 }
 
@@ -86,11 +101,13 @@ class EventRepository {
     http.Client? httpClient,
     AccessTokenProvider? accessTokenProvider,
     String? edgeApiUrl,
+    EventOfflineCache? offlineCache,
   }) : _httpClient = httpClient ?? _sharedHttpClient,
        _accessTokenProvider =
            accessTokenProvider ??
            (() => Supabase.instance.client.auth.currentSession?.accessToken),
-       _edgeApiUrl = edgeApiUrl ?? AppConfig.edgeApiUrl;
+       _edgeApiUrl = edgeApiUrl ?? AppConfig.edgeApiUrl,
+       _offlineCache = offlineCache ?? EventOfflineCache();
 
   static final http.Client _sharedHttpClient = http.Client();
   static const _timeout = Duration(seconds: 20);
@@ -98,6 +115,10 @@ class EventRepository {
   final http.Client _httpClient;
   final AccessTokenProvider _accessTokenProvider;
   final String _edgeApiUrl;
+  final EventOfflineCache _offlineCache;
+  bool _lastReadWasOffline = false;
+
+  bool get lastReadWasOffline => _lastReadWasOffline;
 
   Future<List<EventSummary>> nearbyEvents({
     required double latitude,
@@ -108,60 +129,68 @@ class EventRepository {
   }) async {
     final normalizedInterest = interest?.trim() ?? '';
     final dateRange = filters.dateRange(DateTime.now());
-    final payload = await _request(
-      'GET',
-      'events/nearby',
-      query: {
-        'latitude': '$latitude',
-        'longitude': '$longitude',
-        'radius_km': '$radiusKm',
-        if (normalizedInterest.isNotEmpty) 'interest': normalizedInterest,
-        if (filters.category != null) 'category': filters.category!,
-        if (dateRange.startFrom != null)
-          'start_from': dateRange.startFrom!.toUtc().toIso8601String(),
-        if (dateRange.startBefore != null)
-          'start_before': dateRange.startBefore!.toUtc().toIso8601String(),
-        'time_filter': filters.timeFilter,
-        'spots_only': '${filters.spotsOnly}',
-        'following_only': '${filters.followingOnly}',
-        'timezone_offset_minutes': '${DateTime.now().timeZoneOffset.inMinutes}',
-      },
-    );
-    final rows = _map(payload)['data'];
-    if (rows is! List<dynamic>) {
-      throw const EdgeApiException(
-        statusCode: 502,
-        code: 'invalid_edge_response',
-        message: 'The edge API returned invalid event data.',
-      );
-    }
-    return rows
-        .map((row) => EventSummary.fromJson(_map(row)))
-        .toList(growable: false);
+    final query = <String, String>{
+      'latitude': '$latitude',
+      'longitude': '$longitude',
+      'radius_km': '$radiusKm',
+      if (normalizedInterest.isNotEmpty) 'interest': normalizedInterest,
+      if (filters.category != null) 'category': filters.category!,
+      if (dateRange.startFrom != null)
+        'start_from': dateRange.startFrom!.toUtc().toIso8601String(),
+      if (dateRange.startBefore != null)
+        'start_before': dateRange.startBefore!.toUtc().toIso8601String(),
+      'time_filter': filters.timeFilter,
+      'spots_only': '${filters.spotsOnly}',
+      'following_only': '${filters.followingOnly}',
+      'beginner_friendly_only': '${filters.beginnerFriendlyOnly}',
+      'wheelchair_accessible_only': '${filters.wheelchairAccessibleOnly}',
+      'event_setting': filters.eventSetting,
+      if (filters.eventLanguage.trim().isNotEmpty)
+        'event_language': filters.eventLanguage.trim(),
+      'age_guidance': filters.ageGuidance,
+      'timezone_offset_minutes': '${DateTime.now().timeZoneOffset.inMinutes}',
+    };
+    return _withOfflineList('nearby', () async {
+      final payload = await _request('GET', 'events/nearby', query: query);
+      return _eventList(payload);
+    });
   }
 
-  Future<EventSummary> eventDetails(String eventId) async {
-    final payload = await _request('GET', 'events/$eventId');
-    return EventSummary.fromJson(_map(_map(payload)['data']));
+  Future<EventSummary> eventDetails(
+    String eventId, {
+    bool viaInvite = false,
+  }) async {
+    final scope = 'event_$eventId';
+    try {
+      final payload = await _request(
+        'GET',
+        'events/$eventId',
+        query: {if (viaInvite) 'invite': '1'},
+      );
+      final event = EventSummary.fromJson(_map(_map(payload)['data']));
+      _lastReadWasOffline = false;
+      await _cacheEvents(scope, [event]);
+      return event;
+    } catch (error) {
+      if (!_canUseOfflineFallback(error)) rethrow;
+      final cached = await _readCachedEvents(scope);
+      if (cached != null && cached.isNotEmpty) {
+        _lastReadWasOffline = true;
+        return cached.first;
+      }
+      rethrow;
+    }
   }
 
   Future<List<EventSummary>> myEvents(String filter) async {
-    final payload = await _request(
-      'GET',
-      'events/mine',
-      query: {'filter': filter},
-    );
-    final rows = _map(payload)['data'];
-    if (rows is! List<dynamic>) {
-      throw const EdgeApiException(
-        statusCode: 502,
-        code: 'invalid_edge_response',
-        message: 'The edge API returned invalid event data.',
+    return _withOfflineList('mine_$filter', () async {
+      final payload = await _request(
+        'GET',
+        'events/mine',
+        query: {'filter': filter},
       );
-    }
-    return rows
-        .map((row) => EventSummary.fromJson(_map(row)))
-        .toList(growable: false);
+      return _eventList(payload);
+    });
   }
 
   Future<String> createEvent(CreateEventInput input) async {
@@ -192,6 +221,48 @@ class EventRepository {
 
   Future<void> updateEvent(String eventId, CreateEventInput input) async {
     await _request('PUT', 'events/$eventId', body: input.toApiJson());
+  }
+
+  Future<int> updateEventSeries(
+    String eventId,
+    String scope,
+    CreateEventInput input,
+  ) async {
+    final payload = await _request(
+      'PUT',
+      'events/$eventId/series',
+      body: {...input.toApiJson(), 'scope': scope},
+    );
+    return (_map(payload)['updated_count'] as num).toInt();
+  }
+
+  Future<EventQualityReview> reviewEventQuality(CreateEventInput input) async {
+    final event = input.toApiJson();
+    final payload = await _request(
+      'POST',
+      'assistant/event-quality',
+      body: {
+        'title': event['title'],
+        'description': event['description'],
+        'category': event['category'],
+        'venue_name': event['venue_name'],
+        'address': event['address'],
+        'start_at': event['start_at'],
+        'end_at': event['end_at'],
+        'max_participants': event['max_participants'],
+        'what_to_bring': event['what_to_bring'],
+      },
+    );
+    return EventQualityReview.fromJson(_map(_map(payload)['quality']));
+  }
+
+  Future<NaturalEventFilters> naturalEventFilters(String query) async {
+    final payload = await _request(
+      'POST',
+      'assistant/event-filters',
+      body: {'query': query.trim(), 'locale': 'en'},
+    );
+    return NaturalEventFilters.fromJson(_map(_map(payload)['filters']));
   }
 
   Future<void> cancelEvent(String eventId) =>
@@ -258,6 +329,42 @@ class EventRepository {
     'events/$eventId/discussion',
     body: {'body': body.trim()},
   );
+
+  Future<EventDiscussionSummary> summarizeDiscussion(String eventId) async {
+    final payload = await _request(
+      'POST',
+      'events/$eventId/discussion-summary',
+    );
+    return EventDiscussionSummary.fromJson(_map(payload));
+  }
+
+  Future<DiscussionChanges> discussionChanges(String eventId) async {
+    final payload = await _request(
+      'POST',
+      'events/$eventId/discussion-changes',
+    );
+    return DiscussionChanges.fromJson(_map(payload));
+  }
+
+  Future<void> markDiscussionSeen(String eventId) =>
+      _request('PUT', 'events/$eventId/discussion/seen');
+
+  Future<String> translateEvent(String eventId, String targetLanguage) async {
+    final payload = await _request(
+      'POST',
+      'events/$eventId/translation',
+      body: {'target_language': targetLanguage.trim()},
+    );
+    final translation = _map(payload)['translation'];
+    if (translation is! String || translation.trim().isEmpty) {
+      throw const EdgeApiException(
+        statusCode: 502,
+        code: 'invalid_edge_response',
+        message: 'The edge API returned an invalid translation.',
+      );
+    }
+    return translation;
+  }
 
   Future<void> reportDiscussionMessage(
     String eventId,
@@ -357,6 +464,12 @@ class EventRepository {
         'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
         'spots_only': filters.spotsOnly,
         'following_only': filters.followingOnly,
+        'beginner_friendly_only': filters.beginnerFriendlyOnly,
+        'wheelchair_accessible_only': filters.wheelchairAccessibleOnly,
+        'event_setting': filters.eventSetting,
+        'event_language': filters.eventLanguage.trim(),
+        'age_guidance': filters.ageGuidance,
+        'alerts_enabled': true,
       },
     );
     final id = _map(payload)['id'];
@@ -368,6 +481,38 @@ class EventRepository {
       );
     }
     return id;
+  }
+
+  Future<void> updateSavedSearch({
+    required SavedEventSearch search,
+    String? name,
+    String? interest,
+    double? radiusKm,
+    EventDiscoveryFilters? filters,
+    bool? alertsEnabled,
+  }) async {
+    final updatedFilters = filters ?? search.filters;
+    await _request(
+      'PUT',
+      'event-searches/${search.id}',
+      body: {
+        'name': (name ?? search.name).trim(),
+        'interest': (interest ?? search.interest).trim(),
+        'radius_km': radiusKm ?? search.radiusKm,
+        'category': updatedFilters.category,
+        'date_filter': updatedFilters.dateFilter,
+        'time_filter': updatedFilters.timeFilter,
+        'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
+        'spots_only': updatedFilters.spotsOnly,
+        'following_only': updatedFilters.followingOnly,
+        'beginner_friendly_only': updatedFilters.beginnerFriendlyOnly,
+        'wheelchair_accessible_only': updatedFilters.wheelchairAccessibleOnly,
+        'event_setting': updatedFilters.eventSetting,
+        'event_language': updatedFilters.eventLanguage.trim(),
+        'age_guidance': updatedFilters.ageGuidance,
+        'alerts_enabled': alertsEnabled ?? search.alertsEnabled,
+      },
+    );
   }
 
   Future<void> deleteSavedSearch(String searchId) =>
@@ -387,6 +532,28 @@ class EventRepository {
         .map((row) => EventAttendee.fromJson(_map(row)))
         .toList(growable: false);
   }
+
+  Future<List<EventCohost>> cohosts(String eventId) async {
+    final payload = await _request('GET', 'events/$eventId/cohosts');
+    final rows = _map(payload)['data'];
+    if (rows is! List<dynamic>) {
+      throw const EdgeApiException(
+        statusCode: 502,
+        code: 'invalid_edge_response',
+        message: 'The edge API returned invalid co-host data.',
+      );
+    }
+    return rows
+        .map((row) => EventCohost.fromJson(_map(row)))
+        .toList(growable: false);
+  }
+
+  Future<void> setCohost(String eventId, String username, bool enabled) =>
+      _request(
+        enabled ? 'PUT' : 'DELETE',
+        'events/$eventId/cohosts',
+        body: {'username': username.trim()},
+      );
 
   Future<bool> setAttendeeVisibility(String eventId, bool visible) async {
     final payload = await _request(
@@ -420,6 +587,104 @@ class EventRepository {
       'events/$eventId/reconfirmation/confirm',
     );
     return DateTime.parse(_map(payload)['confirmed_at'] as String).toLocal();
+  }
+
+  Future<EventHostDashboard> hostDashboard(String eventId) async {
+    final payload = await _request('GET', 'events/$eventId/host-dashboard');
+    return EventHostDashboard.fromJson(_map(_map(payload)['data']));
+  }
+
+  Future<List<EventHostAttendee>> hostAttendees(String eventId) async {
+    final payload = await _request('GET', 'events/$eventId/host-attendees');
+    final rows = _map(payload)['data'];
+    if (rows is! List<dynamic>) {
+      throw const EdgeApiException(
+        statusCode: 502,
+        code: 'invalid_edge_response',
+        message: 'The edge API returned invalid host attendee data.',
+      );
+    }
+    return rows
+        .map((row) => EventHostAttendee.fromJson(_map(row)))
+        .toList(growable: false);
+  }
+
+  Future<void> setAttendance(String eventId, String profileId, String status) =>
+      _request(
+        'PUT',
+        'events/$eventId/attendance/$profileId',
+        body: {'status': status},
+      );
+
+  Future<void> hideEventRecommendation(String eventId) => _request(
+    'POST',
+    'recommendations/hide',
+    body: {'content_kind': 'event', 'content_id': eventId},
+  );
+
+  List<EventSummary> _eventList(Object? payload) {
+    final rows = _map(payload)['data'];
+    if (rows is! List<dynamic>) {
+      throw const EdgeApiException(
+        statusCode: 502,
+        code: 'invalid_edge_response',
+        message: 'The edge API returned invalid event data.',
+      );
+    }
+    return rows
+        .map((row) => EventSummary.fromJson(_map(row)))
+        .toList(growable: false);
+  }
+
+  Future<List<EventSummary>> _withOfflineList(
+    String scope,
+    Future<List<EventSummary>> Function() fetchLive,
+  ) async {
+    try {
+      final events = await fetchLive();
+      _lastReadWasOffline = false;
+      await _cacheEvents(scope, events);
+      return events;
+    } catch (error) {
+      if (!_canUseOfflineFallback(error)) rethrow;
+      final cached = await _readCachedEvents(scope);
+      if (cached != null) {
+        _lastReadWasOffline = true;
+        return cached;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _cacheEvents(String scope, List<EventSummary> events) async {
+    final userId = _userIdFromAccessToken();
+    if (userId != null) await _offlineCache.writeEvents(userId, scope, events);
+  }
+
+  Future<List<EventSummary>?> _readCachedEvents(String scope) async {
+    final userId = _userIdFromAccessToken();
+    return userId == null ? null : _offlineCache.readEvents(userId, scope);
+  }
+
+  bool _canUseOfflineFallback(Object error) =>
+      error is TimeoutException ||
+      error is http.ClientException ||
+      (error is EdgeApiException && error.statusCode >= 500);
+
+  String? _userIdFromAccessToken() {
+    final token = _accessTokenProvider();
+    if (token == null) return null;
+    final parts = token.split('.');
+    if (parts.length != 3) return null;
+    try {
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      final subject = payload is Map ? payload['sub'] : null;
+      return subject is String && subject.isNotEmpty ? subject : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<Object?> _request(

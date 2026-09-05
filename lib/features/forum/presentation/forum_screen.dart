@@ -112,6 +112,16 @@ class _ForumScreenState extends State<ForumScreen> {
                 child: AppPageHeader(
                   title: 'Community',
                   subtitle: 'Ask, share, and make local connections.',
+                  actions: _posts.isEmpty
+                      ? const []
+                      : [
+                          AppCircleButton(
+                            key: const Key('new-discussion-action'),
+                            icon: CupertinoIcons.square_pencil,
+                            tooltip: 'New discussion',
+                            onPressed: _create,
+                          ),
+                        ],
                 ),
               ),
             ),
@@ -152,40 +162,11 @@ class _ForumScreenState extends State<ForumScreen> {
                   title: 'Start the conversation',
                   message:
                       'Ask a question or share an idea with people nearby.',
-                  action: 'New Discussion',
+                  action: 'New discussion',
                   onPressed: _create,
                 ),
               )
             else ...[
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                sliver: SliverToBoxAdapter(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Discussions',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton.tonalIcon(
-                        key: const Key('new-discussion-action'),
-                        onPressed: _create,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(0, 46),
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
-                        ),
-                        icon: const Icon(
-                          CupertinoIcons.square_pencil,
-                          size: 17,
-                        ),
-                        label: const Text('New discussion'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                 sliver: SliverList.separated(

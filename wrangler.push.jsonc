@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "gather2gether-push-dispatcher",
+  "main": "workers/push-dispatcher.js",
+  "compatibility_date": "2026-08-31",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "placement": {"mode": "smart"},
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {"enabled": true, "head_sampling_rate": 1},
+    "traces": {"enabled": true, "head_sampling_rate": 0.1}
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "vars": {
+    "SUPABASE_URL": "https://zpxwzpdjyvvbpywbrnpr.supabase.co",
+    "FIREBASE_PROJECT_ID": "replace-with-firebase-project-id"
+  }
+}

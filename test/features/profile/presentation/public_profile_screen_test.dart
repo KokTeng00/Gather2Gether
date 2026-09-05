@@ -13,6 +13,7 @@ class _FakePublicProfileRepository extends ProfileRepository {
       );
 
   var followChanges = 0;
+  var blockChanges = 0;
   final bool pastEventsPublic;
   final requestedEventFilters = <String>[];
 
@@ -69,6 +70,12 @@ class _FakePublicProfileRepository extends ProfileRepository {
   Future<bool> setFollowing(String profileId, bool following) async {
     followChanges += following ? 1 : -1;
     return following;
+  }
+
+  @override
+  Future<bool> setBlocked(String profileId, bool blocked) async {
+    blockChanges += blocked ? 1 : -1;
+    return blocked;
   }
 }
 
@@ -138,5 +145,32 @@ void main() {
     expect(find.text('Community picnic'), findsOneWidget);
     expect(find.byKey(const Key('profile-past-events-private')), findsNothing);
     expect(repository.requestedEventFilters, ['hosting', 'past']);
+  });
+
+  testWidgets('a member can block another profile after confirmation', (
+    tester,
+  ) async {
+    final repository = _FakePublicProfileRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PublicProfileScreen(
+          profileId: '11111111-1111-4111-8111-111111111111',
+          repository: repository,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('public-profile-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Block member'));
+    await tester.pumpAndSettle();
+    expect(find.text('Block Alex Morgan?'), findsOneWidget);
+    await tester.tap(find.text('Block'));
+    await tester.pumpAndSettle();
+
+    expect(repository.blockChanges, 1);
+    expect(find.byType(PublicProfileScreen), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

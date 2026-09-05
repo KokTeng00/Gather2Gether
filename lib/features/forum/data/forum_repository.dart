@@ -164,6 +164,12 @@ class ForumRepository {
   Future<void> reportPost(String postId, String reason) =>
       _request('POST', 'forum/posts/$postId/report', body: {'reason': reason});
 
+  Future<void> hidePostRecommendation(String postId) => _request(
+    'POST',
+    'recommendations/hide',
+    body: {'content_kind': 'forum_post', 'content_id': postId},
+  );
+
   Future<void> reportComment(String commentId, String reason) => _request(
     'POST',
     'forum/comments/$commentId/report',

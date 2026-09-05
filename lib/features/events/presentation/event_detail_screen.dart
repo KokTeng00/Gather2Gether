@@ -10,6 +10,7 @@ import 'package:gather2gether/features/events/domain/event_lifecycle.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/events/presentation/create_event_screen.dart';
 import 'package:gather2gether/features/events/presentation/event_discussion_screen.dart';
+import 'package:gather2gether/features/events/presentation/event_host_dashboard_screen.dart';
 import 'package:gather2gether/features/profile/presentation/public_profile_screen.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -31,6 +32,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   late EventSummary _event;
   List<EventAnnouncement> _announcements = const [];
   bool _loading = false;
+  bool _translating = false;
+  bool _offline = false;
 
   @override
   void initState() {
@@ -53,6 +56,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         setState(() {
           _event = event;
           _announcements = announcements;
+          _offline = _events.lastReadWasOffline;
         });
       }
       if (event.isCancelled) await _deviceReminders.cancel(event.id);
@@ -150,6 +154,17 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     try {
       final saved = await _events.setSaved(_event.id, !_event.isSaved);
       if (mounted) setState(() => _event = _event.copyWith(isSaved: saved));
+    } on EdgeApiException catch (error) {
+      if (mounted) _showMessage(error.message);
+    }
+  }
+
+  Future<void> _hideRecommendation() async {
+    try {
+      await _events.hideEventRecommendation(_event.id);
+      if (!mounted) return;
+      _showMessage('This event will no longer appear in recommendations.');
+      Navigator.of(context).pop();
     } on EdgeApiException catch (error) {
       if (mounted) _showMessage(error.message);
     }
@@ -269,12 +284,80 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     );
   }
 
+  Future<void> _translateDetails() async {
+    if (_translating) return;
+    final language = await showDialog<String>(
+      context: context,
+      builder: (_) => const _TargetLanguageDialog(),
+    );
+    if (language == null || !mounted) return;
+    setState(() => _translating = true);
+    try {
+      final translation = await _events.translateEvent(_event.id, language);
+      if (!mounted) return;
+      setState(() => _translating = false);
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text('$language translation'),
+          content: SingleChildScrollView(
+            child: SelectableText(
+              translation,
+              key: const Key('event-translation-result'),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    } on EdgeApiException catch (error) {
+      if (mounted) _showMessage(error.message);
+    } finally {
+      if (mounted) setState(() => _translating = false);
+    }
+  }
+
   Future<void> _editEvent() async {
+    var scope = 'this';
+    if (_event.eventSeriesId != null) {
+      final selected = await showCupertinoModalPopup<String>(
+        context: context,
+        builder: (context) => CupertinoActionSheet(
+          title: const Text('Edit recurring event'),
+          message: const Text('Choose which upcoming occurrences to update.'),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, 'this'),
+              child: const Text('This event only'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, 'future'),
+              child: const Text('This and future events'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context, 'all'),
+              child: const Text('All upcoming events'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ),
+      );
+      if (selected == null || !mounted) return;
+      scope = selected;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (routeContext) => CreateEventScreen(
           initialEvent: _event,
+          editScope: scope,
           eventRepository: _events,
           onCreated: () => Navigator.pop(routeContext),
         ),
@@ -284,32 +367,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _announce() async {
-    final controller = TextEditingController();
     final body = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Message attendees'),
-        content: TextField(
-          key: const Key('event-announcement-field'),
-          controller: controller,
-          maxLength: 1000,
-          minLines: 3,
-          maxLines: 6,
-          decoration: const InputDecoration(hintText: 'Share a useful update…'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Send'),
-          ),
-        ],
-      ),
+      builder: (_) => const _AnnouncementDialog(),
     );
-    controller.dispose();
     if (body == null || body.isEmpty) return;
     try {
       await _events.createAnnouncement(_event.id, body);
@@ -379,6 +440,19 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   Future<void> _openAttendees() => Navigator.of(context).push<void>(
     MaterialPageRoute(
       builder: (_) => _EventAttendeesScreen(event: _event, repository: _events),
+    ),
+  );
+
+  Future<void> _openCohosts() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) => _EventCohostsScreen(event: _event, repository: _events),
+    ),
+  );
+
+  Future<void> _openHostDashboard() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      builder: (_) =>
+          EventHostDashboardScreen(event: _event, repository: _events),
     ),
   );
 
@@ -529,6 +603,42 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               subtitle: 'Hosted by ${_event.organizerName}',
               height: 270,
             ),
+            if (_offline) ...[
+              const SizedBox(height: 10),
+              MaterialBanner(
+                content: const Text(
+                  'This is the latest saved copy. Actions need a connection.',
+                ),
+                actions: [
+                  TextButton(onPressed: _refresh, child: const Text('Retry')),
+                ],
+              ),
+            ],
+            if (_event.recommendationReason.isNotEmpty &&
+                !_event.viewerIsOrganizer) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    CupertinoIcons.sparkles,
+                    size: 16,
+                    color: colors.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _event.recommendationReason,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  TextButton(
+                    key: const Key('event-hide-recommendation-action'),
+                    onPressed: _hideRecommendation,
+                    child: const Text('Not for me'),
+                  ),
+                ],
+              ),
+            ],
             if (_event.isCancelled) ...[
               const SizedBox(height: 16),
               Container(
@@ -786,6 +896,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       subtitle: _event.whatToBring,
                     ),
                   ],
+                  const Divider(indent: 56),
+                  _DetailActionRow(
+                    key: const Key('event-translate-action'),
+                    icon: CupertinoIcons.globe,
+                    title: _translating
+                        ? 'Translating details…'
+                        : 'Translate event details',
+                    onTap: _translating ? null : _translateDetails,
+                  ),
                 ],
               ),
             ),
@@ -910,6 +1029,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 title: 'Host tools',
                 child: Column(
                   children: [
+                    _DetailActionRow(
+                      key: const Key('event-host-dashboard-action'),
+                      icon: CupertinoIcons.chart_bar_alt_fill,
+                      title: 'Dashboard & check-in',
+                      onTap: _openHostDashboard,
+                    ),
+                    const Divider(indent: 56),
                     if (!_event.hasEnded && !_event.isCancelled) ...[
                       _DetailActionRow(
                         key: const Key('event-edit-action'),
@@ -923,6 +1049,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         icon: CupertinoIcons.speaker_2,
                         title: 'Message attendees',
                         onTap: _announce,
+                      ),
+                      const Divider(indent: 56),
+                      _DetailActionRow(
+                        key: const Key('event-cohosts-action'),
+                        icon: CupertinoIcons.person_2,
+                        title: 'Co-hosts',
+                        onTap: _openCohosts,
                       ),
                       const Divider(indent: 56),
                       _DetailActionRow(
@@ -1061,6 +1194,46 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 }
 
+class _AnnouncementDialog extends StatefulWidget {
+  const _AnnouncementDialog();
+
+  @override
+  State<_AnnouncementDialog> createState() => _AnnouncementDialogState();
+}
+
+class _AnnouncementDialogState extends State<_AnnouncementDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Message attendees'),
+    content: TextField(
+      key: const Key('event-announcement-field'),
+      controller: _controller,
+      maxLength: 1000,
+      minLines: 3,
+      maxLines: 6,
+      decoration: const InputDecoration(hintText: 'Share a useful update…'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _controller.text.trim()),
+        child: const Text('Send'),
+      ),
+    ],
+  );
+}
+
 class _DetailRow extends StatelessWidget {
   const _DetailRow({
     required this.icon,
@@ -1169,6 +1342,218 @@ class _DetailActionRow extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TargetLanguageDialog extends StatefulWidget {
+  const _TargetLanguageDialog();
+
+  @override
+  State<_TargetLanguageDialog> createState() => _TargetLanguageDialogState();
+}
+
+class _TargetLanguageDialogState extends State<_TargetLanguageDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Translate event'),
+    content: TextField(
+      key: const Key('event-translation-language-field'),
+      controller: _controller,
+      autofocus: true,
+      maxLength: 60,
+      textCapitalization: TextCapitalization.words,
+      decoration: const InputDecoration(hintText: 'German, Spanish, Japanese…'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        key: const Key('event-translate-confirm'),
+        onPressed: () {
+          final language = _controller.text.trim();
+          Navigator.pop(context, language.length >= 2 ? language : null);
+        },
+        child: const Text('Translate'),
+      ),
+    ],
+  );
+}
+
+class _EventCohostsScreen extends StatefulWidget {
+  const _EventCohostsScreen({required this.event, required this.repository});
+
+  final EventSummary event;
+  final EventRepository repository;
+
+  @override
+  State<_EventCohostsScreen> createState() => _EventCohostsScreenState();
+}
+
+class _EventCohostsScreenState extends State<_EventCohostsScreen> {
+  final _usernameController = TextEditingController();
+  List<EventCohost>? _people;
+  String? _error;
+  bool _saving = false;
+
+  bool get _viewerCanEdit =>
+      _people?.any((person) => person.viewerCanEdit) == true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _people = null;
+      _error = null;
+    });
+    try {
+      final people = await widget.repository.cohosts(widget.event.id);
+      if (mounted) setState(() => _people = people);
+    } on EdgeApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not load co-hosts.');
+    }
+  }
+
+  Future<void> _add() async {
+    final username = _usernameController.text.trim();
+    if (username.length < 3 || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await widget.repository.setCohost(widget.event.id, username, true);
+      _usernameController.clear();
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Co-host added.')));
+      }
+    } on EdgeApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _remove(EventCohost person) async {
+    if (_saving || person.username.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await widget.repository.setCohost(
+        widget.event.id,
+        person.username,
+        false,
+      );
+      if (!mounted) return;
+      setState(() {
+        _people = _people
+            ?.where((item) => item.profileId != person.profileId)
+            .toList(growable: false);
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('${person.displayName} removed.')));
+    } on EdgeApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Co-hosts')),
+    body: _people == null && _error == null
+        ? const Center(child: CupertinoActivityIndicator())
+        : _error != null
+        ? AppMaintenanceState(onRetry: _load)
+        : ListView(
+            key: const Key('event-cohosts-list'),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            children: [
+              Text(
+                _viewerCanEdit
+                    ? 'Add up to five people by username. Co-hosts can edit the event, message attendees, and manage the plan.'
+                    : 'The event owner controls who can co-host this plan.',
+              ),
+              if (_viewerCanEdit) ...[
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: const Key('event-cohost-username-field'),
+                        controller: _usernameController,
+                        autocorrect: false,
+                        decoration: const InputDecoration(
+                          labelText: 'Username',
+                          hintText: '@username',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton(
+                      key: const Key('event-add-cohost-button'),
+                      onPressed: _saving ? null : _add,
+                      child: Text(_saving ? 'Adding…' : 'Add'),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 20),
+              for (final person in _people!)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    child: Text(
+                      person.displayName.trim().isEmpty
+                          ? '?'
+                          : String.fromCharCode(
+                              person.displayName.trim().runes.first,
+                            ).toUpperCase(),
+                    ),
+                  ),
+                  title: Text(person.displayName),
+                  subtitle: Text(
+                    '${person.username.isEmpty ? '' : '@${person.username} · '}${person.role}',
+                  ),
+                  trailing: _viewerCanEdit && person.role == 'Co-host'
+                      ? TextButton(
+                          onPressed: _saving ? null : () => _remove(person),
+                          child: const Text('Remove'),
+                        )
+                      : null,
+                ),
+            ],
+          ),
+  );
 }
 
 class _EventAttendeesScreen extends StatefulWidget {

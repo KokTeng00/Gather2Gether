@@ -131,6 +131,17 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
     }
   }
 
+  Future<void> _hideRecommendation() async {
+    try {
+      await _repository.hidePostRecommendation(widget.postId);
+      if (!mounted) return;
+      _showMessage('This discussion will no longer be recommended.');
+      Navigator.of(context).pop();
+    } on ForumApiException catch (error) {
+      if (mounted) _showMessage(error.message);
+    }
+  }
+
   Future<void> _reportComment(ForumComment comment) async {
     final reason = await _chooseReportReason();
     if (reason == null) return;
@@ -176,6 +187,13 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
       appBar: AppBar(
         title: const Text('Discussion'),
         actions: [
+          if (post != null && !post.viewerIsAuthor)
+            IconButton(
+              key: const Key('forum-hide-recommendation-action'),
+              tooltip: 'Not for me',
+              onPressed: _hideRecommendation,
+              icon: const Icon(CupertinoIcons.eye_slash),
+            ),
           if (post != null && !post.viewerIsAuthor)
             IconButton(
               tooltip: 'Report discussion',

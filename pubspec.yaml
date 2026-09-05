@@ -39,15 +39,21 @@ dependencies:
   intl: ^0.20.3
   flutter_secure_storage: ^10.0.0
   http: ^1.5.0
-  maplibre_gl: ^0.27.0
+  # Local 0.27.0 patch for iOS world wrapping and style-load races.
+  maplibre_gl:
+    path: third_party/maplibre_gl
   url_launcher: ^6.3.2
   app_links: ^7.0.0
   image_picker: ^1.2.3
   flutter_image_compress: ^2.5.1
   add_2_calendar: ^3.0.1
+  firebase_core: ^4.14.0
+  firebase_messaging: ^16.6.0
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   # The "flutter_lints" package below contains a set of recommended lints to

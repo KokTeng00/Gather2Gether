@@ -1,0 +1,46 @@
+name: maplibre_gl
+description: "Native MapLibre maps for Flutter: Mapbox Vector Tile (MVT) and PMTiles sources, custom styles, GeoJSON layers and offline regions on Android, iOS and Web."
+version: 0.27.0
+repository: https://github.com/maplibre/flutter-maplibre-gl
+issue_tracker: https://github.com/maplibre/flutter-maplibre-gl/issues
+documentation: https://maplibre.org/flutter-maplibre-gl/
+funding:
+  - https://github.com/sponsors/maplibre
+  - https://opencollective.com/maplibre
+topics:
+  - map
+  - maplibre
+  - vector-tiles
+  - openstreetmap
+  - gis
+
+environment:
+  sdk: ">=3.7.0 <4.0.0"
+  flutter: '>=3.29.0'
+
+dependencies:
+  collection: ^1.19.1
+  flutter:
+    sdk: flutter
+  maplibre_gl_platform_interface: ^0.27.0
+  maplibre_gl_web: ^0.27.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: org.maplibre.maplibregl
+        pluginClass: MapLibreMapsPlugin
+      ios:
+        pluginClass: MapLibreMapsPlugin
+      web:
+        default_package: maplibre_gl_web
+
+platforms:
+  android:
+  ios:
+  web:

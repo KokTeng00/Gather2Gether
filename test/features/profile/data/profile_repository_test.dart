@@ -222,4 +222,60 @@ void main() {
     expect(events.single.title, 'Community walk');
     expect(events.single.userRsvpStatus, 'attended');
   });
+
+  test(
+    'block controls and blocked profiles use authenticated edge routes',
+    () async {
+      var call = 0;
+      final client = MockClient((request) async {
+        call += 1;
+        expect(request.headers['authorization'], 'Bearer access-token');
+        if (call == 1) {
+          expect(request.method, 'PUT');
+          expect(
+            request.url.path,
+            '/api/v1/profiles/11111111-1111-4111-8111-111111111111/block',
+          );
+          return http.Response(jsonEncode({'blocked': true}), 200);
+        }
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/v1/blocks');
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'id': '11111111-1111-4111-8111-111111111111',
+                'display_name': 'Alex Morgan',
+                'username': 'alex_local',
+                'blocked_at': '2026-09-04T10:00:00Z',
+              },
+            ],
+          }),
+          200,
+        );
+      });
+      final repository = ProfileRepository(
+        httpClient: client,
+        accessTokenProvider: () => 'access-token',
+        edgeApiUrl: apiUrl,
+      );
+
+      expect(
+        await repository.setBlocked(
+          '11111111-1111-4111-8111-111111111111',
+          true,
+        ),
+        isTrue,
+      );
+      final profiles = await repository.blockedProfiles();
+
+      expect(profiles, hasLength(1));
+      expect(profiles.single.displayName, 'Alex Morgan');
+      expect(profiles.single.username, 'alex_local');
+      expect(
+        profiles.single.blockedAt,
+        DateTime.parse('2026-09-04T10:00:00Z').toLocal(),
+      );
+    },
+  );
 }

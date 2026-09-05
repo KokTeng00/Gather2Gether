@@ -65,3 +65,24 @@ class PublicProfile {
     return int.tryParse('$value') ?? 0;
   }
 }
+
+class BlockedProfile {
+  const BlockedProfile({
+    required this.id,
+    required this.displayName,
+    required this.username,
+    required this.blockedAt,
+  });
+
+  factory BlockedProfile.fromJson(Map<String, dynamic> json) => BlockedProfile(
+    id: json['id'] as String,
+    displayName: (json['display_name'] as String?) ?? 'Community member',
+    username: (json['username'] as String?) ?? '',
+    blockedAt: DateTime.parse(json['blocked_at'] as String).toLocal(),
+  );
+
+  final String id;
+  final String displayName;
+  final String username;
+  final DateTime blockedAt;
+}

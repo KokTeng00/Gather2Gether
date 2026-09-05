@@ -12,6 +12,9 @@ class UserProfile {
     this.avatarImageKey,
     this.usernameChangedAt,
     this.updatedAt,
+    this.interests = const [],
+    this.accessibilityPreferences = const [],
+    this.onboardingCompletedAt,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -35,6 +38,18 @@ class UserProfile {
       updatedAt: updatedAtValue is String
           ? DateTime.tryParse(updatedAtValue)?.toLocal()
           : null,
+      interests: (json['interests'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
+      accessibilityPreferences:
+          (json['accessibility_preferences'] as List<dynamic>? ?? const [])
+              .whereType<String>()
+              .toList(growable: false),
+      onboardingCompletedAt: json['onboarding_completed_at'] is String
+          ? DateTime.tryParse(
+              json['onboarding_completed_at'] as String,
+            )?.toLocal()
+          : null,
     );
   }
 
@@ -50,6 +65,11 @@ class UserProfile {
   final String? avatarImageKey;
   final DateTime? usernameChangedAt;
   final DateTime? updatedAt;
+  final List<String> interests;
+  final List<String> accessibilityPreferences;
+  final DateTime? onboardingCompletedAt;
+
+  bool get hasCompletedOnboarding => onboardingCompletedAt != null;
 
   bool get hasAvatar => avatarImageKey?.trim().isNotEmpty == true;
 
@@ -96,6 +116,9 @@ class UserProfile {
     String? avatarImageKey,
     DateTime? usernameChangedAt,
     DateTime? updatedAt,
+    List<String>? interests,
+    List<String>? accessibilityPreferences,
+    DateTime? onboardingCompletedAt,
   }) {
     return UserProfile(
       displayName: displayName ?? this.displayName,
@@ -110,6 +133,11 @@ class UserProfile {
       avatarImageKey: avatarImageKey ?? this.avatarImageKey,
       usernameChangedAt: usernameChangedAt ?? this.usernameChangedAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      interests: interests ?? this.interests,
+      accessibilityPreferences:
+          accessibilityPreferences ?? this.accessibilityPreferences,
+      onboardingCompletedAt:
+          onboardingCompletedAt ?? this.onboardingCompletedAt,
     );
   }
 }

@@ -36,7 +36,7 @@ void main() {
     expect(find.text('Neighbourhood notes'), findsNothing);
     expect(find.byTooltip('New discussion'), findsNothing);
     expect(find.text('Start the conversation'), findsOneWidget);
-    expect(find.text('New Discussion'), findsOneWidget);
+    expect(find.text('New discussion'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -72,8 +72,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('new-discussion-action')), findsOneWidget);
-    expect(find.text('New discussion'), findsOneWidget);
-    expect(find.text('New Discussion'), findsNothing);
+    expect(find.byTooltip('New discussion'), findsOneWidget);
+    expect(find.text('New discussion'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

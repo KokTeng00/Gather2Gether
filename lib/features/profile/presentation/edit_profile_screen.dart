@@ -234,10 +234,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       appBar: AppBar(
         title: const Text('Edit public profile'),
         actions: [
-          TextButton(
-            key: const Key('save-profile-button'),
+          AppSaveAction(
+            buttonKey: const Key('save-profile-button'),
+            saving: _saving,
             onPressed: _saving || _updatingAvatar ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Save'),
           ),
           const SizedBox(width: 8),
         ],
