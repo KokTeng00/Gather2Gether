@@ -1,3 +1,6 @@
+// Required from Flutter 3.44; older SDKs still export the builder from Material.
+// ignore: unnecessary_import
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 class AppTheme {

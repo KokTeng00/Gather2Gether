@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/features/assistant/data/assistant_repository.dart';
 import 'package:gather2gether/features/assistant/domain/assistant_message.dart';
+import 'package:gather2gether/features/events/data/event_repository.dart';
 import 'package:gather2gether/features/events/presentation/create_event_screen.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/places/data/place_repository.dart';
@@ -89,64 +90,114 @@ void main() {
     expect(find.text('Running'), findsOneWidget);
   });
 
-  testWidgets('selecting an address suggestion sets its venue and map pin', (
-    tester,
-  ) async {
-    final places = PlaceRepository(
-      httpClient: MockClient(
-        (_) async => http.Response(
-          jsonEncode({
-            'data': [
-              {
-                'id': '51a-place',
-                'name': 'Kunsthalle Mannheim',
-                'formatted_address':
-                    'Friedrichsplatz 4, 68165 Mannheim, Germany',
-                'address_line1': 'Kunsthalle Mannheim',
-                'address_line2': 'Friedrichsplatz 4, 68165 Mannheim, Germany',
-                'country_code': 'de',
-                'latitude': 49.4842,
-                'longitude': 8.4755,
-                'result_type': 'amenity',
-                'timezone': 'Europe/Berlin',
-              },
-            ],
+  for (final namedVenue in [true, false]) {
+    testWidgets(
+      'address-only form saves ${namedVenue ? 'a venue' : 'a street address'} and its map pin',
+      (tester) async {
+        Map<String, dynamic>? savedEvent;
+        final events = EventRepository(
+          httpClient: MockClient((request) async {
+            savedEvent = jsonDecode(request.body) as Map<String, dynamic>;
+            return http.Response(jsonEncode({'id': 'created-event'}), 201);
           }),
-          200,
-        ),
-      ),
-      accessTokenProvider: () => 'access-token',
-      edgeApiUrl: 'https://gather2gether.pages.dev/api/v1',
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CreateEventScreen(onCreated: () {}, placeRepository: places),
-      ),
-    );
+          accessTokenProvider: () => 'access-token',
+          edgeApiUrl: 'https://example.test/api/v1',
+        );
+        final places = PlaceRepository(
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'data': [
+                  {
+                    'id': '51a-place',
+                    if (namedVenue) 'name': 'Kunsthalle Mannheim',
+                    'formatted_address':
+                        'Friedrichsplatz 4, 68165 Mannheim, Germany',
+                    'address_line1': namedVenue
+                        ? 'Kunsthalle Mannheim'
+                        : 'Friedrichsplatz 4',
+                    'address_line2':
+                        'Friedrichsplatz 4, 68165 Mannheim, Germany',
+                    'country_code': 'de',
+                    'latitude': 49.4842,
+                    'longitude': 8.4755,
+                    'result_type': namedVenue ? 'amenity' : 'building',
+                    'timezone': 'Europe/Berlin',
+                  },
+                ],
+              }),
+              200,
+            ),
+          ),
+          accessTokenProvider: () => 'access-token',
+          edgeApiUrl: 'https://gather2gether.pages.dev/api/v1',
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CreateEventScreen(
+              onCreated: () {},
+              placeRepository: places,
+              eventRepository: events,
+            ),
+          ),
+        );
 
-    expect(find.text('Use current location'), findsNothing);
+        expect(find.text('Use current location'), findsNothing);
+        expect(find.widgetWithText(TextFormField, 'Venue name'), findsNothing);
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'Event title'),
+          'An afternoon together',
+        );
+        await tester.enterText(
+          find.widgetWithText(TextFormField, 'What should people know?'),
+          'Meet at the entrance.',
+        );
 
-    await tester.enterText(
-      find.byKey(const Key('event-address-field')),
-      'Kunsthalle',
+        await tester.enterText(
+          find.byKey(const Key('event-address-field')),
+          'Kunsthalle',
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump();
+
+        final suggestion = find.byKey(
+          const ValueKey('place-suggestion-51a-place'),
+        );
+        expect(suggestion, findsOneWidget);
+        await tester.ensureVisible(suggestion);
+        await tester.pumpAndSettle();
+        await tester.tap(suggestion);
+        await tester.pump();
+
+        expect(find.text('Kunsthalle Mannheim'), findsNothing);
+        expect(find.text('Use current location'), findsNothing);
+        final address = tester.widget<TextFormField>(
+          find.byKey(const Key('event-address-field')),
+        );
+        expect(address.controller?.text, contains('Germany'));
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('publish-event-button')),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('publish-event-button')));
+        await tester.pumpAndSettle();
+
+        expect(savedEvent, isNotNull);
+        expect(
+          savedEvent!['venue_name'],
+          namedVenue ? 'Kunsthalle Mannheim' : 'Friedrichsplatz 4',
+        );
+        expect(
+          savedEvent!['address'],
+          'Friedrichsplatz 4, 68165 Mannheim, Germany',
+        );
+        expect(savedEvent!['latitude'], 49.4842);
+        expect(savedEvent!['longitude'], 8.4755);
+      },
     );
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pump();
-
-    final suggestion = find.byKey(const ValueKey('place-suggestion-51a-place'));
-    expect(suggestion, findsOneWidget);
-    await tester.ensureVisible(suggestion);
-    await tester.pumpAndSettle();
-    await tester.tap(suggestion);
-    await tester.pump();
-
-    expect(find.text('Kunsthalle Mannheim'), findsOneWidget);
-    expect(find.text('Use current location'), findsNothing);
-    final address = tester.widget<TextFormField>(
-      find.byKey(const Key('event-address-field')),
-    );
-    expect(address.controller?.text, contains('Germany'));
-  });
+  }
 
   testWidgets('an unavailable address route uses a helpful message', (
     tester,

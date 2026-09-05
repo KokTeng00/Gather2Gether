@@ -47,7 +47,7 @@ class PluginAppImagePicker implements AppImagePicker {
         maxHeight: _maxDimension,
         requestFullMetadata: false,
       );
-      return file == null ? null : _prepare(file);
+      return file == null ? null : await _prepare(file);
     } on PlatformException catch (error) {
       throw AppImagePickException(_platformMessage(error));
     } on AppImagePickException {
@@ -68,7 +68,7 @@ class PluginAppImagePicker implements AppImagePicker {
         throw AppImagePickException(_platformMessage(exception));
       }
       final file = response.files?.firstOrNull ?? response.file;
-      return file == null ? null : _prepare(file);
+      return file == null ? null : await _prepare(file);
     } on UnimplementedError {
       return null;
     } on PlatformException catch (error) {

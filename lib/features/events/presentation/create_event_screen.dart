@@ -199,6 +199,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   void _onAddressChanged() {
     if (_latitude == null && _longitude == null && !_addressMatched) return;
     setState(() {
+      _venueController.clear();
       _latitude = null;
       _longitude = null;
       _addressMatched = false;
@@ -210,10 +211,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       _latitude = place.latitude;
       _longitude = place.longitude;
       _addressMatched = true;
-      final venueName = place.suggestedVenueName;
-      if (_venueController.text.trim().isEmpty && venueName != null) {
-        _venueController.text = venueName;
-      }
+      var venueName = (place.suggestedVenueName ?? place.displayTitle).trim();
+      if (venueName.length < 2) venueName = place.formattedAddress;
+      _venueController.text = venueName.length > 160
+          ? venueName.substring(0, 160)
+          : venueName;
     });
   }
 
@@ -496,37 +498,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 title: 'Location',
                 footer:
                     'Choose a suggested address so people can find the right place.',
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _venueController,
-                      textCapitalization: TextCapitalization.words,
-                      decoration: _fieldDecoration(
-                        'Venue name',
-                        CupertinoIcons.building_2_fill,
-                      ),
-                      validator: (value) => Validators.requiredText(
-                        value,
-                        minLength: 2,
-                        maxLength: 160,
-                      ),
-                    ),
-                    const Divider(indent: 52),
-                    PlaceAutocompleteField(
-                      controller: _addressController,
-                      repository: _places,
-                      latitude: _latitude,
-                      longitude: _longitude,
-                      enabled: !_submitting,
-                      onTextChanged: _onAddressChanged,
-                      onSelected: _selectPlace,
-                      validator: (value) => Validators.requiredText(
-                        value,
-                        minLength: 3,
-                        maxLength: 300,
-                      ),
-                    ),
-                  ],
+                child: PlaceAutocompleteField(
+                  controller: _addressController,
+                  repository: _places,
+                  latitude: _latitude,
+                  longitude: _longitude,
+                  enabled: !_submitting,
+                  onTextChanged: _onAddressChanged,
+                  onSelected: _selectPlace,
+                  validator: (value) => Validators.requiredText(
+                    value,
+                    minLength: 3,
+                    maxLength: 300,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
