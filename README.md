@@ -217,9 +217,17 @@ Wrangler's masked prompt and then redeploy:
 npx wrangler pages secret put GEOAPIFY_API_KEY --project-name gather2gether
 ```
 
-Autocomplete is intentionally global: it applies the device location only as a
-ranking bias, never as a country filter. Both providers' required attribution
-is displayed in the app.
+Place search is shared by event creation and discussion place tags. It starts
+with autocomplete and uses one forward-geocoding fallback when the full venue
+name is not matched. An explicitly typed city is separated from the venue name;
+common German campus-hall abbreviations are expanded, and unrelated or duplicate
+results are removed. For example, `Mannheim UniSport Halle` resolves to the
+provider's `Sporthalle der Universität`, Theodor-Heuss-Anlage 15.
+
+Search is global: the device location is a ranking bias, never a country filter.
+Both requests share an eight-second deadline, return at most five suggestions,
+and keep the existing Geoapify key on the server. Place coverage still depends
+on Geoapify's data. Both providers' required attribution is displayed in the app.
 
 ### Google sign-in setup
 
