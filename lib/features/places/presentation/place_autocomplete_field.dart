@@ -184,11 +184,9 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
           onFieldSubmitted: widget.onSubmitted,
         ),
         if (_suggestions.isNotEmpty)
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerLow,
-              border: Border(top: BorderSide(color: colors.outlineVariant)),
-            ),
+          Material(
+            color: colors.surfaceContainerLow,
+            shape: Border(top: BorderSide(color: colors.outlineVariant)),
             child: Column(
               children: [
                 for (final place in _suggestions)
