@@ -144,50 +144,77 @@ class AppChoiceField extends StatelessWidget {
           onTap: enabled ? () => _showChoices(context) : null,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  color: enabled
-                      ? colors.primary
-                      : colors.onSurface.withValues(alpha: 0.38),
-                  size: 21,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final labelStyle = Theme.of(context).textTheme.bodyLarge
+                    ?.copyWith(
                       color: enabled
                           ? colors.onSurface
                           : colors.onSurface.withValues(alpha: 0.45),
                       fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    value,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.end,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    );
+                final valueStyle = Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(
                       color: enabled
                           ? colors.onSurfaceVariant
                           : colors.onSurface.withValues(alpha: 0.38),
+                    );
+                double textWidth(String text, TextStyle? style) {
+                  final painter = TextPainter(
+                    text: TextSpan(text: text, style: style),
+                    textDirection: Directionality.of(context),
+                    textScaler: MediaQuery.textScalerOf(context),
+                    maxLines: 1,
+                  )..layout();
+                  final width = painter.width;
+                  painter.dispose();
+                  return width;
+                }
+
+                // Short values use only their natural width. Larger text moves
+                // the value below the full label instead of clipping either.
+                final stacked =
+                    textWidth(label, labelStyle) +
+                        textWidth(value, valueStyle) +
+                        69 >
+                    constraints.maxWidth;
+                return Row(
+                  children: [
+                    Icon(
+                      icon,
+                      size: 21,
+                      color: enabled
+                          ? colors.primary
+                          : colors.onSurface.withValues(alpha: 0.38),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Icon(
-                  CupertinoIcons.chevron_right,
-                  size: 16,
-                  color: colors.onSurfaceVariant.withValues(alpha: 0.72),
-                ),
-              ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: stacked
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(label, style: labelStyle),
+                                const SizedBox(height: 3),
+                                Text(value, style: valueStyle),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(child: Text(label, style: labelStyle)),
+                                const SizedBox(width: 12),
+                                Text(value, style: valueStyle),
+                              ],
+                            ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      CupertinoIcons.chevron_right,
+                      size: 16,
+                      color: colors.onSurfaceVariant.withValues(alpha: 0.72),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),

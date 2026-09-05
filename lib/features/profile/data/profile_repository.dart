@@ -4,6 +4,7 @@ import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/profile/domain/profile_stats.dart';
+import 'package:gather2gether/features/profile/domain/profile_connection.dart';
 import 'package:gather2gether/features/profile/domain/public_profile.dart';
 import 'package:gather2gether/features/profile/domain/member_controls.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
@@ -306,6 +307,43 @@ class ProfileRepository {
       ),
     );
     return payload['following'] == true;
+  }
+
+  Future<ProfileConnectionPage> fetchConnections({
+    String? profileId,
+    required ProfileConnectionKind kind,
+    String query = '',
+    String? cursor,
+  }) async {
+    final parameters = <String, String>{
+      if (query.trim().isNotEmpty) 'query': query.trim(),
+      'cursor': ?cursor,
+    };
+    final path =
+        'profiles/${Uri.encodeComponent(profileId ?? 'me')}/${kind.name}';
+    final uri = Uri(
+      path: path,
+      queryParameters: parameters.isEmpty ? null : parameters,
+    );
+    final payload = _responseMap(await _edgeRequest('GET', uri.toString()));
+    final rows = payload['data'];
+    if (rows is! List) {
+      throw const FormatException('Invalid member list response.');
+    }
+    return ProfileConnectionPage(
+      members: rows
+          .map((row) => ProfileConnection.fromJson(_responseMap(row)))
+          .toList(growable: false),
+      canSearch: payload['can_search'] == true,
+      nextCursor: payload['next_cursor'] as String?,
+    );
+  }
+
+  String connectionAvatarUrl(ProfileConnection member) {
+    final base = _edgeApiUrl.endsWith('/')
+        ? _edgeApiUrl.substring(0, _edgeApiUrl.length - 1)
+        : _edgeApiUrl;
+    return '$base/profiles/${Uri.encodeComponent(member.id)}/avatar?v=${Uri.encodeQueryComponent(member.avatarVersion ?? 'current')}';
   }
 
   Future<bool> setBlocked(String profileId, bool blocked) async {

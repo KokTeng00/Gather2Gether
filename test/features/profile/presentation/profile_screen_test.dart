@@ -5,8 +5,11 @@ import 'package:gather2gether/features/forum/data/forum_repository.dart';
 import 'package:gather2gether/features/forum/domain/forum_post.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/profile_stats.dart';
+import 'package:gather2gether/features/profile/domain/profile_connection.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/profile_screen.dart';
+import 'package:gather2gether/features/profile/presentation/profile_photo_screen.dart';
+import 'package:gather2gether/features/profile/presentation/profile_widgets.dart';
 import 'package:intl/intl.dart';
 
 class _FakeProfileRepository extends ProfileRepository {
@@ -33,6 +36,14 @@ class _FakeProfileRepository extends ProfileRepository {
     if (failFetch) throw StateError('database detail hidden from UI');
     return profile;
   }
+
+  @override
+  Future<ProfileConnectionPage> fetchConnections({
+    String? profileId,
+    required ProfileConnectionKind kind,
+    String query = '',
+    String? cursor,
+  }) async => const ProfileConnectionPage(members: [], canSearch: true);
 
   @override
   Future<ProfileStats> fetchStats() async => const ProfileStats(
@@ -155,6 +166,68 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('profile keeps identity on one line and opens both owner lists', (
+    tester,
+  ) async {
+    await _pumpProfile(tester);
+    expect(
+      (tester.getCenter(find.text('@maya_chen')).dy -
+              tester.getCenter(find.text('Berlin')).dy)
+          .abs(),
+      lessThan(1),
+    );
+    for (final kind in ['followers', 'following']) {
+      await tester.tap(find.byKey(Key('profile-$kind-action')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('connections-search')), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('avatar opens an authenticated zoomable photo and closes', (
+    tester,
+  ) async {
+    final profile = _FakeProfileRepository().profile.copyWith(
+      avatarImageKey: 'avatar.jpg',
+    );
+    const headers = {'Authorization': 'Bearer test-token'};
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        home: Scaffold(
+          body: ProfileBalancedOverview(
+            profile: profile,
+            stats: null,
+            onEdit: () {},
+            avatarUrl: 'https://example.test/avatar.jpg',
+            avatarHeaders: headers,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Edit profile'), findsNothing);
+    expect(find.byTooltip('Edit profile'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('profile-avatar')));
+    await tester.pumpAndSettle();
+    final viewer = tester.widget<ProfilePhotoScreen>(
+      find.byType(ProfilePhotoScreen),
+    );
+    expect(viewer.headers, headers);
+    expect(viewer.imageUrl, 'https://example.test/avatar.jpg');
+    expect(
+      tester.widget<InteractiveViewer>(find.byType(InteractiveViewer)).maxScale,
+      4,
+    );
+    await tester.tap(find.byTooltip('Close photo'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProfilePhotoScreen), findsNothing);
+    expect(find.byKey(const Key('profile-overview')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('edit profile validates and saves identity', (tester) async {
     final changed = <UserProfile>[];
     final repository = await _pumpProfile(
@@ -162,9 +235,9 @@ void main() {
       onProfileChanged: changed.add,
     );
 
-    await tester.tap(find.text('Edit profile'));
+    await tester.tap(find.byKey(const Key('profile-edit-action')));
     await tester.pumpAndSettle();
-    expect(find.text('Your identity'), findsOneWidget);
+    expect(find.text('Profile details'), findsOneWidget);
     expect(find.byKey(const Key('save-profile-button')), findsOneWidget);
     expect(find.text('Save profile'), findsNothing);
 
@@ -206,7 +279,7 @@ void main() {
       initialProfile: lockedProfile,
     );
 
-    await tester.tap(find.text('Edit profile'));
+    await tester.tap(find.byKey(const Key('profile-edit-action')));
     await tester.pumpAndSettle();
 
     final usernameField = tester.widget<TextField>(

@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/theme/app_theme.dart';
@@ -153,12 +152,10 @@ void main() {
 
     await tester.tap(find.text('Preferences & discovery'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.widgetWithText(FilterChip, 'Coffee'),
-      250,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.tap(find.widgetWithText(FilterChip, 'Coffee'));
+    await tester.tap(find.byKey(const Key('preferences-interests')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('settings-option-Coffee')));
+    await tester.tap(find.byKey(const Key('settings-picker-done')));
     await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('save-event-preferences-button')),
@@ -215,6 +212,9 @@ void main() {
     expect(find.text('Preferences & discovery'), findsOneWidget);
     expect(find.text('Security'), findsOneWidget);
     expect(find.text('Privacy'), findsOneWidget);
+    expect(find.text('Your reports'), findsNothing);
+    expect(find.text('Export your data'), findsNothing);
+    expect(find.text('Community & data'), findsNothing);
 
     await tester.tap(find.text('Account & profile'));
     await tester.pumpAndSettle();
@@ -297,18 +297,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('profile-preferences-list')), findsOneWidget);
     expect(find.text('Shape your experience'), findsNothing);
-    expect(
-      find.byType(CupertinoSlidingSegmentedControl<double>),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('preferences-distance')), findsOneWidget);
 
     final initialButton = tester.widget<TextButton>(
       find.byKey(const Key('save-preferences-button')),
     );
     expect(initialButton.onPressed, isNull);
 
+    await tester.tap(find.byKey(const Key('preferences-distance')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('25 km'));
-    await tester.pump();
+    await tester.pumpAndSettle();
     final changedButton = tester.widget<TextButton>(
       find.byKey(const Key('save-preferences-button')),
     );
@@ -392,7 +391,7 @@ void main() {
   ) async {
     await _pumpSettings(tester, hasPasswordSignIn: false);
 
-    expect(find.text('Google sign-in and session protection'), findsOneWidget);
+    expect(find.byKey(const Key('settings-security-row')), findsOneWidget);
     await tester.tap(find.text('Security'));
     await tester.pumpAndSettle();
 
@@ -412,7 +411,7 @@ void main() {
     await tester.tap(find.text('Privacy'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Privacy by design'), findsOneWidget);
+    expect(find.text('Privacy'), findsOneWidget);
     expect(find.text('Approximate home area'), findsOneWidget);
     expect(find.text('Community sharing'), findsOneWidget);
     expect(find.text('Show past events'), findsOneWidget);

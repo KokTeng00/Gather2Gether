@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/profile/domain/profile_stats.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
+import 'package:gather2gether/features/profile/presentation/profile_photo_screen.dart';
 
 String _formatRadius(double value) => value == value.roundToDouble()
     ? value.toInt().toString()
@@ -59,6 +60,8 @@ class ProfileBalancedOverview extends StatelessWidget {
     required this.profile,
     required this.stats,
     required this.onEdit,
+    this.onFollowers,
+    this.onFollowing,
     this.avatarUrl,
     this.avatarHeaders,
     super.key,
@@ -67,6 +70,8 @@ class ProfileBalancedOverview extends StatelessWidget {
   final UserProfile profile;
   final ProfileStats? stats;
   final VoidCallback onEdit;
+  final VoidCallback? onFollowers;
+  final VoidCallback? onFollowing;
   final String? avatarUrl;
   final Map<String, String>? avatarHeaders;
 
@@ -106,44 +111,54 @@ class ProfileBalancedOverview extends StatelessWidget {
             letterSpacing: -0.2,
           ),
         ),
-        if (username.isNotEmpty || city.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Wrap(
-            alignment: WrapAlignment.center,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 3,
+        LayoutBuilder(
+          builder: (context, constraints) => Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (username.isNotEmpty)
-                Text(
-                  '@$username',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colors.primary,
-                    fontWeight: FontWeight.w700,
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * 0.4,
+                  ),
+                  child: Text(
+                    '@$username',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              if (city.isNotEmpty)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      CupertinoIcons.location,
-                      size: 13,
+              IconButton(
+                key: const Key('profile-edit-action'),
+                tooltip: 'Edit profile',
+                onPressed: onEdit,
+                color: colors.primary,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                icon: const Icon(CupertinoIcons.pencil, size: 18),
+              ),
+              if (city.isNotEmpty) ...[
+                Icon(
+                  CupertinoIcons.location,
+                  size: 13,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    city,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: colors.onSurfaceVariant,
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      city,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
+              ],
             ],
           ),
-        ],
+        ),
         if (bio.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(
@@ -157,17 +172,7 @@ class ProfileBalancedOverview extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.center,
-          child: TextButton.icon(
-            key: const Key('profile-edit-action'),
-            onPressed: onEdit,
-            icon: const Icon(CupertinoIcons.pencil, size: 15),
-            label: const Text('Edit profile'),
-          ),
-        ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 24),
         Container(
           key: const Key('profile-activity-summary'),
           padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
@@ -188,6 +193,7 @@ class ProfileBalancedOverview extends StatelessWidget {
                 child: _ProfileStat(
                   value: stats?.followersCount,
                   label: 'Followers',
+                  onTap: onFollowers,
                 ),
               ),
               _ProfileStatSeparator(color: colors.outlineVariant),
@@ -195,6 +201,7 @@ class ProfileBalancedOverview extends StatelessWidget {
                 child: _ProfileStat(
                   value: stats?.followingCount,
                   label: 'Following',
+                  onTap: onFollowing,
                 ),
               ),
             ],
@@ -466,39 +473,55 @@ class ProfileAvatar extends StatelessWidget {
         ),
       ),
     );
+    final canView = profile.hasAvatar && imageUrl != null;
     return Semantics(
       image: true,
+      button: canView,
       label: name.isEmpty ? 'Profile photo' : '$name profile photo',
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.07),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        foregroundDecoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: colors.primary.withValues(alpha: 0.55),
-            width: 2,
-          ),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: profile.hasAvatar && imageUrl != null
-            ? Image.network(
-                imageUrl!,
-                key: ValueKey(profile.avatarImageKey),
-                headers: headers,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => fallback,
+      child: GestureDetector(
+        onTap: canView
+            ? () => Navigator.of(context).push<void>(
+                MaterialPageRoute(
+                  fullscreenDialog: true,
+                  builder: (_) => ProfilePhotoScreen(
+                    imageUrl: imageUrl!,
+                    headers: headers,
+                    name: name,
+                  ),
+                ),
               )
-            : fallback,
+            : null,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.07),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          foregroundDecoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: colors.primary.withValues(alpha: 0.55),
+              width: 2,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: profile.hasAvatar && imageUrl != null
+              ? Image.network(
+                  imageUrl!,
+                  key: ValueKey(profile.avatarImageKey),
+                  headers: headers,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => fallback,
+                )
+              : fallback,
+        ),
       ),
     );
   }
@@ -740,15 +763,16 @@ class ProfileStatsCard extends StatelessWidget {
 }
 
 class _ProfileStat extends StatelessWidget {
-  const _ProfileStat({required this.value, required this.label});
+  const _ProfileStat({required this.value, required this.label, this.onTap});
 
   final int? value;
   final String label;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Column(
+    final content = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
@@ -768,6 +792,25 @@ class _ProfileStat extends StatelessWidget {
           ).textTheme.labelSmall?.copyWith(color: colors.onSurfaceVariant),
         ),
       ],
+    );
+    if (onTap == null) return content;
+    return Semantics(
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: ValueKey('profile-${label.toLowerCase()}-action'),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: content,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1053,7 +1096,7 @@ class ProfileNearbyPreferencesCard extends StatelessWidget {
                   'Distance',
                   style: Theme.of(
                     context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -1082,7 +1125,7 @@ class ProfileNearbyPreferencesCard extends StatelessWidget {
                                 color: radiusKm == option
                                     ? colors.onPrimary
                                     : colors.onSurfaceVariant,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 fontSize: 12,
                               ),
                             ),
@@ -1102,12 +1145,12 @@ class ProfileNearbyPreferencesCard extends StatelessWidget {
           const Divider(height: 1),
           ListTile(
             contentPadding: const EdgeInsets.fromLTRB(16, 7, 10, 7),
-            leading: Icon(CupertinoIcons.location_fill, color: colors.primary),
+            leading: Icon(CupertinoIcons.location, color: colors.primary),
             title: Text(
               'Home area',
               style: Theme.of(
                 context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
               locationSubtitle,
@@ -1115,7 +1158,7 @@ class ProfileNearbyPreferencesCard extends StatelessWidget {
                 color: locationPendingSave
                     ? colors.primary
                     : colors.onSurfaceVariant,
-                fontWeight: locationPendingSave ? FontWeight.w700 : null,
+                fontWeight: locationPendingSave ? FontWeight.w600 : null,
               ),
             ),
             trailing: locating
@@ -1183,14 +1226,14 @@ class ProfileGuidePreferenceCard extends StatelessWidget {
             value: enabled,
             onChanged: saving ? null : onChanged,
             secondary: Icon(
-              CupertinoIcons.chat_bubble_2_fill,
+              CupertinoIcons.chat_bubble_2,
               color: colors.primary,
             ),
             title: Text(
               'Gather Guide',
               style: Theme.of(
                 context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
               saving ? 'Saving preference…' : 'Nearby events and app help',

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_settings.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/member_controls.dart';
@@ -127,100 +128,145 @@ class _NotificationPreferencesScreenState
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
               children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Push notifications'),
-                  subtitle: const Text('Control remote alerts on this account'),
-                  value: preferences.pushEnabled,
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(
-                          () => _preferences = preferences.copyWith(
-                            pushEnabled: value,
-                          ),
-                        ),
+                const AppSettingsHeading('Delivery'),
+                AppSettingsGroup(
+                  dividerIndent: 16,
+                  children: [
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 3,
+                      ),
+                      title: const Text('Push notifications'),
+                      value: preferences.pushEnabled,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(
+                              () => _preferences = preferences.copyWith(
+                                pushEnabled: value,
+                              ),
+                            ),
+                    ),
+                  ],
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Event reminders'),
-                  value: preferences.remindersEnabled,
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(
-                          () => _preferences = preferences.copyWith(
-                            remindersEnabled: value,
-                          ),
-                        ),
+                const AppSettingsCaption(
+                  'Control push notifications on this account.',
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Host announcements'),
-                  value: preferences.announcementsEnabled,
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(
-                          () => _preferences = preferences.copyWith(
-                            announcementsEnabled: value,
-                          ),
-                        ),
+                const SizedBox(height: 24),
+                const AppSettingsHeading('Event alerts'),
+                AppSettingsGroup(
+                  dividerIndent: 16,
+                  children: [
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 3,
+                      ),
+                      title: const Text('Event reminders'),
+                      value: preferences.remindersEnabled,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(
+                              () => _preferences = preferences.copyWith(
+                                remindersEnabled: value,
+                              ),
+                            ),
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 3,
+                      ),
+                      title: const Text('Host announcements'),
+                      value: preferences.announcementsEnabled,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(
+                              () => _preferences = preferences.copyWith(
+                                announcementsEnabled: value,
+                              ),
+                            ),
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 3,
+                      ),
+                      title: const Text('Discussion replies'),
+                      value: preferences.discussionEnabled,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(
+                              () => _preferences = preferences.copyWith(
+                                discussionEnabled: value,
+                              ),
+                            ),
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 3,
+                      ),
+                      title: const Text('Discovery alerts'),
+                      value: preferences.recommendationsEnabled,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(
+                              () => _preferences = preferences.copyWith(
+                                recommendationsEnabled: value,
+                              ),
+                            ),
+                    ),
+                  ],
                 ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Discussion replies'),
-                  value: preferences.discussionEnabled,
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(
-                          () => _preferences = preferences.copyWith(
-                            discussionEnabled: value,
-                          ),
+                const SizedBox(height: 24),
+                const AppSettingsHeading('Quiet hours'),
+                AppSettingsGroup(
+                  dividerIndent: 16,
+                  children: [
+                    SwitchListTile.adaptive(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 3,
+                      ),
+                      title: const Text('Quiet hours'),
+                      value: preferences.quietStartMinute != null,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(
+                              () => _preferences = value
+                                  ? preferences.copyWith(
+                                      quietStartMinute: 22 * 60,
+                                      quietEndMinute: 7 * 60,
+                                    )
+                                  : preferences.copyWith(clearQuietHours: true),
+                            ),
+                    ),
+                    if (preferences.quietStartMinute != null) ...[
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 3,
                         ),
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Discovery alerts'),
-                  value: preferences.recommendationsEnabled,
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(
-                          () => _preferences = preferences.copyWith(
-                            recommendationsEnabled: value,
-                          ),
+                        title: const Text('Starts'),
+                        trailing: Text(_time(preferences.quietStartMinute!)),
+                        onTap: () => _pickQuietTime(start: true),
+                      ),
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 3,
                         ),
+                        title: const Text('Ends'),
+                        trailing: Text(_time(preferences.quietEndMinute!)),
+                        onTap: () => _pickQuietTime(start: false),
+                      ),
+                    ],
+                  ],
                 ),
-                const Divider(),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Quiet hours'),
-                  subtitle: const Text(
-                    'Event cancellations and waitlist promotions can still arrive.',
-                  ),
-                  value: preferences.quietStartMinute != null,
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(
-                          () => _preferences = value
-                              ? preferences.copyWith(
-                                  quietStartMinute: 22 * 60,
-                                  quietEndMinute: 7 * 60,
-                                )
-                              : preferences.copyWith(clearQuietHours: true),
-                        ),
+                const AppSettingsCaption(
+                  'Event cancellations and waitlist promotions can still arrive during quiet hours.',
                 ),
-                if (preferences.quietStartMinute != null) ...[
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Starts'),
-                    trailing: Text(_time(preferences.quietStartMinute!)),
-                    onTap: () => _pickQuietTime(start: true),
-                  ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Ends'),
-                    trailing: Text(_time(preferences.quietEndMinute!)),
-                    onTap: () => _pickQuietTime(start: false),
-                  ),
-                ],
               ],
             ),
     );

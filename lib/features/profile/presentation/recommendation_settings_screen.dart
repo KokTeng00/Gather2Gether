@@ -1,4 +1,7 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_settings.dart';
+import 'package:gather2gether/core/theme/app_settings_picker.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/member_controls.dart';
@@ -106,6 +109,58 @@ class _RecommendationSettingsScreenState
     }
   }
 
+  Future<void> _chooseCategories() async {
+    final selected = await Navigator.of(context).push<Set<String>>(
+      MaterialPageRoute(
+        builder: (_) => AppSettingsPicker(
+          title: 'Hidden categories',
+          description:
+              'Selected categories will not appear in recommendations.',
+          searchHint: 'Search categories',
+          selected: _hidden,
+          groups: [
+            AppSettingsOptionGroup({
+              for (final category in _categories.take(11)) category: category,
+            }, title: 'Events'),
+            AppSettingsOptionGroup({
+              for (final category in _categories.skip(11)) category: category,
+            }, title: 'Community'),
+          ],
+        ),
+      ),
+    );
+    if (mounted && selected != null) {
+      setState(
+        () => _hidden
+          ..clear()
+          ..addAll(selected),
+      );
+    }
+  }
+
+  Future<void> _confirmReset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset recommendations?'),
+        content: const Text(
+          'This clears the activity used for recommendations, restores hidden content and turns personalization on.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (mounted && confirmed == true) await _reset();
+  }
+
   Future<void> _reset() async {
     setState(() => _saving = true);
     try {
@@ -156,57 +211,78 @@ class _RecommendationSettingsScreenState
                       child: const Text('Try again'),
                     ),
             )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
-              children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Personalized ordering'),
-                  subtitle: const Text(
-                    'Uses your in-app event and community activity. Turning this off keeps nearby chronological results.',
-                  ),
-                  value: preferences.enabled,
-                  onChanged: _saving
-                      ? null
-                      : (value) => setState(
-                          () => _preferences = RecommendationPreferences(
-                            enabled: value,
-                            hiddenCategories: _hidden.toList(growable: false),
-                            hiddenCount: preferences.hiddenCount,
+          : SafeArea(
+              top: false,
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 680),
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
+                    children: [
+                      const AppSettingsHeading('Your feed'),
+                      AppSettingsGroup(
+                        dividerIndent: 16,
+                        children: [
+                          SwitchListTile.adaptive(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 3,
+                            ),
+                            title: const Text('Personalize my feed'),
+                            value: preferences.enabled,
+                            onChanged: _saving
+                                ? null
+                                : (value) => setState(
+                                    () => _preferences =
+                                        RecommendationPreferences(
+                                          enabled: value,
+                                          hiddenCategories: _hidden.toList(
+                                            growable: false,
+                                          ),
+                                          hiddenCount: preferences.hiddenCount,
+                                        ),
+                                  ),
                           ),
-                        ),
+                        ],
+                      ),
+                      const AppSettingsCaption(
+                        'Use your activity to order recommendations. When off, nearby events appear in date order.',
+                      ),
+                      const SizedBox(height: 24),
+                      const AppSettingsHeading('Content preferences'),
+                      AppSettingsGroup(
+                        children: [
+                          AppSettingsRow(
+                            key: const Key('recommendation-hidden-categories'),
+                            icon: CupertinoIcons.eye_slash,
+                            title: 'Hidden categories',
+                            subtitle: _hidden.isEmpty
+                                ? 'All categories are shown'
+                                : '${_hidden.take(2).join(', ')}'
+                                      '${_hidden.length > 2 ? ' + ${_hidden.length - 2} more' : ''}',
+                            onTap: _saving ? null : _chooseCategories,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      AppSettingsGroup(
+                        children: [
+                          AppSettingsRow(
+                            key: const Key('reset-recommendations-button'),
+                            icon: CupertinoIcons.arrow_counterclockwise,
+                            title: 'Reset recommendations',
+                            onTap: _saving ? null : _confirmReset,
+                          ),
+                        ],
+                      ),
+                      const AppSettingsCaption(
+                        'Start fresh with your recommendations and show hidden content again.',
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  'Hide categories',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: _categories
-                      .map(
-                        (category) => FilterChip(
-                          label: Text(category),
-                          selected: _hidden.contains(category),
-                          onSelected: _saving
-                              ? null
-                              : (selected) => setState(
-                                  () => selected
-                                      ? _hidden.add(category)
-                                      : _hidden.remove(category),
-                                ),
-                        ),
-                      )
-                      .toList(growable: false),
-                ),
-                const SizedBox(height: 18),
-                OutlinedButton(
-                  key: const Key('reset-recommendations-button'),
-                  onPressed: _saving ? null : _reset,
-                  child: const Text('Reset recommendations'),
-                ),
-              ],
+              ),
             ),
     );
   }

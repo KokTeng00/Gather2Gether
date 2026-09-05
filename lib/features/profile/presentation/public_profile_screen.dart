@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/public_profile.dart';
+import 'package:gather2gether/features/profile/domain/profile_connection.dart';
+import 'package:gather2gether/features/profile/presentation/profile_connections_screen.dart';
 import 'package:gather2gether/features/profile/presentation/profile_events_section.dart';
 
 class PublicProfileScreen extends StatefulWidget {
@@ -53,6 +55,19 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _openConnections(ProfileConnectionKind kind) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => ProfileConnectionsScreen(
+          profileId: widget.profileId,
+          kind: kind,
+          repository: _repository,
+        ),
+      ),
+    );
+    if (mounted) await _load();
   }
 
   Future<void> _toggleFollow() async {
@@ -160,6 +175,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     repository: _repository,
                     updatingFollow: _updatingFollow,
                     onFollow: _toggleFollow,
+                    onFollowers: () =>
+                        _openConnections(ProfileConnectionKind.followers),
+                    onFollowing: () =>
+                        _openConnections(ProfileConnectionKind.following),
                   ),
                   const SizedBox(height: 36),
                   ProfileEventsSection(
@@ -181,12 +200,16 @@ class _PublicProfileHero extends StatelessWidget {
     required this.repository,
     required this.updatingFollow,
     required this.onFollow,
+    required this.onFollowers,
+    required this.onFollowing,
   });
 
   final PublicProfile profile;
   final ProfileRepository repository;
   final bool updatingFollow;
   final VoidCallback onFollow;
+  final VoidCallback onFollowers;
+  final VoidCallback onFollowing;
 
   @override
   Widget build(BuildContext context) {
@@ -290,6 +313,7 @@ class _PublicProfileHero extends StatelessWidget {
                   child: _SocialCount(
                     value: profile.followersCount,
                     label: 'Followers',
+                    onTap: onFollowers,
                   ),
                 ),
                 Container(
@@ -304,6 +328,7 @@ class _PublicProfileHero extends StatelessWidget {
                   child: _SocialCount(
                     value: profile.followingCount,
                     label: 'Following',
+                    onTap: onFollowing,
                   ),
                 ),
               ],
@@ -342,22 +367,38 @@ class _PublicProfileHero extends StatelessWidget {
 }
 
 class _SocialCount extends StatelessWidget {
-  const _SocialCount({required this.value, required this.label});
+  const _SocialCount({
+    required this.value,
+    required this.label,
+    required this.onTap,
+  });
 
   final int value;
   final String label;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Text(
-        '$value',
-        style: Theme.of(
-          context,
-        ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    child: InkWell(
+      key: ValueKey('public-profile-${label.toLowerCase()}-action'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          children: [
+            Text(
+              '$value',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ),
       ),
-      Text(label, style: Theme.of(context).textTheme.bodySmall),
-    ],
+    ),
   );
 }
 

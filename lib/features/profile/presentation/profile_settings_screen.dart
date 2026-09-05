@@ -1,6 +1,9 @@
 import 'package:flutter/cupertino.dart';
+import 'package:gather2gether/core/theme/app_settings.dart';
+import 'package:gather2gether/core/theme/app_settings_picker.dart';
+import 'package:gather2gether/core/theme/appearance_controller.dart';
+import 'package:gather2gether/features/profile/presentation/appearance_settings_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/location/location_service.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
@@ -13,13 +16,8 @@ import 'package:gather2gether/features/profile/presentation/profile_change_passw
 import 'package:gather2gether/features/profile/presentation/profile_widgets.dart';
 import 'package:gather2gether/features/profile/presentation/notification_preferences_screen.dart';
 import 'package:gather2gether/features/profile/presentation/recommendation_settings_screen.dart';
-import 'package:gather2gether/features/profile/presentation/report_status_screen.dart';
 import 'package:gather2gether/features/profile/presentation/moderation_dashboard_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-String _formatRadius(double value) => value == value.roundToDouble()
-    ? value.toInt().toString()
-    : value.toStringAsFixed(1);
 
 class ProfileSettingsScreen extends StatefulWidget {
   const ProfileSettingsScreen({
@@ -54,7 +52,6 @@ class ProfileSettingsScreen extends StatefulWidget {
 class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   late UserProfile _profile;
   bool _isModerator = false;
-  bool _exporting = false;
 
   @override
   void initState() {
@@ -154,55 +151,11 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     ),
   );
 
-  Future<void> _openReports() => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) => ReportStatusScreen(repository: widget.repository),
-    ),
-  );
-
   Future<void> _openModeration() => Navigator.of(context).push<void>(
     MaterialPageRoute(
       builder: (_) => ModerationDashboardScreen(repository: widget.repository),
     ),
   );
-
-  Future<void> _exportData() async {
-    setState(() => _exporting = true);
-    try {
-      final export = await widget.repository.exportOwnData();
-      if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Your data export'),
-          content: const Text(
-            'Your portable JSON export is ready. Copy it, then store it somewhere private.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: export));
-                if (context.mounted) Navigator.of(context).pop();
-              },
-              child: const Text('Copy JSON'),
-            ),
-          ],
-        ),
-      );
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not prepare your export.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-  }
 
   String? _avatarUrlFor(UserProfile profile) {
     if (!profile.hasAvatar) return null;
@@ -250,11 +203,8 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    AppSurface(
-                      color: colors.primaryContainer.withValues(alpha: 0.68),
-                      borderColor: colors.primary.withValues(alpha: 0.16),
-                      borderRadius: 24,
-                      padding: const EdgeInsets.all(18),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(3, 4, 3, 24),
                       child: Row(
                         children: [
                           ProfileAvatar(
@@ -262,7 +212,7 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                             profile: _profile,
                             imageUrl: _avatarUrlFor(_profile),
                             headers: _avatarHeadersFor(_profile),
-                            size: 58,
+                            size: 48,
                           ),
                           const SizedBox(width: 14),
                           Expanded(
@@ -271,13 +221,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                               children: [
                                 Text(
                                   displayName,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleMedium
-                                      ?.copyWith(
-                                        color: colors.onPrimaryContainer,
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
                                 ),
                                 const SizedBox(height: 3),
                                 Text(
@@ -286,12 +232,9 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                                       : (_email.isEmpty
                                             ? 'Your account'
                                             : _email),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
-                                        color: colors.onPrimaryContainer
-                                            .withValues(alpha: 0.74),
+                                        color: colors.onSurfaceVariant,
                                       ),
                                 ),
                               ],
@@ -300,119 +243,85 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 26),
-                    const _SettingsSectionLabel('Your account'),
-                    const SizedBox(height: 8),
-                    _SettingsGroup(
+                    const AppSettingsHeading('Account'),
+                    AppSettingsGroup(
                       children: [
-                        _SettingsRow(
+                        AppSettingsRow(
                           key: const Key('settings-account-row'),
-                          icon: CupertinoIcons.person_crop_circle_fill,
+                          icon: CupertinoIcons.person_crop_circle,
                           title: 'Account & profile',
-                          description: 'Public identity, email and sign out',
                           onTap: _openAccount,
+                        ),
+                        AppSettingsRow(
+                          key: const Key('settings-security-row'),
+                          icon: CupertinoIcons.lock_shield,
+                          title: 'Security',
+                          onTap: _openSecurity,
+                        ),
+                        AppSettingsRow(
+                          key: const Key('settings-privacy-row'),
+                          icon: CupertinoIcons.hand_raised,
+                          title: 'Privacy',
+                          onTap: _openPrivacy,
                         ),
                       ],
                     ),
                     const SizedBox(height: 24),
-                    const _SettingsSectionLabel('Experience'),
-                    const SizedBox(height: 8),
-                    _SettingsGroup(
+                    const AppSettingsHeading('Preferences'),
+                    AppSettingsGroup(
                       children: [
-                        _SettingsRow(
+                        ListenableBuilder(
+                          listenable: AppearanceController.instance,
+                          builder: (context, _) => AppSettingsRow(
+                            key: const Key('settings-appearance-row'),
+                            icon: CupertinoIcons.circle_lefthalf_fill,
+                            title: 'Appearance',
+                            value: AppearanceController.instance.label,
+                            onTap: () => Navigator.of(context).push<void>(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const AppearanceSettingsScreen(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        AppSettingsRow(
                           key: const Key('settings-preferences-row'),
                           icon: CupertinoIcons.slider_horizontal_3,
                           title: 'Preferences & discovery',
-                          description:
-                              'Nearby radius, home area and Gather Guide',
-                          value:
-                              '${_formatRadius(_profile.preferredRadiusKm)} km',
                           onTap: _openPreferences,
+                        ),
+                        AppSettingsRow(
+                          key: const Key('settings-notifications-row'),
+                          icon: CupertinoIcons.bell,
+                          title: 'Notifications',
+                          onTap: _openNotifications,
+                        ),
+                        AppSettingsRow(
+                          key: const Key('settings-recommendations-row'),
+                          icon: CupertinoIcons.line_horizontal_3_decrease,
+                          title: 'Recommendations',
+                          onTap: _openRecommendations,
                         ),
                       ],
                     ),
                     const SizedBox(height: 24),
-                    const _SettingsSectionLabel('Safety & information'),
-                    const SizedBox(height: 8),
-                    _SettingsGroup(
+                    AppSettingsGroup(
                       children: [
-                        _SettingsRow(
-                          key: const Key('settings-security-row'),
-                          icon: CupertinoIcons.lock_shield_fill,
-                          title: 'Security',
-                          description: _hasPasswordSignIn
-                              ? 'Password and session protection'
-                              : 'Google sign-in and session protection',
-                          onTap: _openSecurity,
-                        ),
-                        _SettingsRow(
-                          key: const Key('settings-privacy-row'),
-                          icon: CupertinoIcons.hand_raised_fill,
-                          title: 'Privacy',
-                          description:
-                              'Event history, location and conversations',
-                          onTap: _openPrivacy,
-                        ),
-                        _SettingsRow(
+                        if (_isModerator)
+                          AppSettingsRow(
+                            key: const Key('settings-moderation-row'),
+                            icon: CupertinoIcons.shield,
+                            title: 'Moderation dashboard',
+                            onTap: _openModeration,
+                          ),
+                        AppSettingsRow(
                           key: const Key('settings-about-row'),
-                          icon: CupertinoIcons.info_circle_fill,
+                          icon: CupertinoIcons.info_circle,
                           title: 'About Gather2Gether',
-                          description: 'Our community-first approach',
                           onTap: _openAbout,
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 24),
-                    const _SettingsSectionLabel('Controls & data'),
-                    const SizedBox(height: 8),
-                    _SettingsGroup(
-                      children: [
-                        _SettingsRow(
-                          key: const Key('settings-notifications-row'),
-                          icon: CupertinoIcons.bell_fill,
-                          title: 'Notifications',
-                          description: 'Quiet hours and alert categories',
-                          onTap: _openNotifications,
-                        ),
-                        _SettingsRow(
-                          key: const Key('settings-recommendations-row'),
-                          icon: CupertinoIcons.sparkles,
-                          title: 'Recommendations',
-                          description: 'Personalization and hidden categories',
-                          onTap: _openRecommendations,
-                        ),
-                        _SettingsRow(
-                          key: const Key('settings-reports-row'),
-                          icon: CupertinoIcons.exclamationmark_shield_fill,
-                          title: 'Your reports',
-                          description: 'Follow the status of safety reports',
-                          onTap: _openReports,
-                        ),
-                        _SettingsRow(
-                          key: const Key('settings-export-row'),
-                          icon: CupertinoIcons.arrow_down_doc_fill,
-                          title: 'Export your data',
-                          description: 'Copy a portable private JSON snapshot',
-                          value: _exporting ? 'Preparing…' : null,
-                          onTap: _exporting ? null : _exportData,
-                        ),
-                        if (_isModerator)
-                          _SettingsRow(
-                            key: const Key('settings-moderation-row'),
-                            icon: CupertinoIcons.shield_lefthalf_fill,
-                            title: 'Moderation dashboard',
-                            description: 'Review and resolve community reports',
-                            onTap: _openModeration,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 22),
-                    Text(
-                      'Settings are private to your account unless a page says otherwise.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
                     ),
                   ],
                 ),
@@ -543,21 +452,20 @@ class _AccountProfileSettingsScreenState
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const _SettingsPageIntro(
-                      icon: CupertinoIcons.person_crop_circle_fill,
+                      icon: CupertinoIcons.person_crop_circle,
                       title: 'Your public identity',
                       description:
                           'Keep your name, username, bio and home city current for the community.',
                     ),
                     const SizedBox(height: 24),
-                    const _SettingsSectionLabel('Profile'),
-                    const SizedBox(height: 8),
-                    _SettingsGroup(
+                    const AppSettingsHeading('Profile'),
+                    AppSettingsGroup(
                       children: [
-                        _SettingsRow(
+                        AppSettingsRow(
                           key: const Key('settings-edit-profile-row'),
-                          icon: CupertinoIcons.pencil_circle_fill,
+                          icon: CupertinoIcons.pencil,
                           title: 'Edit public profile',
-                          description: username.isEmpty
+                          subtitle: username.isEmpty
                               ? name
                               : '$name · @$username',
                           onTap: _editProfile,
@@ -565,12 +473,11 @@ class _AccountProfileSettingsScreenState
                       ],
                     ),
                     const SizedBox(height: 24),
-                    const _SettingsSectionLabel('Sign-in details'),
-                    const SizedBox(height: 8),
-                    _SettingsGroup(
+                    const AppSettingsHeading('Sign-in details'),
+                    AppSettingsGroup(
                       children: [
                         _SettingsInformationRow(
-                          icon: CupertinoIcons.mail_solid,
+                          icon: CupertinoIcons.mail,
                           title: 'Email',
                           value: widget.email.isEmpty
                               ? 'Unavailable'
@@ -585,16 +492,14 @@ class _AccountProfileSettingsScreenState
                     ),
                     const SizedBox(height: 18),
                     AppSurface(
-                      color: colors.primaryContainer.withValues(alpha: 0.52),
-                      borderColor: colors.primary.withValues(alpha: 0.13),
                       borderRadius: 18,
                       padding: const EdgeInsets.all(15),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(
-                            CupertinoIcons.eye_fill,
-                            color: colors.onPrimaryContainer,
+                            CupertinoIcons.eye,
+                            color: colors.onSurfaceVariant,
                             size: 18,
                           ),
                           const SizedBox(width: 10),
@@ -602,7 +507,7 @@ class _AccountProfileSettingsScreenState
                             child: Text(
                               'Your profile and community posts are public. Your email and approximate home coordinates are never shown.',
                               style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: colors.onPrimaryContainer),
+                                  ?.copyWith(color: colors.onSurfaceVariant),
                             ),
                           ),
                         ],
@@ -882,6 +787,69 @@ class _PreferencesSettingsScreenState
     }
   }
 
+  Future<void> _chooseRadius() async {
+    final selected = await Navigator.of(context).push<Set<String>>(
+      MaterialPageRoute(
+        builder: (_) => AppSettingsPicker(
+          title: 'Search distance',
+          multiple: false,
+          selected: {_radiusKm.toString()},
+          groups: [
+            AppSettingsOptionGroup({
+              for (final radius in _radiusOptions)
+                radius.toString(): '${radius.toInt()} km',
+            }),
+          ],
+        ),
+      ),
+    );
+    if (mounted && selected != null) {
+      setState(() => _radiusKm = double.parse(selected.single));
+    }
+  }
+
+  Future<void> _chooseInterests() async {
+    final selected = await Navigator.of(context).push<Set<String>>(
+      MaterialPageRoute(
+        builder: (_) => AppSettingsPicker(
+          title: 'Interests',
+          description: 'Choose the activities you enjoy.',
+          selected: _interests,
+          groups: [
+            AppSettingsOptionGroup({
+              for (final interest in memberInterestOptions) interest: interest,
+            }),
+          ],
+        ),
+      ),
+    );
+    if (mounted && selected != null) setState(() => _interests = selected);
+  }
+
+  Future<void> _chooseEventDetails() async {
+    final selected = await Navigator.of(context).push<Set<String>>(
+      MaterialPageRoute(
+        builder: (_) => AppSettingsPicker(
+          title: 'Event preferences',
+          description: 'Choose details that matter when finding an event.',
+          selected: _accessibilityPreferences,
+          groups: const [AppSettingsOptionGroup(memberAccessibilityOptions)],
+        ),
+      ),
+    );
+    if (mounted && selected != null) {
+      setState(() => _accessibilityPreferences = selected);
+    }
+  }
+
+  String _selectionSummary(
+    Set<String> selection,
+    Map<String, String> options,
+  ) => selection.isEmpty
+      ? 'Not selected'
+      : '${selection.take(2).map((value) => options[value] ?? value).join(', ')}'
+            '${selection.length > 2 ? ' + ${selection.length - 2} more' : ''}';
+
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(
@@ -918,95 +886,88 @@ class _PreferencesSettingsScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const ProfileSectionHeader(
-                      title: 'Discovery',
-                      subtitle: 'Choose the area used for nearby events.',
+                    const AppSettingsHeading('Nearby'),
+                    AppSettingsGroup(
+                      children: [
+                        AppSettingsRow(
+                          key: const Key('preferences-distance'),
+                          icon: CupertinoIcons.location,
+                          title: 'Search distance',
+                          value: '${_radiusKm.toInt()} km',
+                          onTap: _saving ? null : _chooseRadius,
+                        ),
+                        AppSettingsRow(
+                          icon: CupertinoIcons.map_pin_ellipse,
+                          title: 'Home area',
+                          subtitle: _locationPendingSave
+                              ? 'New area ready to save'
+                              : _latitude == null || _longitude == null
+                              ? 'Use your current location'
+                              : _profile.city.trim().isEmpty
+                              ? 'Approximate location saved'
+                              : _profile.city,
+                          trailing: _locating
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : null,
+                          onTap: _saving || _locating ? null : _updateLocation,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 11),
-                    ProfileNearbyPreferencesCard(
-                      radiusKm: _radiusKm,
-                      radiusOptions: _radiusOptions,
-                      city: _profile.city,
-                      hasLocation: _latitude != null && _longitude != null,
-                      locationPendingSave: _locationPendingSave,
-                      locating: _locating,
-                      disabled: _saving,
-                      onRadiusChanged: (value) =>
-                          setState(() => _radiusKm = value),
-                      onLocationPressed: _updateLocation,
+                    const AppSettingsCaption(
+                      'Your home area is approximate. Tap it to update your location.',
                     ),
-                    const SizedBox(height: 26),
-                    const ProfileSectionHeader(
-                      title: 'Event preferences',
-                      subtitle:
-                          'Shape recommendations and accessibility defaults in Discover.',
+                    const SizedBox(height: 24),
+                    const AppSettingsHeading('What you enjoy'),
+                    AppSettingsGroup(
+                      children: [
+                        AppSettingsRow(
+                          key: const Key('preferences-interests'),
+                          icon: CupertinoIcons.heart,
+                          title: 'Interests',
+                          subtitle: _selectionSummary(_interests, {
+                            for (final interest in memberInterestOptions)
+                              interest: interest,
+                          }),
+                          onTap: _saving ? null : _chooseInterests,
+                        ),
+                        AppSettingsRow(
+                          key: const Key('preferences-event-details'),
+                          icon: CupertinoIcons.person_2,
+                          title: 'Event preferences',
+                          subtitle: _selectionSummary(
+                            _accessibilityPreferences,
+                            memberAccessibilityOptions,
+                          ),
+                          onTap: _saving ? null : _chooseEventDetails,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 11),
-                    Text(
-                      'Interests',
-                      style: Theme.of(context).textTheme.titleSmall,
+                    const SizedBox(height: 24),
+                    const AppSettingsHeading('In the app'),
+                    AppSettingsGroup(
+                      dividerIndent: 16,
+                      children: [
+                        SwitchListTile.adaptive(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 3,
+                          ),
+                          title: const Text('Gather Guide'),
+                          value: _assistantEnabled,
+                          onChanged: _assistantSaving
+                              ? null
+                              : _setAssistantEnabled,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: memberInterestOptions
-                          .map(
-                            (interest) => FilterChip(
-                              label: Text(interest),
-                              selected: _interests.contains(interest),
-                              onSelected: _saving
-                                  ? null
-                                  : (selected) => setState(
-                                      () => selected
-                                          ? _interests.add(interest)
-                                          : _interests.remove(interest),
-                                    ),
-                            ),
-                          )
-                          .toList(growable: false),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      'Useful event details',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      children: memberAccessibilityOptions.entries
-                          .map(
-                            (entry) => FilterChip(
-                              label: Text(entry.value),
-                              selected: _accessibilityPreferences.contains(
-                                entry.key,
-                              ),
-                              onSelected: _saving
-                                  ? null
-                                  : (selected) => setState(
-                                      () => selected
-                                          ? _accessibilityPreferences.add(
-                                              entry.key,
-                                            )
-                                          : _accessibilityPreferences.remove(
-                                              entry.key,
-                                            ),
-                                    ),
-                            ),
-                          )
-                          .toList(growable: false),
-                    ),
-                    const SizedBox(height: 26),
-                    const ProfileSectionHeader(
-                      title: 'Gather Guide',
-                      subtitle:
-                          'Choose whether the private assistant is available.',
-                    ),
-                    const SizedBox(height: 11),
-                    ProfileGuidePreferenceCard(
-                      enabled: _assistantEnabled,
-                      saving: _assistantSaving,
-                      onChanged: _setAssistantEnabled,
+                    const AppSettingsCaption(
+                      'Show the chat shortcut for nearby events and app help.',
                     ),
                   ],
                 ),
@@ -1046,23 +1007,22 @@ class _SecuritySettingsScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _SettingsPageIntro(
-                      icon: CupertinoIcons.lock_shield_fill,
+                      icon: CupertinoIcons.lock_shield,
                       title: 'Keep your account secure',
                       description: hasPasswordSignIn
                           ? 'Manage your password and review how this device protects your session.'
                           : 'Review your Google sign-in and how this device protects your session.',
                     ),
                     const SizedBox(height: 24),
-                    const _SettingsSectionLabel('Sign-in security'),
-                    const SizedBox(height: 8),
-                    _SettingsGroup(
+                    const AppSettingsHeading('Sign-in security'),
+                    AppSettingsGroup(
                       children: [
                         if (hasPasswordSignIn)
-                          _SettingsRow(
+                          AppSettingsRow(
                             key: const Key('settings-change-password-row'),
                             icon: CupertinoIcons.lock_rotation,
                             title: 'Change password',
-                            description:
+                            subtitle:
                                 'Choose a strong, unique account password',
                             onTap: () => Navigator.of(context).push<void>(
                               MaterialPageRoute(
@@ -1084,16 +1044,14 @@ class _SecuritySettingsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 18),
                     AppSurface(
-                      color: colors.secondaryContainer.withValues(alpha: 0.58),
-                      borderColor: colors.secondary.withValues(alpha: 0.2),
-                      borderRadius: 20,
+                      borderRadius: 18,
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(
-                            CupertinoIcons.checkmark_shield_fill,
-                            color: colors.onSecondaryContainer,
+                            CupertinoIcons.checkmark_shield,
+                            color: colors.onSurfaceVariant,
                             size: 20,
                           ),
                           const SizedBox(width: 11),
@@ -1105,8 +1063,8 @@ class _SecuritySettingsScreen extends StatelessWidget {
                                   'Secure session',
                                   style: Theme.of(context).textTheme.titleSmall
                                       ?.copyWith(
-                                        color: colors.onSecondaryContainer,
-                                        fontWeight: FontWeight.w800,
+                                        color: colors.onSurfaceVariant,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                 ),
                                 const SizedBox(height: 3),
@@ -1114,7 +1072,7 @@ class _SecuritySettingsScreen extends StatelessWidget {
                                   'Your signed-in session is stored securely on this device.',
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
-                                        color: colors.onSecondaryContainer,
+                                        color: colors.onSurfaceVariant,
                                       ),
                                 ),
                               ],
@@ -1215,25 +1173,24 @@ class _PrivacyScreenState extends State<_PrivacyScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const _SettingsPageIntro(
-                    icon: CupertinoIcons.hand_raised_fill,
-                    title: 'Privacy by design',
+                    icon: CupertinoIcons.hand_raised,
+                    title: 'Privacy',
                     description:
                         'See what stays private and what you choose to share with the community.',
                   ),
                   const SizedBox(height: 24),
-                  const _SettingsSectionLabel('Profile activity'),
-                  const SizedBox(height: 8),
-                  _SettingsGroup(
+                  const AppSettingsHeading('Profile activity'),
+                  AppSettingsGroup(
                     children: [
                       SwitchListTile.adaptive(
                         key: const Key('past-events-visibility-toggle'),
                         contentPadding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
                         secondary: const _SettingsIcon(
-                          icon: CupertinoIcons.clock_fill,
+                          icon: CupertinoIcons.clock,
                         ),
                         title: const Text(
                           'Show past events',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                          style: TextStyle(fontWeight: FontWeight.w600),
                         ),
                         subtitle: const Text(
                           'Show events you hosted or confirmed attending. Upcoming events you host remain public.',
@@ -1246,25 +1203,23 @@ class _PrivacyScreenState extends State<_PrivacyScreen> {
                     ],
                   ),
                   const SizedBox(height: 24),
-                  const _SettingsSectionLabel('Community safety'),
-                  const SizedBox(height: 8),
-                  _SettingsGroup(
+                  const AppSettingsHeading('Community safety'),
+                  AppSettingsGroup(
                     children: [
-                      _SettingsRow(
+                      AppSettingsRow(
                         key: const Key('blocked-users-settings-row'),
                         icon: CupertinoIcons.person_crop_circle_badge_xmark,
                         title: 'Blocked members',
-                        description: 'Review and unblock members',
+                        subtitle: 'Review and unblock members',
                         onTap: _openBlockedUsers,
                       ),
                     ],
                   ),
                   const SizedBox(height: 24),
-                  const _SettingsSectionLabel('Your information'),
-                  const SizedBox(height: 8),
+                  const AppSettingsHeading('Your information'),
                   const _InformationCard(
                     data: _InformationCardData(
-                      icon: CupertinoIcons.location_fill,
+                      icon: CupertinoIcons.location,
                       title: 'Approximate home area',
                       description:
                           'Coordinates are rounded to about 1 km before storage. Location history is not stored or shown on your profile.',
@@ -1273,7 +1228,7 @@ class _PrivacyScreenState extends State<_PrivacyScreen> {
                   const SizedBox(height: 12),
                   const _InformationCard(
                     data: _InformationCardData(
-                      icon: CupertinoIcons.chat_bubble_2_fill,
+                      icon: CupertinoIcons.chat_bubble_2,
                       title: 'Gather Guide conversations',
                       description:
                           'Your assistant conversations stay private to your account and can be cleared from Gather Guide.',
@@ -1282,7 +1237,7 @@ class _PrivacyScreenState extends State<_PrivacyScreen> {
                   const SizedBox(height: 12),
                   const _InformationCard(
                     data: _InformationCardData(
-                      icon: CupertinoIcons.person_2_fill,
+                      icon: CupertinoIcons.person_2,
                       title: 'Community sharing',
                       description:
                           'Your profile, posts and any place you tag are visible to the community. Your email is never displayed.',
@@ -1433,11 +1388,11 @@ class _AboutScreen extends StatelessWidget {
                       'Gather2Gether',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w800),
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Real plans. Nearby people. A stronger local community.',
+                      'Find activities and meet people nearby.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: colors.onSurfaceVariant,
@@ -1445,19 +1400,19 @@ class _AboutScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 28),
                     AppSurface(
-                      borderRadius: 22,
+                      borderRadius: 18,
                       padding: const EdgeInsets.all(18),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Built for belonging',
+                            'About the app',
                             style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w800),
+                                ?.copyWith(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 7),
                           Text(
-                            'Gather2Gether helps people discover activities, share local knowledge and turn online connections into welcoming real-world moments.',
+                            'Discover local events, make plans, and share recommendations with your community.',
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(color: colors.onSurfaceVariant),
                           ),
@@ -1466,24 +1421,22 @@ class _AboutScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     AppSurface(
-                      color: colors.primaryContainer.withValues(alpha: 0.5),
-                      borderColor: colors.primary.withValues(alpha: 0.14),
-                      borderRadius: 20,
+                      borderRadius: 18,
                       padding: const EdgeInsets.all(16),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(
-                            CupertinoIcons.heart_fill,
+                            CupertinoIcons.heart,
                             size: 19,
-                            color: colors.onPrimaryContainer,
+                            color: colors.onSurfaceVariant,
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
                               'Be kind, protect personal information and meet in public places when connecting with someone new.',
                               style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: colors.onPrimaryContainer),
+                                  ?.copyWith(color: colors.onSurfaceVariant),
                             ),
                           ),
                         ],
@@ -1506,163 +1459,10 @@ class _SettingsPageIntro extends StatelessWidget {
     required this.title,
     required this.description,
   });
-
   final IconData icon;
-  final String title;
-  final String description;
-
+  final String title, description;
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return AppSurface(
-      color: colors.primaryContainer.withValues(alpha: 0.68),
-      borderColor: colors.primary.withValues(alpha: 0.16),
-      borderRadius: 22,
-      padding: const EdgeInsets.all(18),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: colors.primary,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Icon(icon, color: colors.onPrimary, size: 22),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: colors.onPrimaryContainer,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: colors.onPrimaryContainer.withValues(alpha: 0.78),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsSectionLabel extends StatelessWidget {
-  const _SettingsSectionLabel(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 4),
-    child: Text(
-      label.toUpperCase(),
-      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 0.9,
-      ),
-    ),
-  );
-}
-
-class _SettingsGroup extends StatelessWidget {
-  const _SettingsGroup({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => AppSurface(
-    borderRadius: 22,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var index = 0; index < children.length; index++) ...[
-          children[index],
-          if (index != children.length - 1)
-            const Divider(height: 1, indent: 68),
-        ],
-      ],
-    ),
-  );
-}
-
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.onTap,
-    this.value,
-    super.key,
-  });
-
-  final IconData icon;
-  final String title;
-  final String description;
-  final String? value;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Semantics(
-      button: true,
-      label: '$title. $description',
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
-        leading: _SettingsIcon(icon: icon),
-        title: Text(
-          title,
-          style: Theme.of(
-            context,
-          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Text(
-            description,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: colors.onSurfaceVariant),
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (value != null) ...[
-              Text(
-                value!,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colors.primary,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(width: 7),
-            ],
-            Icon(
-              CupertinoIcons.chevron_forward,
-              size: 16,
-              color: colors.onSurfaceVariant,
-            ),
-          ],
-        ),
-        onTap: onTap,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppSettingsCaption(description);
 }
 
 class _SettingsInformationRow extends StatelessWidget {
@@ -1677,20 +1477,8 @@ class _SettingsInformationRow extends StatelessWidget {
   final String value;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    contentPadding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
-    leading: _SettingsIcon(icon: icon),
-    title: Text(
-      title,
-      style: Theme.of(
-        context,
-      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
-    ),
-    subtitle: Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Text(value, maxLines: 2, overflow: TextOverflow.ellipsis),
-    ),
-  );
+  Widget build(BuildContext context) =>
+      AppSettingsRow(icon: icon, title: title, subtitle: value);
 }
 
 class _SettingsIcon extends StatelessWidget {
@@ -1699,18 +1487,8 @@ class _SettingsIcon extends StatelessWidget {
   final IconData icon;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: colors.primaryContainer,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Icon(icon, color: colors.onPrimaryContainer, size: 20),
-    );
-  }
+  Widget build(BuildContext context) =>
+      Icon(icon, size: 21, color: Theme.of(context).colorScheme.primary);
 }
 
 class _InformationCardData {
@@ -1734,7 +1512,7 @@ class _InformationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return AppSurface(
-      borderRadius: 20,
+      borderRadius: 18,
       padding: const EdgeInsets.all(16),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1749,7 +1527,7 @@ class _InformationCard extends StatelessWidget {
                   data.title,
                   style: Theme.of(
                     context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 5),
                 Text(

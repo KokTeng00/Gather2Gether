@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/appearance_controller.dart';
 import 'package:gather2gether/core/theme/app_theme.dart';
 import 'package:gather2gether/features/auth/presentation/auth_gate.dart';
 
@@ -9,13 +10,16 @@ class Gather2GetherApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Gather2Gether',
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
-      home: isConfigured ? const AuthGate() : const ConfigurationScreen(),
+    return ListenableBuilder(
+      listenable: AppearanceController.instance,
+      builder: (context, _) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Gather2Gether',
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: AppearanceController.instance.mode,
+        home: isConfigured ? const AuthGate() : const ConfigurationScreen(),
+      ),
     );
   }
 }

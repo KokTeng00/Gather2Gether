@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/public_profile.dart';
+import 'package:gather2gether/features/profile/domain/profile_connection.dart';
 import 'package:gather2gether/features/profile/presentation/public_profile_screen.dart';
 
 class _FakePublicProfileRepository extends ProfileRepository {
@@ -16,6 +17,14 @@ class _FakePublicProfileRepository extends ProfileRepository {
   var blockChanges = 0;
   final bool pastEventsPublic;
   final requestedEventFilters = <String>[];
+
+  @override
+  Future<ProfileConnectionPage> fetchConnections({
+    String? profileId,
+    required ProfileConnectionKind kind,
+    String query = '',
+    String? cursor,
+  }) async => const ProfileConnectionPage(members: [], canSearch: false);
 
   @override
   Future<PublicProfile> fetchPublicProfile(String profileId) async =>
@@ -80,6 +89,34 @@ class _FakePublicProfileRepository extends ProfileRepository {
 }
 
 void main() {
+  testWidgets('visitors open follower and following lists without search', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PublicProfileScreen(
+          profileId: '11111111-1111-4111-8111-111111111111',
+          repository: _FakePublicProfileRepository(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final kind in ['followers', 'following']) {
+      await tester.tap(find.byKey(Key('public-profile-$kind-action')));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+      expect(
+        find.text(
+          kind == 'followers' ? 'No followers yet' : 'Not following anyone yet',
+        ),
+        findsOneWidget,
+      );
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('a member can follow another public profile', (tester) async {
     final repository = _FakePublicProfileRepository();
     await tester.pumpWidget(

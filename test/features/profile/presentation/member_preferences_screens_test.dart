@@ -79,6 +79,54 @@ void main() {
     expect(tester.widget<TextButton>(saveFinder).onPressed, isNull);
   });
 
+  testWidgets(
+    'hidden category search keeps selections until the parent saves',
+    (tester) async {
+      final repository = _PreferencesRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: RecommendationSettingsScreen(repository: repository),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('recommendation-hidden-categories')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Coffee');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings-option-Coffee')));
+      await tester.enterText(find.byType(TextField), 'Running');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings-option-Running')));
+      await tester.tap(find.byKey(const Key('settings-picker-done')));
+      await tester.pumpAndSettle();
+      expect(repository.savedHiddenCategories, isNull);
+      await tester.tap(
+        find.byKey(const Key('save-recommendation-preferences-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        repository.savedHiddenCategories,
+        unorderedEquals(['Coffee', 'Running']),
+      );
+
+      await tester.tap(
+        find.byKey(const Key('recommendation-hidden-categories')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings-option-Badminton')));
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      final save = tester.widget<TextButton>(
+        find.byKey(const Key('save-recommendation-preferences-button')),
+      );
+      expect(save.onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('recommendation changes wait for the same Save placement', (
     tester,
   ) async {
@@ -99,7 +147,7 @@ void main() {
     expect(find.text('Save hidden categories'), findsNothing);
 
     await tester.tap(
-      find.widgetWithText(SwitchListTile, 'Personalized ordering'),
+      find.widgetWithText(SwitchListTile, 'Personalize my feed'),
     );
     await tester.pump();
     expect(repository.savedRecommendationEnabled, isNull);
@@ -109,6 +157,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.savedRecommendationEnabled, isFalse);
     expect(repository.savedHiddenCategories, isEmpty);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('reset-recommendations-button')),
+      200,
+    );
     expect(find.text('Reset recommendations'), findsOneWidget);
   });
 }

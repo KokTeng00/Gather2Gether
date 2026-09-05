@@ -8,6 +8,8 @@ import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/forum/data/forum_repository.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/profile_stats.dart';
+import 'package:gather2gether/features/profile/domain/profile_connection.dart';
+import 'package:gather2gether/features/profile/presentation/profile_connections_screen.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/edit_profile_screen.dart';
 import 'package:gather2gether/features/profile/presentation/profile_community_activity.dart';
@@ -107,6 +109,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _profile = profile);
     widget.onAssistantEnabledChanged(profile.assistantEnabled);
     widget.onProfileChanged?.call(profile);
+  }
+
+  Future<void> _openConnections(ProfileConnectionKind kind) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) =>
+            ProfileConnectionsScreen(kind: kind, repository: _profiles),
+      ),
+    );
+    if (mounted) await _load();
   }
 
   Future<void> _openEdit() async {
@@ -255,6 +267,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           avatarUrl: _avatarUrlFor(profile),
                           avatarHeaders: _avatarHeadersFor(profile),
                           onEdit: _openEdit,
+                          onFollowers: () =>
+                              _openConnections(ProfileConnectionKind.followers),
+                          onFollowing: () =>
+                              _openConnections(ProfileConnectionKind.following),
                         ),
                       ),
                     ],

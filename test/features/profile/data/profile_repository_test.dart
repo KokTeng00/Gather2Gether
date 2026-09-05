@@ -4,11 +4,48 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
+import 'package:gather2gether/features/profile/domain/profile_connection.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
   const apiUrl = 'https://gather2gether.pages.dev/api/v1';
+
+  test(
+    'connection requests encode search and cursors and retain server permissions',
+    () async {
+      const cursor =
+          '{"created_at":"2026-09-05T14:00:00.123456+00:00","id":"member-id"}';
+      final repository = ProfileRepository(
+        edgeApiUrl: apiUrl,
+        accessTokenProvider: () => 'access-token',
+        httpClient: MockClient((request) async {
+          expect(request.url.path, '/api/v1/profiles/me/following');
+          expect(request.url.queryParameters['query'], '@maya & friends');
+          expect(request.url.queryParameters['cursor'], cursor);
+          expect(request.headers['authorization'], 'Bearer access-token');
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {'id': 'member', 'display_name': 'Maya', 'username': 'maya'},
+              ],
+              'can_search': true,
+              'next_cursor': cursor,
+            }),
+            200,
+          );
+        }),
+      );
+      final page = await repository.fetchConnections(
+        kind: ProfileConnectionKind.following,
+        query: '@maya & friends',
+        cursor: cursor,
+      );
+      expect(page.canSearch, isTrue);
+      expect(page.nextCursor, cursor);
+      expect(page.members.single.username, 'maya');
+    },
+  );
 
   test('avatar upload sends authenticated privacy-safe JPEG bytes', () async {
     final bytes = Uint8List.fromList([1, 2, 3, 4]);

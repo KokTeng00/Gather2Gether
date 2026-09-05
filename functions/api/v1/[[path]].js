@@ -616,7 +616,52 @@ export async function handleApiRequest(request, env, defer = null) {
     }
 
     if (segments.length >= 2 && segments[0] === 'profiles') {
-      const profileId = uuidParameter(segments[1], 'profile_id');
+      const profileId = segments[1] === 'me'
+        ? identity.userId
+        : uuidParameter(segments[1], 'profile_id');
+
+      if (request.method === 'GET' && segments.length === 3 &&
+          (segments[2] === 'followers' || segments[2] === 'following')) {
+        const query = optionalSearchParameter(url.searchParams.get('query'), 'query', 80);
+        const canSearch = profileId.toLowerCase() === identity.userId.toLowerCase();
+        if (query !== null && !canSearch) {
+          throw new ApiError(403, 'connection_search_owner_only', 'Only the account owner can search this list.');
+        }
+        let cursor = null;
+        const rawCursor = url.searchParams.get('cursor');
+        if (rawCursor !== null) {
+          try {
+            if (rawCursor.length > 200) throw new Error('cursor length');
+            cursor = JSON.parse(rawCursor);
+            if (!cursor || typeof cursor.id !== 'string' || !UUID_PATTERN.test(cursor.id) ||
+                typeof cursor.created_at !== 'string' || cursor.created_at.length > 40 ||
+                !Number.isFinite(Date.parse(cursor.created_at))) throw new Error('cursor shape');
+          } catch (_) {
+            throw new ApiError(400, 'invalid_cursor', 'This list position is invalid. Refresh the list.');
+          }
+        }
+        const rows = await supabaseRpc(env, identity.authorization, 'list_profile_connections', {
+          p_profile_id: profileId,
+          p_kind: segments[2],
+          p_query: query,
+          // Preserve database timestamp precision for stable pagination.
+          p_before_created_at: cursor?.created_at ?? null,
+          p_before_id: cursor?.id ?? null,
+          p_limit: 31,
+        });
+        if (!Array.isArray(rows) || rows.length > 31) {
+          throw new ApiError(502, 'invalid_backend_response', 'The database returned an invalid member list.');
+        }
+        const data = rows.slice(0, 30);
+        const last = data.at(-1);
+        return jsonResponse({
+          data,
+          can_search: canSearch,
+          next_cursor: rows.length > 30
+            ? JSON.stringify({created_at: last.followed_at, id: last.id})
+            : null,
+        }, 200, requestId, cors);
+      }
 
       if (request.method === 'GET' && segments.length === 2) {
         const rows = await supabaseRpc(
@@ -2451,6 +2496,8 @@ function mappedSupabaseError(status, payload) {
     push_device_validation: [400, 'push_device_validation', 'Notification device details are invalid.'],
     invalid_block_target: [400, 'invalid_block_target', 'This member cannot be blocked.'],
     profile_not_found: [404, 'profile_not_found', 'Profile was not found.'],
+    connection_list_validation: [400, 'connection_list_validation', 'Check the member list options and try again.'],
+    connection_search_owner_only: [403, 'connection_search_owner_only', 'Only the account owner can search this list.'],
     account_deletion_confirmation: [400, 'account_deletion_confirmation', 'Type DELETE to confirm account deletion.'],
     invalid_cohost: [400, 'invalid_cohost', 'Choose a valid co-host username.'],
     cohost_not_found: [404, 'cohost_not_found', 'No member has that username.'],

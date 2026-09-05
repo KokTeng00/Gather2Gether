@@ -4,7 +4,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gather2gether/features/places/data/place_repository.dart';
 import 'package:gather2gether/features/places/domain/place_suggestion.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class PlaceAutocompleteField extends StatefulWidget {
   const PlaceAutocompleteField({
@@ -137,13 +136,6 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
     widget.onSelected(place);
   }
 
-  Future<void> _openAttribution() async {
-    await launchUrl(
-      Uri.parse('https://www.geoapify.com/'),
-      mode: LaunchMode.externalApplication,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -221,26 +213,6 @@ class _PlaceAutocompleteFieldState extends State<PlaceAutocompleteField> {
               ).textTheme.bodySmall?.copyWith(color: colors.error),
             ),
           ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Semantics(
-            link: true,
-            label: 'Address search powered by Geoapify',
-            child: InkWell(
-              onTap: _openAttribution,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 2, 16, 8),
-                child: Text(
-                  'Powered by Geoapify',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colors.primary,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }

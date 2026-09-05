@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:gather2gether/core/theme/app_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/media/app_image_picker.dart';
@@ -256,9 +257,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      AppSurface(
-                        borderRadius: 22,
-                        padding: const EdgeInsets.all(20),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 24),
                         child: Column(
                           children: [
                             Stack(
@@ -268,12 +268,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   profile: _profile,
                                   imageUrl: avatarUrl,
                                   headers: _avatarHeaders(),
-                                  size: 96,
+                                  size: 88,
                                 ),
                                 if (_updatingAvatar)
                                   Container(
-                                    width: 96,
-                                    height: 96,
+                                    width: 88,
+                                    height: 88,
                                     decoration: BoxDecoration(
                                       color: Colors.black.withValues(
                                         alpha: 0.45,
@@ -286,136 +286,136 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 12),
-                            TextButton.icon(
-                              key: const Key('profile-photo-action'),
-                              onPressed: _updatingAvatar || _saving
-                                  ? null
-                                  : _changeAvatar,
-                              icon: const Icon(CupertinoIcons.camera_fill),
-                              label: Text(
-                                _profile.hasAvatar
-                                    ? 'Change photo'
-                                    : 'Add photo',
-                              ),
-                            ),
-                            if (_profile.hasAvatar) ...[
-                              const SizedBox(height: 2),
-                              TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: colors.error,
+                            const SizedBox(height: 8),
+                            Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 8,
+                              children: [
+                                TextButton.icon(
+                                  key: const Key('profile-photo-action'),
+                                  onPressed: _updatingAvatar || _saving
+                                      ? null
+                                      : _changeAvatar,
+                                  icon: const Icon(
+                                    CupertinoIcons.camera,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    _profile.hasAvatar
+                                        ? 'Change photo'
+                                        : 'Add photo',
+                                  ),
                                 ),
-                                onPressed: _updatingAvatar || _saving
-                                    ? null
-                                    : _removeAvatar,
-                                child: const Text('Remove photo'),
-                              ),
-                            ],
+                                if (_profile.hasAvatar)
+                                  TextButton(
+                                    onPressed: _updatingAvatar || _saving
+                                        ? null
+                                        : _removeAvatar,
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: colors.onSurfaceVariant,
+                                    ),
+                                    child: const Text('Remove photo'),
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 22),
-                      const ProfileSectionHeader(
-                        title: 'Your identity',
-                        subtitle: 'This is how you appear in the community.',
-                      ),
-                      const SizedBox(height: 11),
-                      TextFormField(
-                        controller: _name,
-                        enabled: !_saving,
-                        textCapitalization: TextCapitalization.words,
-                        textInputAction: TextInputAction.next,
-                        autofillHints: const [AutofillHints.name],
-                        maxLength: 80,
-                        decoration: const InputDecoration(
-                          labelText: 'Display name',
-                          counterText: '',
-                          prefixIcon: Icon(CupertinoIcons.person),
-                        ),
-                        validator: (value) =>
-                            Validators.requiredText(value, maxLength: 80),
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        key: const Key('profile-username-field'),
-                        controller: _username,
-                        enabled: !_saving && !usernameLocked,
-                        readOnly: usernameLocked,
-                        showCursor: !usernameLocked,
-                        style: TextStyle(
-                          color: usernameLocked
-                              ? colors.onSurfaceVariant
-                              : colors.onSurface,
-                        ),
-                        autocorrect: false,
-                        textCapitalization: TextCapitalization.none,
-                        textInputAction: TextInputAction.next,
-                        maxLength: 30,
-                        decoration: InputDecoration(
-                          labelText: 'Username',
-                          hintText: 'maya_chen',
-                          prefixText: '@',
-                          prefixIcon: Icon(
-                            CupertinoIcons.at,
-                            color: usernameLocked
-                                ? colors.onSurfaceVariant
-                                : null,
+                      const AppSettingsHeading('Profile details'),
+                      AppSettingsGroup(
+                        dividerIndent: 16,
+                        children: [
+                          _ProfileField(
+                            label: 'Display name',
+                            child: TextFormField(
+                              controller: _name,
+                              enabled: !_saving,
+                              textCapitalization: TextCapitalization.words,
+                              textInputAction: TextInputAction.next,
+                              autofillHints: const [AutofillHints.name],
+                              maxLength: 80,
+                              decoration: _profileInput(hint: 'Your name'),
+                              validator: (value) =>
+                                  Validators.requiredText(value, maxLength: 80),
+                            ),
                           ),
-                          suffixIcon: usernameLocked
-                              ? Icon(
-                                  CupertinoIcons.lock_fill,
-                                  size: 18,
-                                  color: colors.onSurfaceVariant,
-                                )
-                              : null,
-                          filled: usernameLocked,
-                          fillColor: usernameLocked
-                              ? colors.surfaceContainerHighest.withValues(
-                                  alpha: 0.48,
-                                )
-                              : null,
-                          counterText: '',
-                          helperText: usernameGuidance,
-                          helperMaxLines: 2,
-                        ),
-                        validator: _validateUsername,
+                          _ProfileField(
+                            label: 'Username',
+                            child: TextFormField(
+                              key: const Key('profile-username-field'),
+                              controller: _username,
+                              enabled: !_saving && !usernameLocked,
+                              readOnly: usernameLocked,
+                              showCursor: !usernameLocked,
+                              style: TextStyle(
+                                color: usernameLocked
+                                    ? colors.onSurfaceVariant
+                                    : colors.onSurface,
+                              ),
+                              autocorrect: false,
+                              textCapitalization: TextCapitalization.none,
+                              textInputAction: TextInputAction.next,
+                              maxLength: 30,
+                              decoration: _profileInput(hint: 'username')
+                                  .copyWith(
+                                    prefixText: '@',
+                                    suffixIcon: usernameLocked
+                                        ? Icon(
+                                            CupertinoIcons.lock,
+                                            size: 17,
+                                            color: colors.onSurfaceVariant,
+                                          )
+                                        : null,
+                                  ),
+                              validator: _validateUsername,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _bio,
-                        enabled: !_saving,
-                        minLines: 3,
-                        maxLines: 6,
-                        maxLength: 500,
-                        textCapitalization: TextCapitalization.sentences,
-                        textInputAction: TextInputAction.newline,
-                        decoration: const InputDecoration(
-                          labelText: 'Bio',
-                          hintText: 'A little about you and what you enjoy…',
-                          alignLabelWithHint: true,
-                          prefixIcon: Icon(CupertinoIcons.text_alignleft),
-                        ),
-                        validator: (value) => (value?.length ?? 0) > 500
-                            ? 'Use 500 characters or fewer.'
-                            : null,
+                      AppSettingsCaption(usernameGuidance),
+                      const SizedBox(height: 24),
+                      const AppSettingsHeading('About you'),
+                      AppSettingsGroup(
+                        dividerIndent: 16,
+                        children: [
+                          _ProfileField(
+                            label: 'Bio',
+                            child: TextFormField(
+                              controller: _bio,
+                              enabled: !_saving,
+                              minLines: 3,
+                              maxLines: 6,
+                              maxLength: 500,
+                              textCapitalization: TextCapitalization.sentences,
+                              textInputAction: TextInputAction.newline,
+                              decoration: _profileInput(
+                                hint: 'What do you enjoy?',
+                              ).copyWith(counterText: null),
+                              validator: (value) => (value?.length ?? 0) > 500
+                                  ? 'Use 500 characters or fewer.'
+                                  : null,
+                            ),
+                          ),
+                          _ProfileField(
+                            label: 'City (optional)',
+                            child: TextFormField(
+                              controller: _city,
+                              enabled: !_saving,
+                              maxLength: 120,
+                              textCapitalization: TextCapitalization.words,
+                              textInputAction: TextInputAction.done,
+                              decoration: _profileInput(hint: 'Your city'),
+                              validator: (value) =>
+                                  (value?.trim().length ?? 0) > 120
+                                  ? 'Use 120 characters or fewer.'
+                                  : null,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _city,
-                        enabled: !_saving,
-                        maxLength: 120,
-                        textCapitalization: TextCapitalization.words,
-                        textInputAction: TextInputAction.done,
-                        decoration: const InputDecoration(
-                          labelText: 'City (optional)',
-                          counterText: '',
-                          prefixIcon: Icon(CupertinoIcons.building_2_fill),
-                        ),
-                        validator: (value) => (value?.trim().length ?? 0) > 120
-                            ? 'Use 120 characters or fewer.'
-                            : null,
+                      const AppSettingsCaption(
+                        'These details are visible on your public profile.',
                       ),
-                      const SizedBox(height: 8),
                     ],
                   ),
                 ),
@@ -426,4 +426,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
     );
   }
+}
+
+InputDecoration _profileInput({required String hint}) => InputDecoration(
+  hintText: hint,
+  filled: false,
+  isDense: true,
+  counterText: '',
+  contentPadding: const EdgeInsets.symmetric(vertical: 8),
+  border: InputBorder.none,
+  enabledBorder: InputBorder.none,
+  disabledBorder: InputBorder.none,
+  focusedBorder: InputBorder.none,
+  errorBorder: InputBorder.none,
+  focusedErrorBorder: InputBorder.none,
+);
+
+class _ProfileField extends StatelessWidget {
+  const _ProfileField({required this.label, required this.child});
+  final String label;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 13, 16, 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Semantics(label: label, child: child),
+      ],
+    ),
+  );
 }
