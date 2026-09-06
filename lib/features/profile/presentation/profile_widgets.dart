@@ -115,28 +115,53 @@ class ProfileBalancedOverview extends StatelessWidget {
           builder: (context, constraints) => Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (username.isNotEmpty)
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: constraints.maxWidth * 0.4,
-                  ),
-                  child: Text(
-                    '@$username',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: colors.primary,
-                      fontWeight: FontWeight.w600,
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: constraints.maxWidth * 0.4 + 44,
+                ),
+                child: Semantics(
+                  button: true,
+                  child: Tooltip(
+                    message: 'Edit profile',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        key: const Key('profile-edit-action'),
+                        onTap: onEdit,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (username.isNotEmpty)
+                              Flexible(
+                                child: Text(
+                                  '@$username',
+                                  key: const Key('profile-username-action'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: colors.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                ),
+                              ),
+                            SizedBox(
+                              key: const Key('profile-edit-icon'),
+                              width: 44,
+                              height: 44,
+                              child: Icon(
+                                CupertinoIcons.pencil,
+                                color: colors.primary,
+                                size: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              IconButton(
-                key: const Key('profile-edit-action'),
-                tooltip: 'Edit profile',
-                onPressed: onEdit,
-                color: colors.primary,
-                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                icon: const Icon(CupertinoIcons.pencil, size: 18),
               ),
               if (city.isNotEmpty) ...[
                 Icon(

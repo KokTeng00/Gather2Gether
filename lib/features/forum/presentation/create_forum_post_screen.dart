@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/core/constants/forum_constants.dart';
 import 'package:gather2gether/core/media/app_image_picker.dart';
 import 'package:gather2gether/core/media/prepared_image.dart';
@@ -13,6 +14,7 @@ import 'package:gather2gether/features/places/presentation/place_autocomplete_fi
 class CreateForumPostScreen extends StatefulWidget {
   const CreateForumPostScreen({
     super.key,
+    this.asSheet = false,
     ForumRepository? repository,
     AppImagePicker? imagePicker,
     PlaceRepository? placeRepository,
@@ -20,6 +22,7 @@ class CreateForumPostScreen extends StatefulWidget {
        _imagePicker = imagePicker,
        _placeRepository = placeRepository;
 
+  final bool asSheet;
   final ForumRepository? _repository;
   final AppImagePicker? _imagePicker;
   final PlaceRepository? _placeRepository;
@@ -164,155 +167,145 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_submitting,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('New Discussion'),
-          leading: IconButton(
-            tooltip: 'Close',
-            onPressed: _submitting ? null : () => Navigator.pop(context),
-            icon: const Icon(CupertinoIcons.xmark),
-          ),
-        ),
-        body: SafeArea(
-          top: false,
-          child: Form(
-            key: _formKey,
-            child: ListView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
-              children: [
-                Text(
-                  'Start a conversation',
-                  style: Theme.of(context).textTheme.displaySmall,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Ask something useful, share an idea, or find your people.',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 26),
-                AppSection(
-                  title: 'Discussion',
-                  child: Column(
-                    children: [
-                      AppChoiceField(
-                        key: const Key('forum-category-field'),
-                        value: _category,
-                        options: forumCategories,
-                        label: 'Topic',
-                        enabled: !_submitting,
-                        onChanged: (value) => setState(() => _category = value),
-                      ),
-                      const Divider(indent: 52),
-                      TextFormField(
-                        controller: _title,
-                        enabled: !_submitting,
-                        maxLength: 120,
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: const InputDecoration(
-                          hintText: 'Give it a clear title',
-                          prefixIcon: Icon(CupertinoIcons.textformat),
-                          counterText: '',
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          focusedErrorBorder: InputBorder.none,
-                        ),
-                        validator: (value) => (value?.trim().length ?? 0) < 5
-                            ? 'Use at least 5 characters.'
-                            : null,
-                      ),
-                      const Divider(indent: 52),
-                      TextFormField(
-                        controller: _body,
-                        enabled: !_submitting,
-                        minLines: 7,
-                        maxLines: 14,
-                        maxLength: 4000,
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: const InputDecoration(
-                          hintText:
-                              'Add context so others can give a useful reply…',
-                          counterText: '',
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          errorBorder: InputBorder.none,
-                          focusedErrorBorder: InputBorder.none,
-                        ),
-                        validator: (value) => (value?.trim().length ?? 0) < 10
-                            ? 'Use at least 10 characters.'
-                            : null,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-                AppSection(
-                  title: 'Add to your post',
-                  footer:
-                      'Optional · Share one photo and tag one public place.',
-                  child: _AttachmentsPanel(
-                    image: _image,
-                    placeName: _placeName,
-                    placeAddress: _placeAddress,
-                    preparingImage: _preparingImage,
-                    enabled: !_submitting,
-                    onChoosePhoto: _choosePhoto,
-                    onRemovePhoto: () => setState(() => _image = null),
-                    onEditPlace: _editPlace,
-                    onRemovePlace: () => setState(() {
-                      _placeName = null;
-                      _placeAddress = null;
-                    }),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        CupertinoIcons.checkmark_shield_fill,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Only tag public venues. Keep home addresses, phone numbers, and other private information out of discussions.',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 26),
-                FilledButton.icon(
-                  onPressed: _submitting || _preparingImage ? null : _submit,
-                  icon: _submitting
-                      ? CupertinoActivityIndicator(
-                          color: Theme.of(context).colorScheme.onPrimary,
-                        )
-                      : const Icon(CupertinoIcons.paperplane_fill),
-                  label: Text(
-                    _submitting ? 'Publishing…' : 'Publish Discussion',
-                  ),
-                ),
-              ],
+    return AppSheetScaffold(
+      asSheet: widget.asSheet,
+      canDismiss: !_submitting,
+      title: 'New discussion',
+      bodyBuilder: (context, scrollController) => SafeArea(
+        top: false,
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            controller: scrollController,
+            physics: const ClampingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
             ),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
+            children: [
+              Text(
+                'Ask a question or share an idea with people nearby.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 20),
+              AppSection(
+                title: 'Discussion',
+                child: Column(
+                  children: [
+                    AppChoiceField(
+                      key: const Key('forum-category-field'),
+                      value: _category,
+                      options: forumCategories,
+                      label: 'Topic',
+                      enabled: !_submitting,
+                      onChanged: (value) => setState(() => _category = value),
+                    ),
+                    const Divider(indent: 52),
+                    TextFormField(
+                      controller: _title,
+                      enabled: !_submitting,
+                      maxLength: 120,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        hintText: 'Give it a clear title',
+                        prefixIcon: Icon(CupertinoIcons.textformat),
+                        counterText: '',
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                      ),
+                      validator: (value) => (value?.trim().length ?? 0) < 5
+                          ? 'Use at least 5 characters.'
+                          : null,
+                    ),
+                    const Divider(indent: 52),
+                    TextFormField(
+                      controller: _body,
+                      enabled: !_submitting,
+                      minLines: 7,
+                      maxLines: 14,
+                      maxLength: 4000,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: const InputDecoration(
+                        hintText:
+                            'Add context so others can give a useful reply…',
+                        counterText: '',
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                      ),
+                      validator: (value) => (value?.trim().length ?? 0) < 10
+                          ? 'Use at least 10 characters.'
+                          : null,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              AppSection(
+                title: 'Add to your post',
+                footer: 'Optional · Share one photo and tag one public place.',
+                child: _AttachmentsPanel(
+                  image: _image,
+                  placeName: _placeName,
+                  placeAddress: _placeAddress,
+                  preparingImage: _preparingImage,
+                  enabled: !_submitting,
+                  onChoosePhoto: _choosePhoto,
+                  onRemovePhoto: () => setState(() => _image = null),
+                  onEditPlace: _editPlace,
+                  onRemovePlace: () => setState(() {
+                    _placeName = null;
+                    _placeAddress = null;
+                  }),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      CupertinoIcons.checkmark_shield_fill,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Only tag public venues. Keep home addresses, phone numbers, and other private information out of discussions.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 26),
+              FilledButton.icon(
+                key: const Key('publish-discussion-button'),
+                onPressed: _submitting || _preparingImage ? null : _submit,
+                icon: _submitting
+                    ? CupertinoActivityIndicator(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      )
+                    : const Icon(CupertinoIcons.paperplane_fill),
+                label: Text(_submitting ? 'Publishing…' : 'Publish Discussion'),
+              ),
+            ],
           ),
         ),
       ),

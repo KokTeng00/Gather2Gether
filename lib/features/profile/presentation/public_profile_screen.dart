@@ -4,7 +4,7 @@ import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/public_profile.dart';
 import 'package:gather2gether/features/profile/domain/profile_connection.dart';
-import 'package:gather2gether/features/profile/presentation/profile_connections_screen.dart';
+import 'package:gather2gether/features/profile/presentation/profile_connections_sheet.dart';
 import 'package:gather2gether/features/profile/presentation/profile_events_section.dart';
 
 class PublicProfileScreen extends StatefulWidget {
@@ -58,14 +58,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   }
 
   Future<void> _openConnections(ProfileConnectionKind kind) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => ProfileConnectionsScreen(
-          profileId: widget.profileId,
-          kind: kind,
-          repository: _repository,
-        ),
-      ),
+    await showProfileConnectionsSheet(
+      context: context,
+      kind: kind,
+      repository: _repository,
+      profileId: widget.profileId,
+      initialCount: kind == ProfileConnectionKind.followers
+          ? _profile?.followersCount
+          : _profile?.followingCount,
     );
     if (mounted) await _load();
   }

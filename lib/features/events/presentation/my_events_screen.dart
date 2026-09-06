@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/events/data/event_repository.dart';
 import 'package:gather2gether/features/events/data/event_reminder_service.dart';
@@ -122,18 +123,24 @@ class _MyEventsScreenState extends State<MyEventsScreen>
   }
 
   Future<void> _openEvent(EventSummary event) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        fullscreenDialog: event.eventStatus == 'draft',
-        builder: (routeContext) => event.eventStatus == 'draft'
-            ? CreateEventScreen(
-                initialEvent: event,
-                eventRepository: _repository,
-                onCreated: () => Navigator.pop(routeContext),
-              )
-            : EventDetailScreen(event: event, repository: _repository),
-      ),
-    );
+    if (event.eventStatus == 'draft') {
+      await showAppSheet<void>(
+        context: context,
+        builder: (routeContext) => CreateEventScreen(
+          asSheet: true,
+          initialEvent: event,
+          eventRepository: _repository,
+          onCreated: () => Navigator.pop(routeContext),
+        ),
+      );
+    } else {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) =>
+              EventDetailScreen(event: event, repository: _repository),
+        ),
+      );
+    }
     if (mounted) await _load();
   }
 

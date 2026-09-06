@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/forum/data/forum_repository.dart';
 import 'package:gather2gether/features/forum/domain/forum_post.dart';
@@ -61,11 +62,10 @@ class _ForumScreenState extends State<ForumScreen> {
   }
 
   Future<void> _create() async {
-    final id = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => CreateForumPostScreen(repository: _repository),
-      ),
+    final id = await showAppSheet<String>(
+      context: context,
+      builder: (_) =>
+          CreateForumPostScreen(repository: _repository, asSheet: true),
     );
     if (id == null || !mounted) return;
     await Navigator.of(context).push<void>(

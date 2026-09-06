@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/location/location_service.dart';
 import 'package:gather2gether/core/media/app_image_picker.dart';
@@ -9,7 +10,7 @@ import 'package:gather2gether/features/forum/data/forum_repository.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/profile_stats.dart';
 import 'package:gather2gether/features/profile/domain/profile_connection.dart';
-import 'package:gather2gether/features/profile/presentation/profile_connections_screen.dart';
+import 'package:gather2gether/features/profile/presentation/profile_connections_sheet.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:gather2gether/features/profile/presentation/edit_profile_screen.dart';
 import 'package:gather2gether/features/profile/presentation/profile_community_activity.dart';
@@ -112,11 +113,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _openConnections(ProfileConnectionKind kind) async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) =>
-            ProfileConnectionsScreen(kind: kind, repository: _profiles),
-      ),
+    await showProfileConnectionsSheet(
+      context: context,
+      kind: kind,
+      repository: _profiles,
+      initialCount: kind == ProfileConnectionKind.followers
+          ? _stats?.followersCount
+          : _stats?.followingCount,
     );
     if (mounted) await _load();
   }
@@ -124,17 +127,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _openEdit() async {
     final profile = _profile;
     if (profile == null) return;
-    await Navigator.of(context).push<UserProfile>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => EditProfileScreen(
-          profile: profile,
-          repository: _profiles,
-          avatarPicker: widget.avatarPicker ?? _pickAvatar,
-          avatarUrlBuilder: _avatarUrlFor,
-          avatarHeaders: _avatarHeadersFor(profile),
-          onProfileChanged: _profileChanged,
-        ),
+    await showAppSheet<UserProfile>(
+      context: context,
+      builder: (_) => EditProfileScreen(
+        asSheet: true,
+        profile: profile,
+        repository: _profiles,
+        avatarPicker: widget.avatarPicker ?? _pickAvatar,
+        avatarUrlBuilder: _avatarUrlFor,
+        avatarHeaders: _avatarHeadersFor(profile),
+        onProfileChanged: _profileChanged,
       ),
     );
   }

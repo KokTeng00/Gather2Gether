@@ -281,9 +281,13 @@ void main() {
     await tester.tap(find.text('Edit public profile'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Edit public profile'), findsOneWidget);
+    expect(find.text('Edit profile'), findsOneWidget);
+    expect(find.byKey(const Key('app-sheet')), findsOneWidget);
+    expect(find.byTooltip('Close'), findsNothing);
     expect(find.byKey(const Key('profile-photo-action')), findsOneWidget);
-    expect(find.text('Add photo'), findsOneWidget);
+    expect(find.byTooltip('Add profile photo'), findsOneWidget);
+    expect(find.text('Add photo'), findsNothing);
+    expect(find.text('Remove photo'), findsNothing);
     expect(find.byKey(const Key('profile-username-field')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

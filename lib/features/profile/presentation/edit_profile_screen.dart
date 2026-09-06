@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:gather2gether/core/theme/app_settings.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/media/app_image_picker.dart';
 import 'package:gather2gether/core/media/prepared_image.dart';
@@ -22,9 +23,11 @@ class EditProfileScreen extends StatefulWidget {
     this.avatarUrlBuilder,
     this.avatarHeaders,
     this.onProfileChanged,
+    this.asSheet = false,
     super.key,
   });
 
+  final bool asSheet;
   final UserProfile profile;
   final ProfileRepository repository;
   final ProfileAvatarPicker? avatarPicker;
@@ -169,40 +172,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<void> _removeAvatar() async {
-    if (_updatingAvatar || _saving) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Remove profile photo?'),
-        content: const Text('Your initials will be shown instead.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _updatingAvatar = true);
-    try {
-      await widget.repository.deleteAvatar();
-      final updated = await widget.repository.fetchOwnProfile();
-      if (!mounted) return;
-      setState(() => _profile = updated);
-      widget.onProfileChanged?.call(updated);
-    } catch (_) {
-      _showError('Could not remove your profile photo.');
-    } finally {
-      if (mounted) setState(() => _updatingAvatar = false);
-    }
-  }
-
   String? _validateUsername(String? value) {
     final text = value?.trim() ?? '';
     if (text.length < 3 || text.length > 30) {
@@ -231,23 +200,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ? 'You can change it again on '
               '${DateFormat.yMMMMd().format(nextUsernameChange)}.'
         : 'Usernames can be changed once every 3 months.';
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit public profile'),
-        actions: [
-          AppSaveAction(
-            buttonKey: const Key('save-profile-button'),
-            saving: _saving,
-            onPressed: _saving || _updatingAvatar ? null : _save,
-          ),
-          const SizedBox(width: 8),
-        ],
+    return AppSheetScaffold(
+      asSheet: widget.asSheet,
+      canDismiss: !_saving && !_updatingAvatar,
+      title: 'Edit profile',
+      headerAction: AppSaveAction(
+        buttonKey: const Key('save-profile-button'),
+        saving: _saving,
+        onPressed: _saving || _updatingAvatar ? null : _save,
       ),
-      body: SafeArea(
+      bodyBuilder: (context, scrollController) => SafeArea(
         top: false,
         child: Form(
           key: _formKey,
           child: ListView(
+            controller: scrollController,
+            physics: const ClampingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
             children: [
@@ -259,12 +229,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(top: 4, bottom: 24),
-                        child: Column(
-                          children: [
-                            Stack(
+                        child: Center(
+                          child: SizedBox.square(
+                            dimension: 100,
+                            child: Stack(
                               alignment: Alignment.center,
                               children: [
                                 ProfileAvatar(
+                                  key: const Key('edit-profile-avatar'),
                                   profile: _profile,
                                   imageUrl: avatarUrl,
                                   headers: _avatarHeaders(),
@@ -284,41 +256,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                       color: Colors.white,
                                     ),
                                   ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              alignment: WrapAlignment.center,
-                              spacing: 8,
-                              children: [
-                                TextButton.icon(
-                                  key: const Key('profile-photo-action'),
-                                  onPressed: _updatingAvatar || _saving
-                                      ? null
-                                      : _changeAvatar,
-                                  icon: const Icon(
-                                    CupertinoIcons.camera,
-                                    size: 18,
-                                  ),
-                                  label: Text(
-                                    _profile.hasAvatar
-                                        ? 'Change photo'
-                                        : 'Add photo',
-                                  ),
-                                ),
-                                if (_profile.hasAvatar)
-                                  TextButton(
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: IconButton(
+                                    key: const Key('profile-photo-action'),
+                                    tooltip: _profile.hasAvatar
+                                        ? 'Change profile photo'
+                                        : 'Add profile photo',
                                     onPressed: _updatingAvatar || _saving
                                         ? null
-                                        : _removeAvatar,
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: colors.onSurfaceVariant,
+                                        : _changeAvatar,
+                                    padding: const EdgeInsets.all(4),
+                                    constraints: const BoxConstraints.tightFor(
+                                      width: 44,
+                                      height: 44,
                                     ),
-                                    child: const Text('Remove photo'),
+                                    icon: Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: colors.primary,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: colors.surface,
+                                          width: 3,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        CupertinoIcons.camera_fill,
+                                        size: 18,
+                                        color: colors.onPrimary,
+                                      ),
+                                    ),
                                   ),
+                                ),
                               ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                       const AppSettingsHeading('Profile details'),

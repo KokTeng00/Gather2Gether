@@ -111,7 +111,11 @@ void main() {
         ),
         findsOneWidget,
       );
-      await tester.pageBack();
+      expect(find.byTooltip('Close'), findsNothing);
+      await tester.drag(
+        find.byKey(const Key('app-sheet-header')),
+        const Offset(0, 400),
+      );
       await tester.pumpAndSettle();
     }
     expect(tester.takeException(), isNull);

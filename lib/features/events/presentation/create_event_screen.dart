@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/core/constants/event_categories.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/core/validation/validators.dart';
@@ -36,6 +37,7 @@ class CreateEventScreen extends StatefulWidget {
     this.initialEvent,
     this.templateEvent,
     this.editScope = 'this',
+    this.asSheet = false,
     super.key,
   }) : assert(initialEvent == null || templateEvent == null);
 
@@ -46,6 +48,7 @@ class CreateEventScreen extends StatefulWidget {
   final EventSummary? initialEvent;
   final EventSummary? templateEvent;
   final String editScope;
+  final bool asSheet;
 
   @override
   State<CreateEventScreen> createState() => _CreateEventScreenState();
@@ -392,26 +395,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.initialEvent != null
-              ? 'Edit event'
-              : widget.templateEvent != null
-              ? 'Create again'
-              : 'New event',
-        ),
-        leading: IconButton(
-          tooltip: 'Close',
-          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
-          icon: const Icon(CupertinoIcons.xmark),
-        ),
-      ),
-      body: SafeArea(
+    return AppSheetScaffold(
+      asSheet: widget.asSheet,
+      canDismiss: !_submitting,
+      title: widget.initialEvent != null
+          ? 'Edit event'
+          : widget.templateEvent != null
+          ? 'Create again'
+          : 'New event',
+      bodyBuilder: (context, scrollController) => SafeArea(
         top: false,
         child: Form(
           key: _formKey,
           child: ListView(
+            controller: scrollController,
+            physics: const ClampingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 36),
             children: [

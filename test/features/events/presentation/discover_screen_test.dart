@@ -216,6 +216,103 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final dark in [false, true]) {
+    testWidgets(
+      'filter sheet resizes and discards unapplied changes in ${dark ? 'dark' : 'light'} mode',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final events = _CapturingEventRepository();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: dark ? AppTheme.dark : AppTheme.light,
+            home: Scaffold(
+              body: DiscoverScreen(
+                onCreate: () {},
+                profileRepository: _AvailableProfileRepository(),
+                eventRepository: events,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('event-filter-action')));
+        await tester.pumpAndSettle();
+        final sheet = find.byKey(const Key('app-sheet'));
+        final header = find.byKey(const Key('app-sheet-header'));
+        expect(tester.getTopLeft(sheet).dy, closeTo(844 * 0.4, 1));
+        expect(tester.getCenter(find.text('Filters')).dx, closeTo(195, 1));
+        expect(find.byTooltip('Close'), findsNothing);
+        expect(
+          tester.widget<Material>(sheet).color,
+          (dark ? AppTheme.dark : AppTheme.light).colorScheme.surface,
+        );
+        await tester.tap(find.byKey(const Key('event-distance-filter')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('app-choice-25 km')));
+        await tester.pumpAndSettle();
+        await tester.drag(
+          find.byKey(const Key('event-filters-list')),
+          const Offset(0, -400),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.getTopLeft(sheet).dy, closeTo(0, 1));
+        await tester.ensureVisible(find.byKey(const Key('event-spots-filter')));
+        await tester.tap(find.byKey(const Key('event-spots-filter')));
+        await tester.pumpAndSettle();
+        await tester.drag(header, const Offset(0, 300));
+        await tester.pumpAndSettle();
+        expect(tester.getTopLeft(sheet).dy, closeTo(844 * 0.4, 1));
+        expect(find.text('25 km'), findsOneWidget);
+        expect(
+          tester
+              .widget<SwitchListTile>(
+                find.byKey(const Key('event-spots-filter')),
+              )
+              .value,
+          isTrue,
+        );
+        expect(events.radiusKm, 10);
+        expect(events.filters?.spotsOnly, isFalse);
+
+        // Reset stays reachable in the header even after scrolling the options.
+        await tester.tap(find.byKey(const Key('reset-event-filters')));
+        await tester.pumpAndSettle();
+        expect(find.text('10 km'), findsOneWidget);
+        expect(
+          tester
+              .widget<SwitchListTile>(
+                find.byKey(const Key('event-spots-filter')),
+              )
+              .value,
+          isFalse,
+        );
+        await tester.ensureVisible(find.byKey(const Key('event-spots-filter')));
+        await tester.tap(find.byKey(const Key('event-spots-filter')));
+        await tester.pumpAndSettle();
+        await tester.drag(header, const Offset(0, 400));
+        await tester.pumpAndSettle();
+        expect(sheet, findsNothing);
+        expect(events.filters?.spotsOnly, isFalse);
+
+        await tester.tap(find.byKey(const Key('event-filter-action')));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<SwitchListTile>(
+                find.byKey(const Key('event-spots-filter')),
+              )
+              .value,
+          isFalse,
+        );
+        expect(find.text('10 km'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('quick filters include availability and followed hosts', (
     tester,
   ) async {

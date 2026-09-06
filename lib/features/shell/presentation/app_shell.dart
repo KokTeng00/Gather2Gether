@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/assistant/presentation/assistant_panel.dart';
 import 'package:gather2gether/features/events/presentation/create_event_screen.dart';
@@ -118,19 +119,18 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _openCreate() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (routeContext) => CreateEventScreen(
-          onCreated: () {
-            Navigator.of(routeContext).pop();
-            setState(() {
-              _selectedIndex = 0;
-              _discoverRevision++;
-              _plansRevision++;
-            });
-          },
-        ),
+    await showAppSheet<void>(
+      context: context,
+      builder: (routeContext) => CreateEventScreen(
+        asSheet: true,
+        onCreated: () {
+          Navigator.of(routeContext).pop();
+          setState(() {
+            _selectedIndex = 0;
+            _discoverRevision++;
+            _plansRevision++;
+          });
+        },
       ),
     );
   }

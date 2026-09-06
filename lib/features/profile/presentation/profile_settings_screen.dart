@@ -4,6 +4,7 @@ import 'package:gather2gether/core/theme/app_settings_picker.dart';
 import 'package:gather2gether/core/theme/appearance_controller.dart';
 import 'package:gather2gether/features/profile/presentation/appearance_settings_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/location/location_service.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
@@ -367,18 +368,17 @@ class _AccountProfileSettingsScreenState
   }
 
   Future<void> _editProfile() async {
-    await Navigator.of(context).push<UserProfile>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => EditProfileScreen(
-          profile: _profile,
-          repository: widget.repository,
-          onProfileChanged: (profile) {
-            if (!mounted) return;
-            setState(() => _profile = profile);
-            widget.onProfileChanged(profile);
-          },
-        ),
+    await showAppSheet<UserProfile>(
+      context: context,
+      builder: (_) => EditProfileScreen(
+        asSheet: true,
+        profile: _profile,
+        repository: widget.repository,
+        onProfileChanged: (profile) {
+          if (!mounted) return;
+          setState(() => _profile = profile);
+          widget.onProfileChanged(profile);
+        },
       ),
     );
   }

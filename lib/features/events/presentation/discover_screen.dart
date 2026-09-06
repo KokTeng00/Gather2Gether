@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/core/location/location_service.dart';
 import 'package:gather2gether/core/constants/event_categories.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
@@ -183,10 +184,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Future<void> _openFilters() async {
-    final selected = await showModalBottomSheet<_EventFilterSelection>(
+    final selected = await showAppSheet<_EventFilterSelection>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
       builder: (_) => _EventFilterSheet(
         initial: _filters,
         initialRadiusKm: _radiusKm,
@@ -622,46 +621,45 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
         openSearchAlerts: openSearchAlerts,
       );
 
+  void _reset() => setState(() {
+    _category = null;
+    _dateFilter = 'any';
+    _timeFilter = 'any';
+    _spotsOnly = false;
+    _followingOnly = false;
+    _beginnerFriendlyOnly = false;
+    _wheelchairAccessibleOnly = false;
+    _eventSetting = 'any';
+    _languageController.clear();
+    _ageGuidance = 'any';
+    _radiusKm = widget.initialRadiusKm;
+  });
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      20,
-      10,
-      20,
-      MediaQuery.viewPaddingOf(context).bottom + 20,
+  Widget build(BuildContext context) => AppSheetScaffold(
+    title: 'Filters',
+    headerAction: TextButton(
+      key: const Key('reset-event-filters'),
+      onPressed: _reset,
+      child: const Text('Reset'),
     ),
-    child: SingleChildScrollView(
+    bodyBuilder: (context, scrollController) => SingleChildScrollView(
+      key: const Key('event-filters-list'),
+      controller: scrollController,
+      physics: const ClampingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        MediaQuery.paddingOf(context).bottom + 20,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Filters',
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-              ),
-              TextButton(
-                onPressed: () => setState(() {
-                  _category = null;
-                  _dateFilter = 'any';
-                  _timeFilter = 'any';
-                  _spotsOnly = false;
-                  _followingOnly = false;
-                  _beginnerFriendlyOnly = false;
-                  _wheelchairAccessibleOnly = false;
-                  _eventSetting = 'any';
-                  _languageController.clear();
-                  _ageGuidance = 'any';
-                  _radiusKm = widget.initialRadiusKm;
-                }),
-                child: const Text('Reset'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           AppSurface(
             padding: EdgeInsets.zero,
             borderRadius: 18,

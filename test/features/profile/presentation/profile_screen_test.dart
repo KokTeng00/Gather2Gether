@@ -180,11 +180,61 @@ void main() {
       await tester.tap(find.byKey(Key('profile-$kind-action')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('connections-search')), findsOneWidget);
-      await tester.pageBack();
+      expect(find.byTooltip('Close'), findsNothing);
+      await tester.drag(
+        find.byKey(const Key('app-sheet-header')),
+        const Offset(0, 400),
+      );
       await tester.pumpAndSettle();
     }
     expect(tester.takeException(), isNull);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'profile editing opens as a sheet from ${dark ? 'the pencil' : 'the username'}',
+      (tester) async {
+        final repository = await _pumpProfile(
+          tester,
+          theme: dark ? AppTheme.dark : AppTheme.light,
+        );
+        await tester.tap(
+          find.byKey(
+            Key(dark ? 'profile-edit-icon' : 'profile-username-action'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final sheet = find.byKey(const Key('app-sheet'));
+        final header = find.byKey(const Key('app-sheet-header'));
+        expect(tester.getTopLeft(sheet).dy, closeTo(568 * 0.4, 1));
+        expect(find.byKey(const Key('profile-overview')), findsOneWidget);
+        expect(find.text('Edit profile'), findsOneWidget);
+        expect(find.byTooltip('Close'), findsNothing);
+        expect(
+          tester.widget<Material>(sheet).color,
+          (dark ? AppTheme.dark : AppTheme.light).colorScheme.surface,
+        );
+        final name = find.byType(TextFormField).first;
+        await tester.ensureVisible(name);
+        await tester.enterText(name, 'Maya edited');
+        await tester.pumpAndSettle();
+        expect(tester.getTopLeft(sheet).dy, closeTo(0, 1));
+        await tester.drag(header, const Offset(0, 180));
+        await tester.pumpAndSettle();
+        expect(tester.getTopLeft(sheet).dy, closeTo(568 * 0.4, 1));
+        expect(
+          tester.widget<TextFormField>(name).controller!.text,
+          'Maya edited',
+        );
+        await tester.drag(header, const Offset(0, 300));
+        await tester.pumpAndSettle();
+        expect(sheet, findsNothing);
+        expect(repository.identityUpdates, 0);
+        expect(find.text('Maya Chen'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('avatar opens an authenticated zoomable photo and closes', (
     tester,
@@ -259,6 +309,7 @@ void main() {
     expect(find.text('Maya C.'), findsOneWidget);
     expect(find.text('@maya_local'), findsOneWidget);
     expect(changed.last.username, 'maya_local');
+    expect(find.byKey(const Key('app-sheet')), findsNothing);
   });
 
   testWidgets('edit profile locks a recently changed username', (tester) async {

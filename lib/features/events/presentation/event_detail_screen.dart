@@ -2,6 +2,7 @@ import 'package:add_2_calendar/add_2_calendar.dart' as calendar;
 import 'package:flutter/services.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_sheet.dart';
 import 'package:gather2gether/config/app_config.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
 import 'package:gather2gether/features/events/data/event_repository.dart';
@@ -352,15 +353,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (selected == null || !mounted) return;
       scope = selected;
     }
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (routeContext) => CreateEventScreen(
-          initialEvent: _event,
-          editScope: scope,
-          eventRepository: _events,
-          onCreated: () => Navigator.pop(routeContext),
-        ),
+    await showAppSheet<void>(
+      context: context,
+      builder: (routeContext) => CreateEventScreen(
+        asSheet: true,
+        initialEvent: _event,
+        editScope: scope,
+        eventRepository: _events,
+        onCreated: () => Navigator.pop(routeContext),
       ),
     );
     await _refresh();
@@ -457,14 +457,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   );
 
   Future<void> _createAgain() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (routeContext) => CreateEventScreen(
-          templateEvent: _event,
-          eventRepository: _events,
-          onCreated: () => Navigator.pop(routeContext),
-        ),
+    await showAppSheet<void>(
+      context: context,
+      builder: (routeContext) => CreateEventScreen(
+        asSheet: true,
+        templateEvent: _event,
+        eventRepository: _events,
+        onCreated: () => Navigator.pop(routeContext),
       ),
     );
   }
