@@ -94,3 +94,62 @@ test('private or unavailable invitation keeps a usable app handoff',async()=>{
     assert.match(html,/keeping event details in the app/);assert.match(html,/gather2gether:\/\/event\//);
   }
 });
+
+for (const visibility of ['followers', 'following', 'selected']) {
+  test(`${visibility} audience uses the atomic event plan on create and edit`, async () => {
+    const calls=[];
+    mockRpc((name,args)=>{calls.push({name,args});return Response.json([eventId]);});
+    const body={...event(),visibility};
+    body.planning.invite_preview_enabled=false;
+    body.planning.audience_usernames=visibility==='selected'?[' @Alex ', 'sam_123', '@ALEX']:[];
+    assert.equal((await handleApiRequest(request('events','POST',body),env)).status,201);
+    assert.equal((await handleApiRequest(request(`events/${eventId}`,'PUT',body),env)).status,200);
+    assert.equal((await handleApiRequest(request(`events/${eventId}/series`,'PUT',{...body,scope:'future'}),env)).status,200);
+    for(const call of calls){
+      assert.equal(call.name,'save_event_plan');
+      assert.equal(call.args.p_event.p_visibility,visibility);
+      assert.deepEqual(call.args.p_details.audience_usernames,visibility==='selected'?['alex','sam_123']:[]);
+    }
+    assert.equal(calls[2].args.p_scope,'future');
+  });
+}
+
+test('invalid audiences and restricted previews are rejected before writing',async()=>{
+  mockRpc(()=>{throw new Error('must not write');});
+  for(const usernames of [[],['a'],['alice@example.test'],[42],null,'alex',Array(51).fill('alex')]){
+    const body={...event(),visibility:'selected'};
+    body.planning={audience_usernames:usernames};
+    const response=await handleApiRequest(request('events','POST',body),env);
+    assert.equal(response.status,400,JSON.stringify(usernames));
+    assert.equal((await response.json()).error.code,'audience_validation');
+  }
+  for(const visibility of ['followers','following','selected']){
+    const body={...event(),visibility};
+    body.planning.audience_usernames=visibility==='selected'?['alex']:[];
+    assert.equal((await handleApiRequest(request('events','POST',body),env)).status,400);
+  }
+  const body={...event(),visibility:'public'};
+  body.planning.audience_usernames=['alex'];
+  assert.equal((await handleApiRequest(request('events','POST',body),env)).status,400);
+  delete body.planning;body.visibility='selected';
+  assert.equal((await handleApiRequest(request('events','POST',body),env)).status,400);
+});
+
+test('unknown audience usernames return an actionable validation error',async()=>{
+  mockRpc(()=>Response.json({code:'22023',message:'audience_not_found'},{status:400}));
+  const body={...event(),visibility:'selected',planning:{audience_usernames:['unknown_user']}};
+  const response=await handleApiRequest(request('events','POST',body),env);
+  assert.equal(response.status,400);
+  assert.equal((await response.json()).error.code,'audience_not_found');
+});
+
+test('restricted event creation does not send its content for automatic embedding',async()=>{
+  mockRpc(()=>Response.json([eventId]));
+  let modelCalls=0;
+  const localEnv={...env,ASSISTANT_MODEL:{fetch:async()=>{modelCalls++;throw new Error('private content');}}};
+  const pending=[];
+  const body={...event(),visibility:'followers',planning:{}};
+  assert.equal((await handleApiRequest(request('events','POST',body),localEnv,promise=>pending.push(promise))).status,201);
+  await Promise.all(pending);
+  assert.equal(modelCalls,0);
+});

@@ -101,79 +101,54 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
     return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color.alphaBlend(
-                      colors.primaryContainer.withValues(alpha: 0.22),
-                      theme.scaffoldBackgroundColor,
-                    ),
-                    theme.scaffoldBackgroundColor,
-                    theme.scaffoldBackgroundColor,
-                  ],
-                  stops: const [0, 0.32, 1],
-                ),
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          key: const Key('onboarding-content'),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
+          children: [
+            const _OnboardingHeader(),
+            const SizedBox(height: 34),
+            _SectionHeading(
+              title: 'I’m up for…',
+              detail: _selectedInterests.isEmpty
+                  ? 'Choose any that sound good'
+                  : '${_selectedInterests.length} selected',
+            ),
+            const SizedBox(height: 14),
+            _InterestGrid(
+              selected: _selectedInterests,
+              onChanged: (interest, selected) => setState(
+                () => selected
+                    ? _selectedInterests.add(interest)
+                    : _selectedInterests.remove(interest),
               ),
             ),
-          ),
-          SafeArea(
-            bottom: false,
-            child: ListView(
-              key: const Key('onboarding-content'),
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 32),
-              children: [
-                const _OnboardingHeader(),
-                const SizedBox(height: 34),
-                _SectionHeading(
-                  title: 'I’m up for…',
-                  detail: _selectedInterests.isEmpty
-                      ? 'Choose any that sound good'
-                      : '${_selectedInterests.length} selected',
-                ),
-                const SizedBox(height: 14),
-                _InterestGrid(
-                  selected: _selectedInterests,
-                  onChanged: (interest, selected) => setState(
-                    () => selected
-                        ? _selectedInterests.add(interest)
-                        : _selectedInterests.remove(interest),
-                  ),
-                ),
-                const SizedBox(height: 34),
-                const _SectionHeading(
-                  title: 'Make plans easier',
-                  detail: 'We’ll prioritise events with these details',
-                ),
-                const SizedBox(height: 14),
-                _PreferencePanel(
-                  selected: _selectedAccessibility,
-                  onChanged: (preference, selected) => setState(
-                    () => selected
-                        ? _selectedAccessibility.add(preference)
-                        : _selectedAccessibility.remove(preference),
-                  ),
-                ),
-                const SizedBox(height: 34),
-                _DistancePanel(
-                  radius: _radius,
-                  hasLocation: _latitude != null && _longitude != null,
-                  findingLocation: _findingLocation,
-                  onRadiusChanged: (value) => setState(() => _radius = value),
-                  onUseLocation: _useLocation,
-                ),
-              ],
+            const SizedBox(height: 34),
+            const _SectionHeading(
+              title: 'Make plans easier',
+              detail: 'We’ll prioritise events with these details',
             ),
-          ),
-        ],
+            const SizedBox(height: 14),
+            _PreferencePanel(
+              selected: _selectedAccessibility,
+              onChanged: (preference, selected) => setState(
+                () => selected
+                    ? _selectedAccessibility.add(preference)
+                    : _selectedAccessibility.remove(preference),
+              ),
+            ),
+            const SizedBox(height: 34),
+            _DistancePanel(
+              radius: _radius,
+              hasLocation: _latitude != null && _longitude != null,
+              findingLocation: _findingLocation,
+              onRadiusChanged: (value) => setState(() => _radius = value),
+              onUseLocation: _useLocation,
+            ),
+          ],
+        ),
       ),
       bottomNavigationBar: _SubmitBar(saving: _saving, onPressed: _finish),
     );
@@ -201,14 +176,14 @@ class _OnboardingHeader extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: colors.primary,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   letterSpacing: -0.2,
                 ),
               ),
             ),
             const SizedBox(width: 8),
             Text(
-              'QUICK SETUP',
+              'Welcome',
               style: theme.textTheme.labelMedium?.copyWith(
                 color: colors.onSurfaceVariant,
                 fontSize: 11,
@@ -219,18 +194,18 @@ class _OnboardingHeader extends StatelessWidget {
         ),
         const SizedBox(height: 30),
         Text(
-          'What gets you out\nof the house?',
+          'What do you enjoy?',
           key: const Key('onboarding-headline'),
           style: theme.textTheme.displaySmall?.copyWith(
             color: colors.onSurface,
-            fontSize: 38,
-            height: 1.02,
-            letterSpacing: -1.3,
+            fontSize: 30,
+            height: 1.2,
+            letterSpacing: -0.5,
           ),
         ),
         const SizedBox(height: 13),
         Text(
-          'Pick a few things you’d actually enjoy. We’ll use them to make Discover feel more like your neighbourhood.',
+          'Choose your interests to find events you’ll like. You can change these later.',
           style: theme.textTheme.bodyLarge?.copyWith(
             color: colors.onSurfaceVariant,
             height: 1.45,

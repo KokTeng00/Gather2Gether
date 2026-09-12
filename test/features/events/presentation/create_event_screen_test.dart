@@ -73,6 +73,117 @@ EventSummary _eventWithOptions({DateTime? startAt, DateTime? endAt}) =>
     );
 
 void main() {
+  for (final choice in {
+    'My followers': 'followers',
+    'People I follow': 'following',
+    'Specific people': 'selected',
+  }.entries) {
+    testWidgets(
+      'editing saves the ${choice.key} audience and disables previews',
+      (tester) async {
+        Map<String, dynamic>? saved;
+        final events = EventRepository(
+          httpClient: MockClient((request) async {
+            saved = jsonDecode(request.body) as Map<String, dynamic>;
+            return http.Response('{}', 200);
+          }),
+          accessTokenProvider: () => 'token',
+          edgeApiUrl: 'https://example.test/api/v1',
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: CreateEventScreen(
+              onCreated: () {},
+              initialEvent: _eventWithOptions(),
+              eventRepository: events,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(const Key('event-sharing-options')),
+        );
+        await tester.tap(find.byKey(const Key('event-sharing-options')));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(const Key('event-visibility-field')),
+        );
+        await tester.tap(find.byKey(const Key('event-visibility-field')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(ValueKey('app-choice-${choice.key}')));
+        await tester.pumpAndSettle();
+        final preview = tester.widget<SwitchListTile>(
+          find.byKey(const Key('event-invite-preview')),
+        );
+        expect(preview.value, false);
+        expect(preview.onChanged, isNull);
+        if (choice.value == 'selected') {
+          await tester.ensureVisible(
+            find.byKey(const Key('publish-event-button')),
+          );
+          await tester.tap(find.byKey(const Key('publish-event-button')));
+          await tester.pumpAndSettle();
+          expect(saved, isNull);
+          expect(find.text('Enter at least one username.'), findsOneWidget);
+          await tester.enterText(
+            find.byKey(const Key('event-audience-usernames')),
+            '@Alex, sam_123 @ALEX',
+          );
+        }
+        await tester.ensureVisible(
+          find.byKey(const Key('publish-event-button')),
+        );
+        await tester.tap(find.byKey(const Key('publish-event-button')));
+        await tester.pumpAndSettle();
+        expect(saved!['visibility'], choice.value);
+        expect(saved!['planning']['invite_preview_enabled'], false);
+        expect(
+          saved!['planning']['audience_usernames'],
+          choice.value == 'selected' ? ['alex', 'sam_123'] : [],
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'selected usernames survive editing a collapsed sharing section',
+    (tester) async {
+      Map<String, dynamic>? saved;
+      final original = _eventWithOptions().copyWith(
+        eventVisibility: 'selected',
+        audienceUsernames: ['alex', 'sam_123'],
+      );
+      final restored = EventSummary.fromJson(
+        original.toJson(),
+      ).copyWith(isSaved: true);
+      final events = EventRepository(
+        httpClient: MockClient((request) async {
+          saved = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('{}', 200);
+        }),
+        accessTokenProvider: () => 'token',
+        edgeApiUrl: 'https://example.test/api/v1',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateEventScreen(
+            onCreated: () {},
+            initialEvent: restored,
+            eventRepository: events,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('event-audience-usernames')), findsNothing);
+      await tester.ensureVisible(find.byKey(const Key('publish-event-button')));
+      await tester.tap(find.byKey(const Key('publish-event-button')));
+      await tester.pumpAndSettle();
+      expect(saved!['visibility'], 'selected');
+      expect(saved!['planning']['audience_usernames'], ['alex', 'sam_123']);
+    },
+  );
+
   testWidgets(
     'editing preserves optional settings without opening their sections',
     (tester) async {

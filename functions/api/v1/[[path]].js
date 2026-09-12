@@ -1521,7 +1521,7 @@ export async function handleApiRequest(request, env, defer = null) {
         const {planning, ...eventBody} = body;
         const input = validateCreateEvent(eventBody);
         const ids = await saveEventPlan(env, identity, input, planning, null, 'this');
-        for (const id of ids) {
+        for (const id of input.p_visibility === 'public' ? ids : []) {
           defer?.(indexCreatedContent({env, authorization: identity.authorization,
             rpc: 'set_event_embedding', idField: 'p_event_id', id,
             input: semanticDocument({Title: input.p_title, Category: input.p_category,
@@ -1530,6 +1530,7 @@ export async function handleApiRequest(request, env, defer = null) {
         return jsonResponse({id: ids[0], ids}, 201, requestId, cors);
       }
       const input = validateCreateEvent(body);
+      if (input.p_visibility === 'selected') throw new ApiError(400, 'audience_validation', 'Enter usernames in the audience options.');
       const eventIds = await supabaseRpc(
         env,
         identity.authorization,
@@ -1542,7 +1543,7 @@ export async function handleApiRequest(request, env, defer = null) {
       ) {
         throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid event identifiers.');
       }
-      if (input.p_status === 'published') {
+      if (input.p_status === 'published' && input.p_visibility === 'public') {
         for (const eventId of eventIds) {
           defer?.(
             indexCreatedContent({
@@ -1625,13 +1626,14 @@ export async function handleApiRequest(request, env, defer = null) {
           const {planning, ...eventBody} = body;
           const input = validateCreateEvent(eventBody, false);
           await saveEventPlan(env, identity, input, planning, eventId, 'this');
-          defer?.(indexCreatedContent({env, authorization: identity.authorization,
+          if (input.p_visibility === 'public') defer?.(indexCreatedContent({env, authorization: identity.authorization,
             rpc: 'set_event_embedding', idField: 'p_event_id', id: eventId,
             input: semanticDocument({Title: input.p_title, Category: input.p_category,
               Venue: input.p_venue_name, Address: input.p_address, Description: input.p_description})}));
           return jsonResponse({updated: true}, 200, requestId, cors);
         }
         const input = validateCreateEvent(body, false);
+        if (input.p_visibility === 'selected') throw new ApiError(400, 'audience_validation', 'Enter usernames in the audience options.');
         const {p_repeat_interval: _, p_repeat_count: __, ...eventInput} = input;
         await supabaseRpc(
           env,
@@ -1639,7 +1641,7 @@ export async function handleApiRequest(request, env, defer = null) {
           'update_own_event_v3',
           {p_event_id: eventId, ...eventInput},
         );
-        defer?.(
+        if (input.p_visibility === 'public') defer?.(
           indexCreatedContent({
             env,
             authorization: identity.authorization,
@@ -1673,6 +1675,7 @@ export async function handleApiRequest(request, env, defer = null) {
           const ids = await saveEventPlan(env, identity, input, planning, eventId, scope);
           return jsonResponse({updated: true, updated_count: ids.length}, 200, requestId, cors);
         }
+        if (input.p_visibility === 'selected') throw new ApiError(400, 'audience_validation', 'Enter usernames in the audience options.');
         const {p_repeat_interval: __, p_repeat_count: ___, ...eventInput} = input;
         const updatedCount = await supabaseRpc(
           env,

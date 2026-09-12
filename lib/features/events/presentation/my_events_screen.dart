@@ -7,6 +7,7 @@ import 'package:gather2gether/features/events/data/event_reminder_service.dart';
 import 'package:gather2gether/features/events/domain/event_lifecycle.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/events/presentation/event_detail_screen.dart';
+import 'package:gather2gether/features/events/presentation/event_planning_widgets.dart';
 import 'package:gather2gether/features/events/presentation/create_event_screen.dart';
 import 'package:intl/intl.dart';
 
@@ -158,15 +159,10 @@ class _MyEventsScreenState extends State<MyEventsScreen>
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 12, 10),
+            padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
             child: Row(
               children: [
-                const Expanded(
-                  child: AppPageHeader(
-                    title: 'Plans',
-                    subtitle: 'Your next plans, all in one place.',
-                  ),
-                ),
+                const Expanded(child: AppPageHeader(title: 'Plans')),
                 IconButton(
                   key: const Key('event-notifications-action'),
                   tooltip: 'Event notifications',
@@ -241,7 +237,6 @@ class _PlanCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final visual = CategoryVisual.resolve(context, event.category);
     final status = event.eventStatus == 'draft'
         ? 'Draft'
         : switch (event.userRsvpStatus) {
@@ -257,25 +252,17 @@ class _PlanCard extends StatelessWidget {
       color: colors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: colors.outlineVariant),
+        side: BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 58,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: visual.background,
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(visual.icon, color: visual.ink, size: 28),
-              ),
+              EventDateBadge(date: event.startAt),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -288,7 +275,7 @@ class _PlanCard extends StatelessWidget {
                             ? colors.error
                             : colors.primary,
                         fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -475,7 +462,7 @@ class _EventNotificationsScreenState extends State<EventNotificationsScreen> {
                       style: TextStyle(
                         fontWeight: notification.isRead
                             ? FontWeight.w500
-                            : FontWeight.w800,
+                            : FontWeight.w600,
                       ),
                     ),
                     subtitle: Text(

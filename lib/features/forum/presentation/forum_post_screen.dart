@@ -234,7 +234,7 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
                       Text(
                         '${_comments.length} ${_comments.length == 1 ? 'reply' : 'replies'}',
                         style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                            ?.copyWith(fontWeight: FontWeight.w600),
                       ),
                       const Spacer(),
                       if (post.isLocked)
@@ -291,122 +291,99 @@ class _PostHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppHeroArt(
-          label: post.category,
-          title: post.title,
-          subtitle: '${post.authorName} · ${forumTimeAgo(post.createdAt)}',
-          height: 210,
+        const SizedBox(height: 16),
+        Text(
+          post.category,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colors.primary,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(post.title, style: theme.textTheme.headlineMedium),
+        const SizedBox(height: 12),
+        InkWell(
+          key: const Key('forum-author-profile'),
+          onTap: onAuthorTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 17,
+                  backgroundColor: colors.surfaceContainer,
+                  child: Text(
+                    post.authorName.trim().isEmpty
+                        ? '?'
+                        : String.fromCharCode(
+                            post.authorName.trim().runes.first,
+                          ).toUpperCase(),
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${post.authorName}${post.viewerIsAuthor ? ' · You' : ''}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  forumTimeAgo(post.createdAt),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
         if (post.hasImage) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           ForumPostImage(
             postId: post.id,
             title: post.title,
             repository: repository,
           ),
         ],
-        const SizedBox(height: 14),
-        AppSurface(
-          borderRadius: 18,
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(post.body, style: Theme.of(context).textTheme.bodyLarge),
-              if (post.hasPlace) ...[
-                const SizedBox(height: 18),
-                ForumPlaceCard(
-                  name: post.placeName!,
-                  address: post.placeAddress!,
+        const SizedBox(height: 20),
+        Text(post.body, style: theme.textTheme.bodyLarge),
+        if (post.hasPlace) ...[
+          const SizedBox(height: 20),
+          ForumPlaceCard(name: post.placeName!, address: post.placeAddress!),
+        ],
+        const SizedBox(height: 16),
+        TextButton.icon(
+          key: const Key('forum-like-action'),
+          onPressed: liking ? null : onLike,
+          style: TextButton.styleFrom(
+            foregroundColor: post.viewerHasLiked
+                ? colors.primary
+                : colors.onSurfaceVariant,
+          ),
+          icon: liking
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CupertinoActivityIndicator(radius: 8),
+                )
+              : Icon(
+                  post.viewerHasLiked
+                      ? CupertinoIcons.heart_fill
+                      : CupertinoIcons.heart,
+                  size: 19,
                 ),
-              ],
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                key: const Key('forum-like-action'),
-                onPressed: liking ? null : onLike,
-                icon: liking
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CupertinoActivityIndicator(radius: 8),
-                      )
-                    : Icon(
-                        post.viewerHasLiked
-                            ? CupertinoIcons.heart_fill
-                            : CupertinoIcons.heart,
-                        size: 18,
-                      ),
-                label: Text(
-                  '${post.likeCount} ${post.likeCount == 1 ? 'like' : 'likes'}',
-                ),
-              ),
-              const SizedBox(height: 14),
-              InkWell(
-                key: const Key('forum-author-profile'),
-                borderRadius: BorderRadius.circular(14),
-                onTap: onAuthorTap,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: colors.primaryContainer,
-                        child: Text(
-                          post.authorName.isEmpty
-                              ? '?'
-                              : post.authorName.substring(0, 1).toUpperCase(),
-                          style: TextStyle(
-                            color: colors.onPrimaryContainer,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: Text(
-                          post.authorName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      if (post.viewerIsAuthor) ...[
-                        const SizedBox(width: 7),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colors.secondaryContainer,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                          child: Text(
-                            'You',
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: colors.onSecondaryContainer,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                          ),
-                        ),
-                      ] else
-                        Icon(
-                          CupertinoIcons.chevron_forward,
-                          size: 14,
-                          color: colors.onSurfaceVariant,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+          label: Text(
+            '${post.likeCount} ${post.likeCount == 1 ? 'like' : 'likes'}',
           ),
         ),
+        const Divider(),
       ],
     );
   }

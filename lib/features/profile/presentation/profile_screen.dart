@@ -225,10 +225,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 36),
           children: [
-            const AppPageHeader(
-              title: 'You',
-              subtitle: 'Your Gather2Gether profile.',
-            ),
+            const AppPageHeader(title: 'You'),
             const SizedBox(height: 28),
             AppMaintenanceState(
               key: const Key('profile-maintenance-state'),

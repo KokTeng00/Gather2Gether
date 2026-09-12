@@ -415,17 +415,10 @@ class _WelcomeCard extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: colors.surface,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: colors.outlineVariant.withValues(alpha: 0.75),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: colors.shadow.withValues(alpha: 0.05),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
         ),
         child: Column(
           children: [
@@ -440,7 +433,7 @@ class _WelcomeCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Discover nearby plans, prepare for an event, or get help using the app.',
+              'Ask about nearby events or get help with the app.',
               textAlign: TextAlign.center,
               style: Theme.of(
                 context,

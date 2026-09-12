@@ -246,7 +246,7 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
                     TextFormField(
                       controller: _body,
                       enabled: !_submitting,
-                      minLines: 7,
+                      minLines: 5,
                       maxLines: 14,
                       maxLength: 4000,
                       textCapitalization: TextCapitalization.sentences,
@@ -294,28 +294,10 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      CupertinoIcons.checkmark_shield_fill,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Only tag public venues. Keep home addresses, phone numbers, and other private information out of discussions.',
-                      ),
-                    ),
-                  ],
+              Text(
+                'Keep home addresses and contact details private. Only tag public places.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 26),
@@ -327,7 +309,7 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
                         color: Theme.of(context).colorScheme.onPrimary,
                       )
                     : const Icon(CupertinoIcons.paperplane_fill),
-                label: Text(_submitting ? 'Publishing…' : 'Publish Discussion'),
+                label: Text(_submitting ? 'Publishing…' : 'Publish discussion'),
               ),
             ],
           ),
@@ -370,7 +352,7 @@ class _AttachmentsPanel extends StatelessWidget {
             key: const Key('forum-add-photo'),
             icon: CupertinoIcons.photo_on_rectangle,
             title: preparingImage ? 'Preparing photo…' : 'Add a photo',
-            subtitle: 'Share one clear image from your day',
+            subtitle: 'Optional',
             onTap: enabled && !preparingImage ? onChoosePhoto : null,
             trailing: preparingImage
                 ? const CupertinoActivityIndicator()
@@ -447,7 +429,7 @@ class _AttachmentActionRow extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -548,7 +530,7 @@ class _PhotoPreview extends StatelessWidget {
                       'Ready to share',
                       style: TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -625,7 +607,7 @@ class _SelectedPlace extends StatelessWidget {
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -740,7 +722,7 @@ class _PlaceEditorSheetState extends State<_PlaceEditorSheet> {
                     ? 'Tag a public place'
                     : 'Edit public place',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 6),

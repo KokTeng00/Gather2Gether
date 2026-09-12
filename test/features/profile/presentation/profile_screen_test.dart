@@ -377,17 +377,17 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('profile failures use neutral maintenance messaging', (
+  testWidgets('profile failures offer a retry without claiming maintenance', (
     tester,
   ) async {
     await _pumpProfile(tester, failFetch: true);
 
     expect(find.byKey(const Key('profile-maintenance-state')), findsOneWidget);
-    expect(find.text('MAINTENANCE'), findsOneWidget);
-    expect(find.text('We’ll be back soon'), findsOneWidget);
+    expect(find.text('MAINTENANCE'), findsNothing);
+    expect(find.text('Couldn’t load this'), findsOneWidget);
     expect(find.text('Couldn’t load your profile'), findsNothing);
     expect(find.text('database detail hidden from UI'), findsNothing);
-    expect(find.text('Check again'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

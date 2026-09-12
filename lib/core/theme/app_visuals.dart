@@ -347,7 +347,9 @@ class AppInterestSearch extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return AppSurface(
-      borderRadius: 16,
+      borderRadius: 12,
+      color: colors.surfaceContainer,
+      borderColor: Colors.transparent,
       child: ValueListenableBuilder<TextEditingValue>(
         valueListenable: controller,
         builder: (context, value, _) => TextField(
@@ -446,45 +448,17 @@ class AppBrandMark extends StatelessWidget {
     return Semantics(
       image: true,
       label: 'Gather2Gether',
-      child: SizedBox.square(
-        dimension: size,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colors.primary,
-                  borderRadius: BorderRadius.circular(size * 0.3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: colors.primary.withValues(alpha: 0.2),
-                      blurRadius: size * 0.28,
-                      offset: Offset(0, size * 0.12),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  CupertinoIcons.person_2_fill,
-                  size: size * 0.46,
-                  color: colors.onPrimary,
-                ),
-              ),
-            ),
-            Positioned(
-              right: size * 0.08,
-              top: size * 0.08,
-              child: Container(
-                width: size * 0.2,
-                height: size * 0.2,
-                decoration: BoxDecoration(
-                  color: colors.secondary,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: colors.primary, width: 2),
-                ),
-              ),
-            ),
-          ],
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: colors.primary,
+          borderRadius: BorderRadius.circular(size * 0.25),
+        ),
+        child: Icon(
+          CupertinoIcons.person_2_fill,
+          size: size * 0.5,
+          color: colors.onPrimary,
         ),
       ),
     );
@@ -498,7 +472,7 @@ class AppSurface extends StatelessWidget {
     this.onTap,
     this.color,
     this.borderColor,
-    this.borderRadius = 20,
+    this.borderRadius = 14,
     super.key,
   });
 
@@ -522,7 +496,7 @@ class AppSurface extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: radius,
         side: BorderSide(
-          color: borderColor ?? colors.outlineVariant.withValues(alpha: 0.82),
+          color: borderColor ?? colors.outlineVariant.withValues(alpha: 0.55),
         ),
       ),
       clipBehavior: Clip.antiAlias,
@@ -533,145 +507,73 @@ class AppSurface extends StatelessWidget {
   }
 }
 
-class AppMaintenanceState extends StatelessWidget {
-  const AppMaintenanceState({required this.onRetry, super.key});
+/// A compact, shared empty or unavailable state with a clear next step.
+class AppEmptyState extends StatelessWidget {
+  const AppEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.action,
+    super.key,
+  });
 
-  final VoidCallback onRetry;
+  final IconData icon;
+  final String title;
+  final String message;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: AppSurface(
-          color: colors.primaryContainer.withValues(alpha: 0.56),
-          borderColor: colors.primary.withValues(alpha: 0.16),
-          borderRadius: 28,
-          child: Stack(
-            clipBehavior: Clip.antiAlias,
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SingleChildScrollView(
+          primary: false,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Positioned(
-                right: -30,
-                top: -34,
-                child: Container(
-                  width: 118,
-                  height: 118,
-                  decoration: BoxDecoration(
-                    color: colors.primary.withValues(alpha: 0.07),
-                    shape: BoxShape.circle,
-                  ),
+              Icon(icon, size: 32, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(height: 18),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              Positioned(
-                left: -24,
-                bottom: -46,
-                child: Container(
-                  width: 104,
-                  height: 104,
-                  decoration: BoxDecoration(
-                    color: colors.secondary.withValues(alpha: 0.09),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(26, 28, 26, 26),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.surface.withValues(alpha: 0.82),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: colors.primary.withValues(alpha: 0.12),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: BoxDecoration(
-                              color: colors.secondary,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'MAINTENANCE',
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: colors.onSurfaceVariant,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.65,
-                                ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    Container(
-                      width: 76,
-                      height: 76,
-                      decoration: BoxDecoration(
-                        color: colors.primary,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: colors.primary.withValues(alpha: 0.2),
-                            blurRadius: 22,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        CupertinoIcons.wrench_fill,
-                        size: 31,
-                        color: colors.onPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    Text(
-                      'We’ll be back soon',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'We’re making a few improvements to Gather2Gether. '
-                      'Please check back in a moment.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
-                        height: 1.45,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.tonalIcon(
-                        onPressed: onRetry,
-                        icon: const Icon(CupertinoIcons.refresh),
-                        label: const Text('Check again'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              if (action != null) ...[const SizedBox(height: 20), action!],
             ],
           ),
         ),
       ),
     );
   }
+}
+
+class AppMaintenanceState extends StatelessWidget {
+  const AppMaintenanceState({required this.onRetry, super.key});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => AppEmptyState(
+    icon: CupertinoIcons.wifi_exclamationmark,
+    title: 'Couldn’t load this',
+    message: 'Check your connection and try again.',
+    action: TextButton.icon(
+      onPressed: onRetry,
+      icon: const Icon(CupertinoIcons.refresh, size: 18),
+      label: const Text('Try again'),
+    ),
+  );
 }
 
 class AppFeatureBanner extends StatelessWidget {
@@ -690,83 +592,29 @@ class AppFeatureBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
     return AppSurface(
-      color: colors.primaryContainer,
-      borderColor: colors.primary.withValues(alpha: 0.18),
-      borderRadius: 24,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 158),
-        child: Stack(
-          alignment: Alignment.bottomLeft,
-          clipBehavior: Clip.antiAlias,
-          children: [
-            Positioned(
-              right: -12,
-              bottom: -26,
-              child: Icon(
-                icon,
-                size: 132,
-                color: colors.onPrimaryContainer.withValues(alpha: 0.08),
-              ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
+              const SizedBox(width: 10),
+              Expanded(child: Text(label, style: theme.textTheme.bodySmall)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(title, style: theme.textTheme.titleLarge),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: colors.primary,
-                          borderRadius: BorderRadius.circular(11),
-                        ),
-                        child: Icon(icon, color: colors.onPrimary, size: 18),
-                      ),
-                      const SizedBox(width: 10),
-                      Flexible(
-                        child: Text(
-                          label.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.labelSmall
-                              ?.copyWith(
-                                color: colors.onPrimaryContainer,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.9,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      color: colors.onPrimaryContainer,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: colors.onPrimaryContainer.withValues(alpha: 0.78),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -786,22 +634,19 @@ class AppPageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
+    crossAxisAlignment: CrossAxisAlignment.center,
     children: [
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 38,
-              height: 5,
-              margin: const EdgeInsets.only(bottom: 11),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.secondary,
-                borderRadius: BorderRadius.circular(2),
+            Semantics(
+              header: true,
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.headlineMedium,
               ),
             ),
-            Text(title, style: Theme.of(context).textTheme.displaySmall),
             if (subtitle != null) ...[
               const SizedBox(height: 6),
               Text(
@@ -842,29 +687,16 @@ class AppCircleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: filled ? colors.primary : colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-          side: BorderSide(
-            color: filled ? colors.primary : colors.outlineVariant,
-          ),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(15),
-          onTap: onPressed,
-          child: SizedBox.square(
-            dimension: 44,
-            child: Icon(
-              icon,
-              size: 21,
-              color: filled ? colors.onPrimary : colors.primary,
-            ),
-          ),
-        ),
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        backgroundColor: filled ? colors.primary : Colors.transparent,
+        foregroundColor: filled ? colors.onPrimary : colors.onSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
+      icon: Icon(icon, size: 23),
     );
   }
 }
@@ -899,15 +731,14 @@ class AppSection extends StatelessWidget {
               title,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.1,
+                fontWeight: FontWeight.w600,
               ),
             ),
             ?action,
           ],
         ),
       ),
-      AppSurface(borderRadius: 18, child: child),
+      AppSurface(child: child),
       if (footer != null)
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),

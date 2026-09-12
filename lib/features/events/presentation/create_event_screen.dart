@@ -470,8 +470,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     pollOptionId: widget.pollOptionId,
     whatToBring: _whatToBringController.text,
     status: publish ? 'published' : 'draft',
-    visibility: _audiences.entries.firstWhere((e) => e.value == _visibility).key,
-    audienceUsernames: _visibility == 'Specific people' ? _selectedUsernames : const [],
+    visibility: _audiences.entries
+        .firstWhere((e) => e.value == _visibility)
+        .key,
+    audienceUsernames: _visibility == 'Specific people'
+        ? _selectedUsernames
+        : const [],
     repeatInterval: !publish || widget.initialEvent != null
         ? 'none'
         : switch (_repeat) {
@@ -566,7 +570,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         if (!expanded) FocusScope.of(context).unfocus();
         setState(() {});
       },
-      footer: 'A landmark or entrance makes the first hello easier.',
+      footer: 'Help people find the group when they arrive.',
       child: Column(
         children: [
           Padding(
@@ -711,7 +715,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       ? 'Update the details below. Attendees will be notified when you save.'
                       : widget.templateEvent != null
                       ? 'The previous details are ready. Check the new date and publish.'
-                      : 'Start with the basics. Add optional details if you need them.',
+                      : 'Add a title, place and time.',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     height: 1.4,
@@ -842,7 +846,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Tap a section to add more.',
+                  'Add only what your guests need.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -1044,14 +1048,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                             decoration: const InputDecoration(
                               labelText: 'Usernames',
                               hintText: '@alex, @sam',
-                              helperText: 'Separate up to 50 usernames with commas or spaces.',
+                              helperText:
+                                  'Separate up to 50 usernames with commas or spaces.',
                               helperMaxLines: 2,
                             ),
                             validator: (_) {
                               final names = _selectedUsernames;
-                              if (names.isEmpty) return 'Enter at least one username.';
-                              if (names.length > 50) return 'Choose up to 50 people.';
-                              if (names.any((name) => !RegExp(r'^[a-z0-9_]{3,30}$').hasMatch(name))) {
+                              if (names.isEmpty) {
+                                return 'Enter at least one username.';
+                              }
+                              if (names.length > 50) {
+                                return 'Choose up to 50 people.';
+                              }
+                              if (names.any(
+                                (name) => !RegExp(
+                                  r'^[a-z0-9_]{3,30}$',
+                                ).hasMatch(name),
+                              )) {
                                 return 'Use 3–30 letters, numbers or underscores per username.';
                               }
                               return null;

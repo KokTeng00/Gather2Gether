@@ -120,7 +120,16 @@ updates, cancellations, questions, and due reminders. Native reminders mirror
 the server preference on the device; if notification permission is declined,
 the private in-app inbox remains available. Event discussions are restricted to
 the host and members who joined, selected Maybe, or entered the waitlist.
-Upcoming public events appear on their organizer's profile. Past profile
+Hosts can choose Public, Unlisted, My followers, People I follow, or Specific
+people when creating or editing an event. Specific audiences accept up to 50
+usernames, resolved to stable profile IDs. Restricted events appear in Discover
+and on the host's profile only for eligible members. Follow changes and blocks
+apply immediately to future reads; old saves and RSVPs do not grant access.
+Hosts and co-hosts retain access. Restricted audiences disable public invite
+previews and automatic content embedding/reranking. Previously viewed offline
+snapshots may still contain details until refreshed.
+
+Upcoming visible events appear on their organizer's profile. Past profile
 activity is private by default; members may opt in to sharing public events they
 hosted or explicitly confirmed attending. The database applies that choice even
 when the profile-event RPC is called outside the Flutter interface.
@@ -360,6 +369,8 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
 
 The planning release uses `supabase/migrations/20260912000100_event_planning.sql`.
 Interest-first recommendations add `supabase/migrations/20260912000200_interest_first_recommendations.sql`.
+Event audiences add `supabase/migrations/20260912000300_event_audiences.sql`;
+verify access rules with `supabase/tests/event_audiences.sql`.
 Apply migrations first, deploy Pages Functions next, then release the mobile app.
 The API keeps the existing event routes for older clients; new readers request
 `planning=1`. No new external services or secrets are needed. Invitation previews

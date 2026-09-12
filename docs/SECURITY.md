@@ -201,3 +201,18 @@ project's database password or JWT secret.
 - Include recommendation reranking in the AI-subprocessor disclosure, including
   the action labels and public-content summaries sent to OpenRouter and the
   selected inference provider's retention terms.
+
+### Event audiences
+
+Event visibility supports public, unlisted, followers, following, and selected
+members. Audience usernames are validated transactionally and stored as profile
+IDs in an RLS-protected table with no client table grants. Only event managers
+receive the recipient usernames. The follower relation is evaluated relative to
+the original organizer, including edits by co-hosts.
+
+Database checks cover discovery, profiles, event details, invite links, meeting
+photos, RSVPs, saves, discussion, conflicts, notifications, and queued pushes.
+Old saves or RSVPs cannot bypass a restricted audience. Direct event updates are
+revoked in favor of the validated RPCs. Restricted events cannot enable anonymous
+invite previews; automatic embedding and model reranking exclude their content.
+Previously delivered content, including offline snapshots, cannot be recalled.

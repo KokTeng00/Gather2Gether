@@ -292,42 +292,16 @@ class _AppShellState extends State<AppShell> {
           );
         },
       ),
-      bottomNavigationBar: FrostedContainer(
-        child: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) {
-            setState(() {
-              if (index == 3 && _selectedIndex != 3) {
-                // Refresh contribution counts and the own-post grid whenever
-                // the member returns after posting in Community.
-                _profileRevision++;
-              }
-              _selectedIndex = index;
-            });
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(CupertinoIcons.location),
-              selectedIcon: Icon(CupertinoIcons.location_fill),
-              label: 'Discover',
-            ),
-            NavigationDestination(
-              icon: Icon(CupertinoIcons.calendar),
-              selectedIcon: Icon(CupertinoIcons.calendar_today),
-              label: 'Plans',
-            ),
-            NavigationDestination(
-              icon: Icon(CupertinoIcons.chat_bubble_2),
-              selectedIcon: Icon(CupertinoIcons.chat_bubble_2_fill),
-              label: 'Community',
-            ),
-            NavigationDestination(
-              icon: Icon(CupertinoIcons.person_crop_circle),
-              selectedIcon: Icon(CupertinoIcons.person_crop_circle_fill),
-              label: 'You',
-            ),
-          ],
-        ),
+      bottomNavigationBar: AppNavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            if (index == 3 && _selectedIndex != 3) {
+              _profileRevision++;
+            }
+            _selectedIndex = index;
+          });
+        },
       ),
     );
   }
@@ -350,6 +324,48 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
+/// Shared by the shell and its layout previews.
+class AppNavigationBar extends StatelessWidget {
+  const AppNavigationBar({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+    super.key,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) => FrostedContainer(
+    child: NavigationBar(
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onDestinationSelected,
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(CupertinoIcons.location),
+          selectedIcon: Icon(CupertinoIcons.location_fill),
+          label: 'Discover',
+        ),
+        NavigationDestination(
+          icon: Icon(CupertinoIcons.calendar),
+          selectedIcon: Icon(CupertinoIcons.calendar_today),
+          label: 'Plans',
+        ),
+        NavigationDestination(
+          icon: Icon(CupertinoIcons.chat_bubble_2),
+          selectedIcon: Icon(CupertinoIcons.chat_bubble_2_fill),
+          label: 'Community',
+        ),
+        NavigationDestination(
+          icon: Icon(CupertinoIcons.person_crop_circle),
+          selectedIcon: Icon(CupertinoIcons.person_crop_circle_fill),
+          label: 'You',
+        ),
+      ],
+    ),
+  );
+}
+
 class _AssistantLauncher extends StatelessWidget {
   const _AssistantLauncher({required this.isDragging});
 
@@ -366,7 +382,7 @@ class _AssistantLauncher extends StatelessWidget {
         curve: Curves.easeOutCubic,
         child: Material(
           color: colors.primary.withValues(alpha: 0.94),
-          elevation: isDragging ? 8 : 4,
+          elevation: isDragging ? 4 : 1,
           shadowColor: Colors.black.withValues(alpha: 0.28),
           shape: CircleBorder(
             side: BorderSide(color: colors.onPrimary.withValues(alpha: 0.24)),
@@ -374,22 +390,10 @@ class _AssistantLauncher extends StatelessWidget {
           child: SizedBox.square(
             dimension: 56,
             child: Center(
-              child: Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: colors.onPrimary.withValues(alpha: 0.14),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: colors.onPrimary.withValues(alpha: 0.72),
-                    width: 1.5,
-                  ),
-                ),
-                child: Icon(
-                  CupertinoIcons.bubble_left_fill,
-                  color: colors.onPrimary,
-                  size: 19,
-                ),
+              child: Icon(
+                CupertinoIcons.bubble_left,
+                color: colors.onPrimary,
+                size: 25,
               ),
             ),
           ),

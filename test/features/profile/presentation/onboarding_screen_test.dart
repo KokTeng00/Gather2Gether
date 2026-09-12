@@ -73,7 +73,7 @@ void main() {
 
     expect(find.byType(AppBrandMark), findsOneWidget);
     expect(find.byKey(const Key('onboarding-headline')), findsOneWidget);
-    expect(find.text('What gets you out\nof the house?'), findsOneWidget);
+    expect(find.text('What do you enjoy?'), findsOneWidget);
     expect(find.text('I’m up for…'), findsOneWidget);
     expect(find.byType(FilterChip), findsNothing);
     expect(find.byKey(const Key('complete-onboarding')), findsOneWidget);

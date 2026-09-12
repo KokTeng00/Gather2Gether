@@ -97,7 +97,9 @@ class EventSummary {
           ? DateTime.parse(json['viewer_reconfirmed_at'] as String).toLocal()
           : null,
       eventVisibility: (json['event_visibility'] as String?) ?? 'public',
-      audienceUsernames: List<String>.from(json['audience_usernames'] ?? const []),
+      audienceUsernames: List<String>.from(
+        json['audience_usernames'] ?? const [],
+      ),
       eventSeriesId: json['event_series_id'] as String?,
       meetingInstructions: (json['meeting_instructions'] as String?) ?? '',
       meetingLatitude: (json['meeting_latitude'] as num?)?.toDouble(),

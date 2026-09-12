@@ -105,10 +105,7 @@ void main() {
           publish,
           300,
           scrollable: find
-              .descendant(
-                of: find.byType(ListView),
-                matching: find.byType(Scrollable),
-              )
+              .descendant(of: sheet, matching: find.byType(Scrollable))
               .first,
         );
         await tester.pumpAndSettle();

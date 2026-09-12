@@ -9,8 +9,8 @@ class AppTheme {
   static const fern = Color(0xFF285F46);
   static const lime = Color(0xFFB8CBA7);
   static const clay = Color(0xFFD87A58);
-  static const lightBackground = Color(0xFFF5F6F2);
-  static const darkBackground = Color(0xFF111612);
+  static const lightBackground = Color(0xFFF8F8F5);
+  static const darkBackground = Color(0xFF151715);
 
   static ThemeData get light => _theme(Brightness.light);
   static ThemeData get dark => _theme(Brightness.dark);
@@ -34,7 +34,7 @@ class AppTheme {
       onSecondary: const Color(0xFF252B0C),
       secondaryContainer: isDark
           ? const Color(0xFF31391E)
-          : const Color(0xFFF0F2C9),
+          : const Color(0xFFEDF0E8),
       onSecondaryContainer: isDark
           ? const Color(0xFFE9F1BD)
           : const Color(0xFF293010),
@@ -66,10 +66,10 @@ class AppTheme {
           : const Color(0xFFF0F2EC),
       surfaceContainerHigh: isDark
           ? const Color(0xFF283029)
-          : const Color(0xFFEAE5D9),
+          : const Color(0xFFEBEDE7),
       surfaceContainerHighest: isDark
           ? const Color(0xFF303832)
-          : const Color(0xFFE2DDD1),
+          : const Color(0xFFE1E5DC),
     );
     final base = ThemeData(brightness: brightness, useMaterial3: true);
 
@@ -87,35 +87,35 @@ class AppTheme {
       ),
       textTheme: base.textTheme.copyWith(
         displaySmall: base.textTheme.displaySmall?.copyWith(
-          fontSize: 36,
-          height: 1.12,
+          fontSize: 32,
+          height: 1.18,
           fontWeight: FontWeight.w600,
-          letterSpacing: -0.8,
+          letterSpacing: -0.6,
         ),
         headlineMedium: base.textTheme.headlineMedium?.copyWith(
           fontSize: 28,
-          height: 1.08,
+          height: 1.2,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.7,
         ),
         headlineSmall: base.textTheme.headlineSmall?.copyWith(
           fontSize: 22,
           height: 1.15,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: -0.35,
         ),
         titleLarge: base.textTheme.titleLarge?.copyWith(
           fontSize: 20,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
           letterSpacing: -0.25,
         ),
         titleMedium: base.textTheme.titleMedium?.copyWith(
-          fontSize: 17,
+          fontSize: 16,
           fontWeight: FontWeight.w600,
         ),
         bodyLarge: base.textTheme.bodyLarge?.copyWith(
-          fontSize: 17,
-          height: 1.38,
+          fontSize: 16,
+          height: 1.45,
         ),
         bodyMedium: base.textTheme.bodyMedium?.copyWith(
           fontSize: 15,
@@ -127,11 +127,11 @@ class AppTheme {
         ),
         labelLarge: base.textTheme.labelLarge?.copyWith(
           fontSize: 16,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
         labelMedium: base.textTheme.labelMedium?.copyWith(
           fontSize: 13,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
       ),
       appBarTheme: AppBarTheme(
@@ -145,8 +145,8 @@ class AppTheme {
           fontSize: 17,
           fontWeight: FontWeight.w700,
         ),
-        iconTheme: IconThemeData(color: scheme.primary),
-        actionsIconTheme: IconThemeData(color: scheme.primary),
+        iconTheme: IconThemeData(color: scheme.onSurface),
+        actionsIconTheme: IconThemeData(color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -154,9 +154,9 @@ class AppTheme {
         color: scheme.surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
           side: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.82),
+            color: scheme.outlineVariant.withValues(alpha: 0.55),
           ),
         ),
       ),
@@ -168,31 +168,29 @@ class AppTheme {
           vertical: 16,
         ),
         labelStyle: TextStyle(color: scheme.onSurfaceVariant),
-        hintStyle: TextStyle(
-          color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
-        ),
-        prefixIconColor: scheme.primary,
+        hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+        prefixIconColor: scheme.onSurfaceVariant,
         suffixIconColor: scheme.onSurfaceVariant,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: scheme.outlineVariant),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(
             color: scheme.outlineVariant.withValues(alpha: 0.9),
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: scheme.primary, width: 1.7),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: scheme.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: scheme.error, width: 1.7),
         ),
       ),
@@ -200,28 +198,28 @@ class AppTheme {
         style: FilledButton.styleFrom(
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
-          minimumSize: const Size.fromHeight(54),
+          minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: scheme.primary,
-          minimumSize: const Size.fromHeight(54),
+          minimumSize: const Size.fromHeight(50),
           side: BorderSide(color: scheme.outlineVariant),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: scheme.primary,
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
@@ -265,7 +263,7 @@ class AppTheme {
         elevation: 0,
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: scheme.primaryContainer,
+        indicatorColor: Colors.transparent,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
@@ -278,12 +276,45 @@ class AppTheme {
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w700,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w600
+                : FontWeight.w400,
             color: states.contains(WidgetState.selected)
                 ? scheme.primary
                 : scheme.onSurfaceVariant,
           ),
         ),
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelColor: scheme.primary,
+        unselectedLabelColor: scheme.onSurfaceVariant,
+        labelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        unselectedLabelStyle: const TextStyle(fontSize: 15),
+        indicatorSize: TabBarIndicatorSize.label,
+        dividerColor: Colors.transparent,
+      ),
+      listTileTheme: ListTileThemeData(
+        iconColor: scheme.onSurfaceVariant,
+        titleTextStyle: TextStyle(color: scheme.onSurface, fontSize: 16),
+        subtitleTextStyle: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontSize: 13,
+          height: 1.4,
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        side: BorderSide(color: scheme.outlineVariant),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        backgroundColor: scheme.surface,
+        selectedColor: scheme.primaryContainer,
+        labelStyle: TextStyle(color: scheme.onSurface, fontSize: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+      ),
+      expansionTileTheme: ExpansionTileThemeData(
+        iconColor: scheme.onSurfaceVariant,
+        collapsedIconColor: scheme.onSurfaceVariant,
+        textColor: scheme.onSurface,
+        collapsedTextColor: scheme.onSurface,
       ),
       dividerTheme: DividerThemeData(
         color: scheme.outlineVariant.withValues(alpha: 0.65),
@@ -296,7 +327,7 @@ class AppTheme {
             ? const Color(0xFF2C2C2E)
             : const Color(0xFF1C1C1E),
         contentTextStyle: const TextStyle(color: Colors.white, fontSize: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       ),
       bottomSheetTheme: BottomSheetThemeData(

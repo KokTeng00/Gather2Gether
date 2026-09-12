@@ -107,11 +107,10 @@ class _ForumScreenState extends State<ForumScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 18),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               sliver: SliverToBoxAdapter(
                 child: AppPageHeader(
                   title: 'Community',
-                  subtitle: 'Ask, share, and make local connections.',
                   actions: _posts.isEmpty
                       ? const []
                       : [
@@ -171,7 +170,7 @@ class _ForumScreenState extends State<ForumScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                 sliver: SliverList.separated(
                   itemCount: _posts.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  separatorBuilder: (_, _) => const Divider(),
                   itemBuilder: (_, index) => _PostRow(
                     post: _posts[index],
                     repository: _repository,
@@ -200,53 +199,26 @@ class _PostRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = CategoryVisual.resolve(context, post.category);
     final colors = Theme.of(context).colorScheme;
     return AppSurface(
       onTap: onTap,
-      borderRadius: 18,
-      padding: const EdgeInsets.all(16),
+      borderRadius: 0,
+      color: Colors.transparent,
+      borderColor: Colors.transparent,
+      padding: const EdgeInsets.symmetric(vertical: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: visual.background,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: visual.ink.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(visual.icon, color: visual.ink, size: 14),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            post.hasPoll
-                                ? '${post.category} · Date poll'
-                                : post.category,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: visual.ink,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                child: Text(
+                  post.hasPoll ? '${post.category} · Date poll' : post.category,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colors.primary,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
@@ -285,7 +257,7 @@ class _PostRow extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: Theme.of(
               context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
           Text(
@@ -367,40 +339,10 @@ class _ForumMessage extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 62,
-              height: 62,
-              decoration: BoxDecoration(
-                color: colors.primaryContainer,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Icon(icon, size: 28, color: colors.onPrimaryContainer),
-            ),
-            const SizedBox(height: 17),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 7),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.onSurfaceVariant),
-            ),
-            const SizedBox(height: 20),
-            FilledButton.tonal(onPressed: onPressed, child: Text(action)),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppEmptyState(
+    icon: icon,
+    title: title,
+    message: message,
+    action: FilledButton.tonal(onPressed: onPressed, child: Text(action)),
+  );
 }

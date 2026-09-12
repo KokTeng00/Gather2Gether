@@ -20,6 +20,19 @@ import 'package:gather2gether/features/forum/presentation/planning_poll_card.dar
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 
+import 'package:gather2gether/features/auth/presentation/sign_in_screen.dart';
+import 'package:gather2gether/features/events/presentation/my_events_screen.dart';
+import 'package:gather2gether/features/forum/presentation/forum_screen.dart';
+import 'package:gather2gether/features/forum/presentation/create_forum_post_screen.dart';
+import 'package:gather2gether/features/profile/domain/profile_stats.dart';
+import 'package:gather2gether/features/profile/presentation/profile_screen.dart';
+import 'package:gather2gether/features/profile/presentation/onboarding_screen.dart';
+import 'package:gather2gether/features/profile/presentation/profile_settings_screen.dart';
+
+import 'package:gather2gether/features/shell/presentation/app_shell.dart';
+import 'package:gather2gether/features/forum/presentation/forum_post_screen.dart';
+import 'package:gather2gether/features/forum/domain/forum_comment.dart';
+
 EventSummary fixture({String? status}) => EventSummary(
   id: '22222222-2222-4222-8222-222222222222',
   organizerId: '11111111-1111-4111-8111-111111111111',
@@ -90,6 +103,21 @@ class PlansRepository extends EventRepository {
   }
 
   @override
+  Future<List<EventSummary>> myEvents(String filter) async => switch (filter) {
+    'going' => [event.copyWith(userRsvpStatus: 'joined')],
+    'tentative' => [
+      EventSummary.fromJson({
+        ...event.toJson(),
+        'id': 'second-plan',
+        'title': 'Board games at the café',
+        'venue_name': 'Café Nord',
+        'user_rsvp_status': 'tentative',
+        'start_at': DateTime(2099, 9, 21, 18).toUtc().toIso8601String(),
+      }),
+    ],
+    _ => [],
+  };
+  @override
   Future<List<EventSummary>> nearbyEvents({
     required double latitude,
     required double longitude,
@@ -109,16 +137,57 @@ class PlansRepository extends EventRepository {
   ];
 }
 
+const previewProfile = UserProfile(
+  displayName: 'Alex Morgan',
+  username: 'alexmorgan',
+  bio: 'Coffee, weekend walks and a good game of badminton.',
+  city: 'Mannheim',
+  approximateLatitude: 49.49,
+  approximateLongitude: 8.47,
+  preferredRadiusKm: 10,
+  assistantEnabled: false,
+);
+
 class PreviewProfile extends ProfileRepository {
   @override
-  Future<UserProfile> fetchOwnProfile() async => const UserProfile(
-    displayName: 'Alex',
-    city: 'Mannheim',
-    approximateLatitude: 49.49,
-    approximateLongitude: 8.47,
-    preferredRadiusKm: 10,
-    assistantEnabled: false,
+  Future<UserProfile> fetchOwnProfile() async => previewProfile;
+  @override
+  Future<ProfileStats> fetchStats() async => const ProfileStats(
+    postsCount: 2,
+    hostedCount: 3,
+    goingCount: 5,
+    followersCount: 18,
+    followingCount: 24,
   );
+  @override
+  Future<bool> isModerator() async => false;
+}
+
+class PreviewForum extends ForumRepository {
+  @override
+  Future<ForumPost> getPost(String postId) async => postFixture();
+  @override
+  Future<List<ForumComment>> listComments(String postId) async => const [];
+  @override
+  Future<List<ForumPost>> listPosts() async => [
+    postFixture(),
+    ForumPost(
+      id: 'second-post',
+      authorId: 'alex',
+      authorName: 'Alex',
+      category: 'Local tips',
+      title: 'A quiet café with room for a few friends?',
+      body:
+          'Looking for somewhere around the river for coffee on Saturday. Any favourites?',
+      status: 'active',
+      createdAt: DateTime(2099, 9, 1),
+      lastActivityAt: DateTime(2099, 9, 1),
+      commentCount: 4,
+      viewerIsAuthor: false,
+    ),
+  ];
+  @override
+  Future<List<ForumPost>> listOwnPosts() => listPosts();
 }
 
 PlanningPoll pollFixture({bool voted = false}) => PlanningPoll(
@@ -316,6 +385,35 @@ void main() {
         final repository = PlansRepository(fixture());
         final boundary = GlobalKey();
         final screens = <String, Widget>{
+          'sign-in': const SignInScreen(),
+          'discussion': ForumPostScreen(
+            postId: 'post',
+            repository: PreviewForum(),
+          ),
+          'community': Scaffold(body: ForumScreen(repository: PreviewForum())),
+          'plans': Scaffold(body: MyEventsScreen(repository: repository)),
+          'new-discussion': CreateForumPostScreen(repository: PreviewForum()),
+          'onboarding': OnboardingScreen(
+            profile: previewProfile,
+            repository: PreviewProfile(),
+            onCompleted: (_) {},
+          ),
+          'profile': Scaffold(
+            body: ProfileScreen(
+              assistantEnabled: false,
+              onAssistantEnabledChanged: (_) {},
+              repository: PreviewProfile(),
+              forumRepository: PreviewForum(),
+              avatarHeadersOverride: const {},
+            ),
+          ),
+          'settings': ProfileSettingsScreen(
+            profile: previewProfile,
+            repository: PreviewProfile(),
+            onAssistantEnabledChanged: (_) {},
+            avatarHeadersOverride: const {},
+            emailOverride: 'alex@example.test',
+          ),
           'discover': Scaffold(
             body: DiscoverScreen(
               onCreate: () {},
@@ -399,6 +497,37 @@ void main() {
             ),
           ),
         };
+        for (final (name, index) in [
+          ('discover', 0),
+          ('plans', 1),
+          ('community', 2),
+          ('profile', 3),
+        ]) {
+          final screen = screens[name]! as Scaffold;
+          screens[name] = Scaffold(
+            body: screen.body,
+            bottomNavigationBar: AppNavigationBar(
+              selectedIndex: index,
+              onDestinationSelected: (_) {},
+            ),
+          );
+        }
+        // Exercise the main screens at a narrow width with enlarged text as
+        // well as their standard size; the same cases can render review PNGs.
+        for (final name in [
+          'sign-in',
+          'discover',
+          'community',
+          'plans',
+          'new-discussion',
+          'onboarding',
+          'profile',
+          'settings',
+          'event',
+          'discussion',
+        ]) {
+          screens['$name-compact'] = screens[name]!;
+        }
         for (final entry in screens.entries) {
           final compact = entry.key.endsWith('-compact');
           tester.view.physicalSize = compact
@@ -424,6 +553,24 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
+          if (find.byType(AppNavigationBar).evaluate().isNotEmpty) {
+            final label = find.descendant(
+              of: find.byType(AppNavigationBar),
+              matching: find.text('Community'),
+            );
+            final paragraph = tester.renderObject<RenderParagraph>(label);
+            final lines = paragraph
+                .getBoxesForSelection(
+                  const TextSelection(baseOffset: 0, extentOffset: 9),
+                )
+                .map((box) => box.top)
+                .toSet();
+            expect(
+              lines,
+              hasLength(1),
+              reason: 'Navigation labels stay on one line',
+            );
+          }
           if (entry.key.startsWith('filters')) {
             await tester.tap(find.byKey(const Key('event-filter-action')));
             await tester.pumpAndSettle();
@@ -495,6 +642,36 @@ void main() {
               ).writeAsBytes(bytes!.buffer.asUint8List());
               image.dispose();
             });
+          }
+          if ([
+            'event',
+            'event-compact',
+            'discussion',
+            'discussion-compact',
+            'new-discussion',
+            'new-discussion-compact',
+            'settings',
+            'settings-compact',
+            'onboarding',
+            'onboarding-compact',
+          ].contains(entry.key)) {
+            final scrollables = find.byType(Scrollable);
+            if (scrollables.evaluate().isNotEmpty) {
+              final state = tester.state<ScrollableState>(scrollables.first);
+              for (var step = 0; step < 12; step++) {
+                final position = state.position;
+                if (position.extentAfter <= 0) break;
+                position.jumpTo(
+                  (position.pixels + 300).clamp(0, position.maxScrollExtent),
+                );
+                await tester.pumpAndSettle();
+                expect(
+                  tester.takeException(),
+                  isNull,
+                  reason: '${entry.key}, scroll $step',
+                );
+              }
+            }
           }
         }
       },

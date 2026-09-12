@@ -34,9 +34,9 @@ class ProfileSocialAppBar extends StatelessWidget {
             header: true,
             child: Text(
               'Profile',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 color: colors.onSurface,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 letterSpacing: -0.4,
               ),
             ),
@@ -107,7 +107,7 @@ class ProfileBalancedOverview extends StatelessWidget {
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             color: colors.onSurface,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
             letterSpacing: -0.2,
           ),
         ),
@@ -311,7 +311,7 @@ class ProfileCommunityOverview extends StatelessWidget {
                           style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(
                                 color: colors.onSurface,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w600,
                               ),
                         ),
                         if (username.isNotEmpty) ...[
@@ -455,7 +455,7 @@ class _ProfileMetricRow extends StatelessWidget {
             value?.toString() ?? '—',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               color: colors.onSurface,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -493,7 +493,7 @@ class ProfileAvatar extends StatelessWidget {
           style: TextStyle(
             color: colors.onPrimaryContainer,
             fontSize: size * 0.34,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),
@@ -519,22 +519,10 @@ class ProfileAvatar extends StatelessWidget {
         child: Container(
           width: size,
           height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.07),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
+          decoration: BoxDecoration(shape: BoxShape.circle),
           foregroundDecoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(
-              color: colors.primary.withValues(alpha: 0.55),
-              width: 2,
-            ),
+            border: Border.all(color: colors.outlineVariant, width: 1),
           ),
           clipBehavior: Clip.antiAlias,
           child: profile.hasAvatar && imageUrl != null
@@ -625,7 +613,7 @@ class ProfileOverviewHero extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: colors.onSurface,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
           ),
         ),
         if (username.isNotEmpty) ...[
@@ -745,13 +733,13 @@ class ProfileContributionsHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       key: const Key('profile-contributions-header'),
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
           'Posts',
           style: Theme.of(
             context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -803,7 +791,7 @@ class _ProfileStat extends StatelessWidget {
         Text(
           value?.toString() ?? '—',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
             color: colors.onSurface,
           ),
         ),
@@ -869,7 +857,7 @@ class ProfileActivityPlaceholder extends StatelessWidget {
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 5),
           Text(
@@ -945,7 +933,7 @@ class ProfileIdentityCard extends StatelessWidget {
                         style: TextStyle(
                           color: colors.onPrimary,
                           fontSize: 28,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -959,7 +947,7 @@ class ProfileIdentityCard extends StatelessWidget {
                             style: Theme.of(context).textTheme.titleLarge
                                 ?.copyWith(
                                   color: colors.onPrimary,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                   height: 1.15,
                                 ),
                           ),
@@ -1061,7 +1049,7 @@ class ProfileSectionHeader extends StatelessWidget {
         title,
         style: Theme.of(
           context,
-        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+        ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
       ),
       const SizedBox(height: 3),
       Text(

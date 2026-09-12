@@ -346,42 +346,46 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('saved-area failures use neutral maintenance messaging', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'saved-area failures offer a retry without claiming maintenance',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: Scaffold(
-          body: DiscoverScreen(
-            onCreate: () {},
-            profileRepository: _UnavailableProfileRepository(),
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Scaffold(
+            body: DiscoverScreen(
+              onCreate: () {},
+              profileRepository: _UnavailableProfileRepository(),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('discover-maintenance-state')), findsOneWidget);
-    expect(find.text('MAINTENANCE'), findsOneWidget);
-    expect(find.text('We’ll be back soon'), findsOneWidget);
-    expect(find.text('We could not load your saved area.'), findsNothing);
-    expect(find.text('schema detail hidden from UI'), findsNothing);
-    expect(find.text('Check again'), findsOneWidget);
-    expect(find.text('Nearby · 10 km'), findsOneWidget);
-    expect(find.byTooltip('Use current location'), findsNothing);
-    expect(find.byKey(const Key('create-event-action')), findsOneWidget);
-    final searchField = tester.widget<TextField>(
-      find.byKey(const Key('interest-search-field')),
-    );
-    expect(searchField.decoration?.hintText, 'What would you like to do?');
-    expect(tester.takeException(), isNull);
-  });
+      expect(
+        find.byKey(const Key('discover-maintenance-state')),
+        findsOneWidget,
+      );
+      expect(find.text('MAINTENANCE'), findsNothing);
+      expect(find.text('Couldn’t load this'), findsOneWidget);
+      expect(find.text('We could not load your saved area.'), findsNothing);
+      expect(find.text('schema detail hidden from UI'), findsNothing);
+      expect(find.text('Try again'), findsOneWidget);
+      expect(find.text('Within 10 km'), findsOneWidget);
+      expect(find.byTooltip('Use current location'), findsNothing);
+      expect(find.byKey(const Key('create-event-action')), findsOneWidget);
+      final searchField = tester.widget<TextField>(
+        find.byKey(const Key('interest-search-field')),
+      );
+      expect(searchField.decoration?.hintText, 'Search events');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final dark in [false, true]) {
     testWidgets(
@@ -424,7 +428,14 @@ void main() {
         );
         final header = find.byKey(const Key('app-sheet-header'));
         expect(tester.getTopLeft(sheet).dy, closeTo(844 * 0.4, 1));
-        expect(tester.getCenter(find.text('Filters')).dx, closeTo(195, 1));
+        expect(
+          tester
+              .getCenter(
+                find.descendant(of: header, matching: find.text('Filters')),
+              )
+              .dx,
+          closeTo(195, 1),
+        );
         expect(find.byTooltip('Close'), findsNothing);
         expect(
           tester.widget<Material>(sheet).color,
@@ -577,7 +588,7 @@ void main() {
     expect(events.filters?.followingOnly, isTrue);
     expect(events.filters?.dateFilter, 'weekend');
     expect(events.radiusKm, 25);
-    expect(find.text('Nearby · 25 km'), findsOneWidget);
+    expect(find.text('Within 25 km'), findsOneWidget);
     expect(events.filters?.eventLanguage, 'German');
 
     await tester.tap(find.byKey(const Key('event-filter-action')));

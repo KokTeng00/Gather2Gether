@@ -711,7 +711,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               Row(
                 children: [
                   Icon(
-                    CupertinoIcons.sparkles,
+                    CupertinoIcons.info_circle,
                     size: 16,
                     color: colors.primary,
                   ),
@@ -983,7 +983,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                 ).toUpperCase(),
                           style: TextStyle(
                             color: colors.onPrimaryContainer,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -995,7 +995,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                             Text(
                               _event.organizerName,
                               style: const TextStyle(
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                             Text(
@@ -1024,23 +1024,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               child: Column(
                 children: [
                   _DetailRow(
-                    icon: CupertinoIcons.calendar,
-                    title: DateFormat('EEEE, d MMMM').format(_event.startAt),
-                    subtitle:
-                        '${DateFormat.Hm().format(_event.startAt)}–${DateFormat.Hm().format(_event.endAt)}',
-                  ),
-                  const Divider(indent: 56),
-                  _DetailRow(
                     icon: CupertinoIcons.location_fill,
                     title: _event.venueName,
                     subtitle: _event.address,
-                  ),
-                  const Divider(indent: 56),
-                  _DetailRow(
-                    icon: CupertinoIcons.person_2_fill,
-                    title: '${_event.joinedCount} going',
-                    subtitle:
-                        '${_event.spotsLeft} spots left · ${_event.tentativeCount} maybe',
                   ),
                   if (_event.beginnerFriendly) ...[
                     const Divider(indent: 56),
@@ -1119,13 +1105,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      spacing: 16,
+                      runSpacing: 4,
                       children: [
                         Text(
                           '${_event.joinedCount} of ${_event.maxParticipants}',
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        const Spacer(),
                         Text(
                           '${_event.spotsLeft} available',
                           style: TextStyle(color: colors.onSurfaceVariant),
@@ -1141,6 +1129,13 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         backgroundColor: colors.primary.withValues(alpha: 0.12),
                       ),
                     ),
+                    if (_event.tentativeCount > 0) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        '${_event.tentativeCount} maybe',
+                        style: TextStyle(color: colors.onSurfaceVariant),
+                      ),
+                    ],
                     if (_event.viewerIsOrganizer ||
                         const [
                           'joined',

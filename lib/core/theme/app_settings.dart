@@ -13,7 +13,7 @@ class AppSettingsGroup extends StatelessWidget {
   final double dividerIndent;
   @override
   Widget build(BuildContext context) => AppSurface(
-    borderRadius: 18,
+    borderRadius: 14,
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -94,7 +94,9 @@ class AppSettingsRow extends StatelessWidget {
                     Icon(
                       icon,
                       size: 21,
-                      color: destructive ? colors.error : colors.primary,
+                      color: destructive
+                          ? colors.error
+                          : colors.onSurfaceVariant,
                     ),
                     const SizedBox(width: 12),
                   ],

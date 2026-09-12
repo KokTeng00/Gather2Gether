@@ -314,15 +314,15 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               : const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 18),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               sliver: SliverToBoxAdapter(
                 child: AppPageHeader(
                   title: 'Discover',
-                  subtitle: 'Good company, close by.',
                   actions: [
                     AppCircleButton(
                       key: const Key('create-event-action'),
-                      icon: CupertinoIcons.calendar_badge_plus,
+                      icon: CupertinoIcons.add,
+                      filled: true,
                       tooltip: 'Create event',
                       onPressed: widget.onCreate,
                     ),
@@ -331,7 +331,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 20, 10),
+              padding: const EdgeInsets.fromLTRB(12, 0, 20, 6),
               sliver: SliverToBoxAdapter(
                 child: Align(
                   alignment: Alignment.centerLeft,
@@ -363,7 +363,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   key: const Key('event-interest-search'),
                   controller: _interestController,
                   enabled: !_loading && _latitude != null,
-                  hintText: 'What would you like to do?',
+                  hintText: 'Search events',
                   onSubmitted: _applyInterest,
                   onClear: _clearInterest,
                 ),
@@ -377,53 +377,45 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     Expanded(
                       child: Text(
                         _interest == null
-                            ? 'Nearby · ${_radiusKm.toInt()} km'
-                            : 'Results · ${_radiusKm.toInt()} km',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                            ? 'Within ${_radiusKm.toInt()} km'
+                            : 'Results',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
-                    SizedBox.square(
-                      dimension: 40,
-                      child: IconButton(
-                        key: const Key('event-filter-action'),
-                        tooltip: 'Filters',
-                        style: IconButton.styleFrom(
-                          backgroundColor: _filters.isActive
-                              ? Theme.of(context).colorScheme.secondaryContainer
-                              : Colors.transparent,
-                        ),
-                        onPressed: _loading ? null : _openFilters,
-                        icon: const Icon(
-                          CupertinoIcons.slider_horizontal_3,
-                          size: 19,
-                        ),
+                    TextButton.icon(
+                      key: const Key('event-filter-action'),
+                      onPressed: _loading ? null : _openFilters,
+                      style: TextButton.styleFrom(
+                        foregroundColor: Theme.of(
+                          context,
+                        ).colorScheme.onSurface,
+                        backgroundColor: _filters.isActive
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : null,
+                        minimumSize: const Size(48, 48),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
                       ),
+                      icon: const Icon(
+                        CupertinoIcons.slider_horizontal_3,
+                        size: 18,
+                      ),
+                      label: const Text('Filters'),
                     ),
                     const SizedBox(width: 4),
-                    SizedBox.square(
-                      dimension: 40,
-                      child: IconButton(
-                        key: const Key('event-view-action'),
-                        padding: EdgeInsets.zero,
-                        tooltip: _showMap
-                            ? 'Show events list'
-                            : 'Show event map',
-                        style: IconButton.styleFrom(
-                          backgroundColor: _showMap
-                              ? Theme.of(context).colorScheme.secondaryContainer
-                              : Colors.transparent,
-                        ),
-                        onPressed:
-                            _loading || _latitude == null || _longitude == null
-                            ? null
-                            : () => _setShowMap(!_showMap),
-                        icon: Icon(
-                          _showMap
-                              ? CupertinoIcons.list_bullet
-                              : CupertinoIcons.map,
-                          size: 19,
-                        ),
+                    IconButton(
+                      key: const Key('event-view-action'),
+                      tooltip: _showMap ? 'Show events list' : 'Show event map',
+                      onPressed:
+                          _loading || _latitude == null || _longitude == null
+                          ? null
+                          : () => _setShowMap(!_showMap),
+                      icon: Icon(
+                        _showMap
+                            ? CupertinoIcons.list_bullet
+                            : CupertinoIcons.map,
+                        size: 21,
                       ),
                     ),
                   ],
@@ -471,6 +463,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 child: _LocationPrompt(
                   notice: _locationNotice,
                   onPressed: _useCurrentLocation,
+                  onChooseArea: _chooseArea,
                 ),
               )
             else if (_showMap)
@@ -1420,79 +1413,33 @@ class _RenameSearchAlertDialogState extends State<_RenameSearchAlertDialog> {
 }
 
 class _LocationPrompt extends StatelessWidget {
-  const _LocationPrompt({required this.notice, required this.onPressed});
-
-  final String? notice;
+  const _LocationPrompt({
+    required this.onPressed,
+    required this.onChooseArea,
+    this.notice,
+  });
   final VoidCallback onPressed;
+  final VoidCallback onChooseArea;
+  final String? notice;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(28, 10, 28, 40),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 86,
-            height: 86,
-            decoration: BoxDecoration(
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Icon(
-              CupertinoIcons.location_fill,
-              size: 40,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 22),
-          Text(
-            'See what is nearby',
-            style: Theme.of(context).textTheme.headlineSmall,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Allow location while using the app. We never track you in the background.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontSize: 16,
-            ),
-          ),
-          if (notice != null) ...[
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.secondaryContainer.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                notice!,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSecondaryContainer,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 22),
-          SizedBox(
-            width: 240,
-            child: FilledButton.icon(
-              onPressed: onPressed,
-              icon: const Icon(CupertinoIcons.location),
-              label: const Text('Use My Location'),
-            ),
-          ),
-        ],
-      ),
+  Widget build(BuildContext context) => AppEmptyState(
+    icon: CupertinoIcons.location,
+    title: 'Find events near you',
+    message:
+        notice ??
+        'Choose a city or use your location. Your precise location stays private.',
+    action: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton(
+          onPressed: onChooseArea,
+          child: const Text('Choose a city'),
+        ),
+        const SizedBox(height: 6),
+        TextButton(onPressed: onPressed, child: const Text('Use my location')),
+      ],
     ),
   );
 }
@@ -1501,40 +1448,23 @@ class _EmptyResults extends StatelessWidget {
   const _EmptyResults({required this.onChangeDate, required this.onCreate});
   final VoidCallback onChangeDate;
   final VoidCallback onCreate;
+
   @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            CupertinoIcons.calendar,
-            size: 32,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Nothing here just yet',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Try another date or adjust your filters.',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 24),
-          OutlinedButton(
-            onPressed: onChangeDate,
-            child: const Text('Change date'),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: onCreate,
-            child: const Text('Start a plan of your own'),
-          ),
-        ],
-      ),
+  Widget build(BuildContext context) => AppEmptyState(
+    icon: CupertinoIcons.calendar,
+    title: 'No events found',
+    message: 'Try another date, a wider area or fewer filters.',
+    action: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton(
+          onPressed: onChangeDate,
+          child: const Text('Adjust filters'),
+        ),
+        const SizedBox(height: 6),
+        TextButton(onPressed: onCreate, child: const Text('Create an event')),
+      ],
     ),
   );
 }

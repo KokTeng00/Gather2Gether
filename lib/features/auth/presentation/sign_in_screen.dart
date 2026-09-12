@@ -52,254 +52,99 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = Theme.of(context).colorScheme;
+    final colors = theme.colorScheme;
     return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    theme.scaffoldBackgroundColor,
-                    Color.alphaBlend(
-                      colors.primaryContainer.withValues(alpha: 0.38),
-                      theme.scaffoldBackgroundColor,
-                    ),
-                    theme.scaffoldBackgroundColor,
-                  ],
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 440,
+                  minHeight: (constraints.maxHeight - 52).clamp(
+                    0.0,
+                    double.infinity,
+                  ),
                 ),
-              ),
-            ),
-          ),
-          Positioned(
-            right: -82,
-            top: -74,
-            child: _BackdropOrb(
-              size: 238,
-              color: colors.primary.withValues(alpha: 0.06),
-            ),
-          ),
-          Positioned(
-            left: -104,
-            top: 288,
-            child: _BackdropOrb(
-              size: 196,
-              color: colors.secondary.withValues(alpha: 0.07),
-            ),
-          ),
-          SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final minimumHeight = (constraints.maxHeight - 48)
-                    .clamp(0.0, double.infinity)
-                    .toDouble();
-                return SingleChildScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 26),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: 460,
-                        minHeight: minimumHeight,
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          const AppBrandMark(size: 36),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Gather2Gether',
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
+                        ],
                       ),
-                      child: IntrinsicHeight(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const _BrandHeader(),
-                            const Spacer(),
-                            const SizedBox(height: 48),
-                            Text(
-                              'Make nearby\nfeel closer.',
-                              style: theme.textTheme.displaySmall?.copyWith(
-                                color: colors.onSurface,
-                                fontSize: 40,
-                                height: 1.01,
-                                letterSpacing: -1.45,
-                              ),
-                            ),
-                            const SizedBox(height: 13),
-                            Text(
-                              'Discover free events, meet your neighbours, and turn a good idea into a real plan.',
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: colors.onSurfaceVariant,
-                                height: 1.45,
-                              ),
-                            ),
-                            const Spacer(),
-                            const SizedBox(height: 42),
-                            _SignInPanel(
-                              isSigningIn: _isSigningIn,
-                              onPressed: _signInWithGoogle,
-                            ),
-                            const SizedBox(height: 16),
-                            const _PrivacyNote(),
-                          ],
+                      const Spacer(flex: 2),
+                      const SizedBox(height: 64),
+                      Text(
+                        'Meet people.\nMake plans.',
+                        style: theme.textTheme.displaySmall?.copyWith(
+                          fontSize: 42,
+                          height: 1.12,
+                          letterSpacing: -1,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 20),
+                      Text(
+                        'Find free events nearby, or bring people together with a plan of your own.',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: colors.onSurfaceVariant,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 64),
+                      const Spacer(flex: 2),
+                      OutlinedButton.icon(
+                        key: const Key('google-sign-in-button'),
+                        onPressed: _isSigningIn ? null : _signInWithGoogle,
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: colors.surface,
+                          foregroundColor: colors.onSurface,
+                        ),
+                        icon: _isSigningIn
+                            ? const SizedBox.square(
+                                dimension: 20,
+                                child: CupertinoActivityIndicator(),
+                              )
+                            : const _GoogleMark(),
+                        label: Text(
+                          _isSigningIn
+                              ? 'Opening Google…'
+                              : 'Continue with Google',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Sign in or create an account.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      Text(
+                        'Free to join · Precise location stays private',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BrandHeader extends StatelessWidget {
-  const _BrandHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        const AppBrandMark(size: 50),
-        const SizedBox(width: 13),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Gather2Gether',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: colors.primary,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.2,
                 ),
               ),
-              const SizedBox(height: 1),
-              Text(
-                'Good plans start close to home',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SignInPanel extends StatelessWidget {
-  const _SignInPanel({required this.isSigningIn, required this.onPressed});
-
-  final bool isSigningIn;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colors.surface.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: colors.outlineVariant.withValues(alpha: 0.72),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Ready when you are',
-            style: Theme.of(context).textTheme.titleLarge,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Use your Google account to continue securely.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
-          ),
-          const SizedBox(height: 18),
-          OutlinedButton.icon(
-            key: const Key('google-sign-in-button'),
-            onPressed: isSigningIn ? null : onPressed,
-            style: OutlinedButton.styleFrom(
-              backgroundColor: colors.surfaceContainerLowest,
-              foregroundColor: colors.onSurface,
-              side: BorderSide(
-                color: colors.outlineVariant.withValues(alpha: 0.95),
-              ),
-            ),
-            icon: isSigningIn
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CupertinoActivityIndicator(),
-                  )
-                : const _GoogleMark(),
-            label: Text(
-              isSigningIn ? 'Opening Google…' : 'Continue with Google',
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'New here? Your profile is created automatically.',
-            textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PrivacyNote extends StatelessWidget {
-  const _PrivacyNote();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          CupertinoIcons.checkmark_shield_fill,
-          color: colors.primary,
-          size: 17,
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Text(
-            'Free to join · Precise location stays private',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: colors.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
             ),
           ),
         ),
-      ],
-    );
-  }
-}
-
-class _BackdropOrb extends StatelessWidget {
-  const _BackdropOrb({required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
       ),
     );
   }
