@@ -1,3 +1,4 @@
+import 'package:gather2gether/features/events/domain/event_operations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/theme/app_theme.dart';
@@ -7,6 +8,8 @@ import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/events/presentation/event_detail_screen.dart';
 
 class _FakeEventRepository extends EventRepository {
+  @override
+  Future<List<EventConflict>> conflicts(String eventId) async => [];
   _FakeEventRepository(this.current)
     : super(
         accessTokenProvider: () => 'token',

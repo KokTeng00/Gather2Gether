@@ -492,3 +492,64 @@ test('only media routes require the R2 binding', async () => {
   assert.equal((await mediaResponse.json()).error.code, 'media_not_configured');
   assert.equal(calls.filter((call) => call.url.endsWith('/auth/v1/user')).length, 2);
 });
+
+function createMeetingEventRequest(planning) {
+  return new Request('https://gather2gether.pages.dev/api/v1/events', {
+    method: 'POST',
+    headers: {Authorization: 'Bearer user-token', 'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      title: 'A walk together', description: 'A relaxed walk.', category: 'Hiking',
+      venue_name: 'River park', address: 'Park entrance', latitude: 49.48, longitude: 8.47,
+      start_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+      end_at: new Date(Date.now() + 7 * 86400000 + 7200000).toISOString(),
+      max_participants: 12, planning,
+    }),
+  });
+}
+
+test('meeting photo uploads privately and the atomic event save binds its final key', async () => {
+  const bucket = new FakeR2Bucket();
+  let imageKey;
+  mockSupabase(async ({url, options}) => {
+    assert.match(url, /save_event_plan$/);
+    imageKey = JSON.parse(options.body).p_details.meeting_image_key;
+    return Response.json([postId]);
+  });
+  const upload = await handleApiRequest(mediaRequest('events/media'), edgeEnv(bucket));
+  assert.equal(upload.status, 201);
+  const {token: imageToken} = await upload.json();
+  const stagedKey = `staging/events/${userId}/current.jpg`;
+  assert.equal(bucket.objects.get(stagedKey).customMetadata.purpose, 'event-staging');
+  const saved = await handleApiRequest(createMeetingEventRequest({meeting_image_token: imageToken}), edgeEnv(bucket));
+  assert.equal(saved.status, 201);
+  assert.ok(imageKey.startsWith(`events/${userId}/`));
+  assert.deepEqual(bucket.objects.get(imageKey).bytes, jpeg);
+  assert.equal(bucket.objects.has(stagedKey), true);
+});
+
+test('meeting photo rejects an upload token or owner that does not match', async () => {
+  for (const metadata of [
+    {owner: otherUserId, purpose: 'event-staging', token},
+    {owner: userId, purpose: 'event-staging', token: postId},
+  ]) {
+    const bucket = new FakeR2Bucket();
+    bucket.seed(`staging/events/${userId}/current.jpg`, jpeg, metadata);
+    mockSupabase(() => {throw new Error('The invalid photo must not be saved.');});
+    const response = await handleApiRequest(createMeetingEventRequest({meeting_image_token: token}), edgeEnv(bucket));
+    assert.equal(response.status, 400);
+    assert.equal(bucket.puts.length, 0);
+  }
+});
+
+test('meeting photo read checks database access before touching private storage', async () => {
+  const bucket = new FakeR2Bucket();
+  mockSupabase(({url}) => {
+    assert.match(url, /get_event_meeting_image_key$/);
+    return Response.json({code: '42501', message: 'permission_denied'}, {status: 403});
+  });
+  const request = new Request(`https://gather2gether.pages.dev/api/v1/events/${postId}/meeting-image`, {
+    headers: {Authorization: 'Bearer user-token'},
+  });
+  assert.equal((await handleApiRequest(request, edgeEnv(bucket))).status, 403);
+  assert.equal(bucket.gets.length, 0);
+});

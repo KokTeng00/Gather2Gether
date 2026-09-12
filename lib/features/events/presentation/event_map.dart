@@ -9,7 +9,6 @@ import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-@visibleForTesting
 Set<Factory<OneSequenceGestureRecognizer>> eventMapGestureRecognizers() => {
   Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
   // Trackpads and some simulator hosts report pinches as a pan/zoom pointer

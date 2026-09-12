@@ -62,15 +62,20 @@
   views are de-duplicated for six hours, ranking influence decays over time,
   and signals older than 180 days are removed as the member continues using the
   app.
-- Recommendation retrieval uses bounded Postgres candidates. After two distinct
-  interactions, the first 24 public candidates may be cross-encoder reranked
-  through the private model Worker and OpenRouter. The provider receives an
+- Recommendation retrieval uses declared interests locally from the first visit
+  and at most twelve distinct items from the last thirty days. Repeated views
+  do not amplify rank. Existing saves and attendance are read without a new
+  tracking log; hidden/blocked content and poorly rated events are excluded
+  from positive evidence. Resetting excludes old operational activity without
+  deleting saved plans. Interests remain in PostgreSQL.
+- After one deliberate choice, the first 24 public candidates may be
+  cross-encoder reranked through the private model Worker and OpenRouter. The provider receives an
   anonymous preference summary containing action labels and truncated public
   content, never the user ID, profile fields, exact member location, searches,
   private messages, or comment text. Requests deny providers that enable data
   collection, exact results are cached for six hours, and an atomic throttle
   allows at most one model attempt per member and feed type in that interval.
-  Failure falls back to the database ranking.
+  Views alone never trigger this call. Failure falls back to the database ranking.
 - Recommendation opt-outs, hidden categories, and per-content dismissals are
   owner-scoped database state with no direct table access. The edge filters
   dismissed content before any optional model reranking request.

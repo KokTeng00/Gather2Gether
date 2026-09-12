@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:gather2gether/config/app_config.dart';
+import 'package:gather2gether/core/media/prepared_image.dart';
 import 'package:gather2gether/features/events/data/event_offline_cache.dart';
 import 'package:gather2gether/features/events/domain/event_filters.dart';
 import 'package:gather2gether/features/events/domain/event_summary.dart';
@@ -32,8 +33,19 @@ class CreateEventInput {
     this.whatToBring = '',
     this.status = 'published',
     this.visibility = 'public',
+    this.audienceUsernames = const [],
     this.repeatInterval = 'none',
     this.repeatCount = 1,
+    this.meetingInstructions = '',
+    this.meetingLatitude,
+    this.meetingLongitude,
+    this.allowGuest = false,
+    this.invitePreviewEnabled = false,
+    this.previewArea = '',
+    this.timezoneOffsetMinutes = 0,
+    this.removeMeetingImage = false,
+    this.pollPostId,
+    this.pollOptionId,
   });
 
   final String title;
@@ -54,8 +66,19 @@ class CreateEventInput {
   final String whatToBring;
   final String status;
   final String visibility;
+  final List<String> audienceUsernames;
   final String repeatInterval;
   final int repeatCount;
+  final String meetingInstructions;
+  final double? meetingLatitude;
+  final double? meetingLongitude;
+  final bool allowGuest;
+  final bool invitePreviewEnabled;
+  final String previewArea;
+  final int timezoneOffsetMinutes;
+  final bool removeMeetingImage;
+  final String? pollPostId;
+  final String? pollOptionId;
 
   Map<String, Object> toApiJson() => {
     'title': title.trim(),
@@ -78,6 +101,19 @@ class CreateEventInput {
     'visibility': visibility,
     'repeat_interval': repeatInterval,
     'repeat_count': repeatCount,
+    'planning': {
+      'audience_usernames': audienceUsernames,
+      'meeting_instructions': meetingInstructions.trim(),
+      'meeting_latitude': meetingLatitude,
+      'meeting_longitude': meetingLongitude,
+      'allow_guest': allowGuest,
+      'invite_preview_enabled': invitePreviewEnabled,
+      'preview_area': previewArea.trim(),
+      'timezone_offset_minutes': timezoneOffsetMinutes,
+      'remove_meeting_image': removeMeetingImage,
+      if (pollPostId != null) 'poll_post_id': pollPostId,
+      if (pollOptionId != null) 'poll_option_id': pollOptionId,
+    },
   };
 }
 
@@ -130,6 +166,7 @@ class EventRepository {
     final normalizedInterest = interest?.trim() ?? '';
     final dateRange = filters.dateRange(DateTime.now());
     final query = <String, String>{
+      'planning': '1',
       'latitude': '$latitude',
       'longitude': '$longitude',
       'radius_km': '$radiusKm',
@@ -150,10 +187,13 @@ class EventRepository {
       'age_guidance': filters.ageGuidance,
       'timezone_offset_minutes': '${DateTime.now().timeZoneOffset.inMinutes}',
     };
-    return _withOfflineList('nearby', () async {
-      final payload = await _request('GET', 'events/nearby', query: query);
-      return _eventList(payload);
-    });
+    return _withOfflineList(
+      'nearby_${Uri(queryParameters: query).query}',
+      () async {
+        final payload = await _request('GET', 'events/nearby', query: query);
+        return _eventList(payload);
+      },
+    );
   }
 
   Future<EventSummary> eventDetails(
@@ -165,7 +205,7 @@ class EventRepository {
       final payload = await _request(
         'GET',
         'events/$eventId',
-        query: {if (viaInvite) 'invite': '1'},
+        query: {'planning': '1', if (viaInvite) 'invite': '1'},
       );
       final event = EventSummary.fromJson(_map(_map(payload)['data']));
       _lastReadWasOffline = false;
@@ -187,14 +227,24 @@ class EventRepository {
       final payload = await _request(
         'GET',
         'events/mine',
-        query: {'filter': filter},
+        query: {'filter': filter, 'planning': '1'},
       );
       return _eventList(payload);
     });
   }
 
-  Future<String> createEvent(CreateEventInput input) async {
-    final payload = await _request('POST', 'events', body: input.toApiJson());
+  Future<String> createEvent(CreateEventInput input) =>
+      createEventWithPhoto(input);
+
+  Future<String> createEventWithPhoto(
+    CreateEventInput input, {
+    PreparedImage? photo,
+  }) async {
+    final payload = await _request(
+      'POST',
+      'events',
+      body: await _eventBody(input, photo),
+    );
     final eventId = _map(payload)['id'];
     if (eventId is! String || eventId.isEmpty) {
       throw const EdgeApiException(
@@ -217,6 +267,115 @@ class EventRepository {
       body: {'status': status},
     );
     return (_map(payload)['status'] as String?) ?? status;
+  }
+
+  Future<String> updateRsvpWithGuest(
+    String eventId,
+    String status,
+    int guestCount,
+  ) async {
+    final payload = await _request(
+      'PUT',
+      'events/$eventId/rsvp',
+      body: {'status': status, 'guest_count': guestCount},
+    );
+    return (_map(payload)['status'] as String?) ?? status;
+  }
+
+  Future<List<EventConflict>> conflicts(String eventId) async {
+    final payload = await _request('GET', 'events/$eventId/conflicts');
+    return (_map(payload)['data'] as List)
+        .map((row) => EventConflict.fromJson(_map(row)))
+        .toList();
+  }
+
+  String meetingImageUrl(String eventId) =>
+      '${_edgeApiUrl.replaceFirst(RegExp(r'/$'), '')}/events/$eventId/meeting-image';
+  Map<String, String> mediaHeaders() => {
+    'Authorization': 'Bearer ${_accessTokenProvider() ?? ''}',
+  };
+
+  Future<Map<String, Object>> _eventBody(
+    CreateEventInput input,
+    PreparedImage? photo,
+  ) async {
+    final body = input.toApiJson();
+    if (photo != null) {
+      if (photo.bytes.isEmpty || photo.bytes.length > PreparedImage.maxBytes) {
+        throw const EdgeApiException(
+          statusCode: 400,
+          code: 'invalid_image',
+          message: 'Choose a photo under 5 MB.',
+        );
+      }
+      final token = _accessTokenProvider();
+      if (token == null) {
+        throw const EdgeApiException(
+          statusCode: 401,
+          code: 'authentication_required',
+          message: 'Sign in again to save your photo.',
+        );
+      }
+      final response = await _httpClient
+          .post(
+            Uri.parse(
+              '${_edgeApiUrl.replaceFirst(RegExp(r'/$'), '')}/events/media',
+            ),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': PreparedImage.jpegContentType,
+            },
+            body: photo.bytes,
+          )
+          .timeout(_timeout);
+      if (response.statusCode != 201) {
+        throw const EdgeApiException(
+          statusCode: 502,
+          code: 'image_upload_failed',
+          message: 'The photo could not be uploaded. Please try again.',
+        );
+      }
+      final imageToken = _map(jsonDecode(response.body))['token'];
+      if (imageToken is! String || imageToken.isEmpty) {
+        throw const EdgeApiException(
+          statusCode: 502,
+          code: 'invalid_image_token',
+          message: 'Please choose the photo again.',
+        );
+      }
+      body['planning'] = {
+        ...(body['planning'] as Map),
+        'meeting_image_token': imageToken,
+        'remove_meeting_image': false,
+      };
+    }
+    return body;
+  }
+
+  Future<void> updateEventWithPhoto(
+    String eventId,
+    CreateEventInput input, {
+    PreparedImage? photo,
+  }) async {
+    await _request(
+      'PUT',
+      'events/$eventId',
+      body: await _eventBody(input, photo),
+    );
+  }
+
+  Future<int> updateSeriesWithPhoto(
+    String eventId,
+    String scope,
+    CreateEventInput input, {
+    PreparedImage? photo,
+  }) async {
+    final payload = await _request(
+      'PUT',
+      'events/$eventId/series',
+      body: {...await _eventBody(input, photo), 'scope': scope},
+    );
+    return (_map(payload)['updated_count'] as num).toInt();
   }
 
   Future<void> updateEvent(String eventId, CreateEventInput input) async {
@@ -431,7 +590,11 @@ class EventRepository {
   }
 
   Future<List<SavedEventSearch>> savedSearches() async {
-    final payload = await _request('GET', 'event-searches');
+    final payload = await _request(
+      'GET',
+      'event-searches',
+      query: {'planning': '1'},
+    );
     final rows = _map(payload)['data'];
     if (rows is! List<dynamic>) {
       throw const EdgeApiException(
@@ -460,6 +623,7 @@ class EventRepository {
         'radius_km': radiusKm,
         'category': filters.category,
         'date_filter': filters.dateFilter,
+        'planning': filters.searchContext,
         'time_filter': filters.timeFilter,
         'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
         'spots_only': filters.spotsOnly,
@@ -501,6 +665,7 @@ class EventRepository {
         'radius_km': radiusKm ?? search.radiusKm,
         'category': updatedFilters.category,
         'date_filter': updatedFilters.dateFilter,
+        'planning': updatedFilters.searchContext,
         'time_filter': updatedFilters.timeFilter,
         'timezone_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
         'spots_only': updatedFilters.spotsOnly,
@@ -595,7 +760,11 @@ class EventRepository {
   }
 
   Future<List<EventHostAttendee>> hostAttendees(String eventId) async {
-    final payload = await _request('GET', 'events/$eventId/host-attendees');
+    final payload = await _request(
+      'GET',
+      'events/$eventId/host-attendees',
+      query: {'planning': '1'},
+    );
     final rows = _map(payload)['data'];
     if (rows is! List<dynamic>) {
       throw const EdgeApiException(

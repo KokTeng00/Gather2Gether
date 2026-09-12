@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/features/events/presentation/event_map.dart';
+import 'package:gather2gether/features/events/presentation/event_planning_widgets.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
@@ -81,6 +82,61 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'meeting picker returns the pin position after moving the native map',
+    (tester) async {
+      LatLng? selected;
+      MapLibreMapController? controller;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () async {
+                    selected = await Navigator.of(context).push<LatLng>(
+                      MaterialPageRoute(
+                        builder: (_) => MeetingPointPicker(
+                          initial: const LatLng(49.49, 8.47),
+                          onMapCreated: (value) => controller = value,
+                          styleUrl:
+                              '{"version":8,"sources":{},"layers":[{"id":"ground","type":"background","paint":{"background-color":"#ecf0e9"}}]}',
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('Choose a pin'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Choose a pin'));
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(find.byType(MeetingPointPicker), findsOneWidget);
+      for (
+        var attempt = 0;
+        attempt < 100 && find.text('Loading map…').evaluate().isNotEmpty;
+        attempt++
+      ) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('Loading map…'), findsNothing);
+      expect(controller, isNotNull);
+      await controller!.moveCamera(
+        CameraUpdate.newLatLng(const LatLng(49.495, 8.475)),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.text('Use this meeting point'));
+      await tester.pumpAndSettle();
+      expect(selected, isNotNull);
+      expect(selected!.latitude, closeTo(49.495, .00001));
+      expect(selected!.longitude, closeTo(8.475, .00001));
     },
   );
 }

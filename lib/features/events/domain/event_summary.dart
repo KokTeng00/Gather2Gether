@@ -33,7 +33,17 @@ class EventSummary {
     this.reconfirmationDeadlineAt,
     this.viewerReconfirmedAt,
     this.eventVisibility = 'public',
+    this.audienceUsernames = const [],
     this.eventSeriesId,
+    this.meetingInstructions = '',
+    this.meetingLatitude,
+    this.meetingLongitude,
+    this.hasMeetingImage = false,
+    this.allowGuest = false,
+    this.guestCount = 0,
+    this.invitePreviewEnabled = false,
+    this.previewArea = '',
+    this.timezoneOffsetMinutes = 0,
     this.recommendationReason = '',
   });
 
@@ -87,7 +97,18 @@ class EventSummary {
           ? DateTime.parse(json['viewer_reconfirmed_at'] as String).toLocal()
           : null,
       eventVisibility: (json['event_visibility'] as String?) ?? 'public',
+      audienceUsernames: List<String>.from(json['audience_usernames'] ?? const []),
       eventSeriesId: json['event_series_id'] as String?,
+      meetingInstructions: (json['meeting_instructions'] as String?) ?? '',
+      meetingLatitude: (json['meeting_latitude'] as num?)?.toDouble(),
+      meetingLongitude: (json['meeting_longitude'] as num?)?.toDouble(),
+      hasMeetingImage: json['has_meeting_image'] == true,
+      allowGuest: json['allow_guest'] == true,
+      guestCount: (json['guest_count'] as num?)?.toInt() ?? 0,
+      invitePreviewEnabled: json['invite_preview_enabled'] == true,
+      previewArea: (json['preview_area'] as String?) ?? '',
+      timezoneOffsetMinutes:
+          (json['timezone_offset_minutes'] as num?)?.toInt() ?? 0,
       recommendationReason: (json['recommendation_reason'] as String?) ?? '',
     );
   }
@@ -125,7 +146,17 @@ class EventSummary {
   final DateTime? reconfirmationDeadlineAt;
   final DateTime? viewerReconfirmedAt;
   final String eventVisibility;
+  final List<String> audienceUsernames;
   final String? eventSeriesId;
+  final String meetingInstructions;
+  final double? meetingLatitude;
+  final double? meetingLongitude;
+  final bool hasMeetingImage;
+  final bool allowGuest;
+  final int guestCount;
+  final bool invitePreviewEnabled;
+  final String previewArea;
+  final int timezoneOffsetMinutes;
   final String recommendationReason;
 
   Map<String, Object?> toJson() => {
@@ -164,7 +195,17 @@ class EventSummary {
         .toIso8601String(),
     'viewer_reconfirmed_at': viewerReconfirmedAt?.toUtc().toIso8601String(),
     'event_visibility': eventVisibility,
+    'audience_usernames': audienceUsernames,
     'event_series_id': eventSeriesId,
+    'meeting_instructions': meetingInstructions,
+    'meeting_latitude': meetingLatitude,
+    'meeting_longitude': meetingLongitude,
+    'has_meeting_image': hasMeetingImage,
+    'allow_guest': allowGuest,
+    'guest_count': guestCount,
+    'invite_preview_enabled': invitePreviewEnabled,
+    'preview_area': previewArea,
+    'timezone_offset_minutes': timezoneOffsetMinutes,
     'recommendation_reason': recommendationReason,
   };
 
@@ -196,6 +237,7 @@ class EventSummary {
     bool clearReconfirmationDeadline = false,
     DateTime? viewerReconfirmedAt,
     String? eventVisibility,
+    List<String>? audienceUsernames,
     String? eventSeriesId,
     String? recommendationReason,
   }) {
@@ -238,7 +280,17 @@ class EventSummary {
           : reconfirmationDeadlineAt ?? this.reconfirmationDeadlineAt,
       viewerReconfirmedAt: viewerReconfirmedAt ?? this.viewerReconfirmedAt,
       eventVisibility: eventVisibility ?? this.eventVisibility,
+      audienceUsernames: audienceUsernames ?? this.audienceUsernames,
       eventSeriesId: eventSeriesId ?? this.eventSeriesId,
+      meetingInstructions: meetingInstructions,
+      meetingLatitude: meetingLatitude,
+      meetingLongitude: meetingLongitude,
+      hasMeetingImage: hasMeetingImage,
+      allowGuest: allowGuest,
+      guestCount: guestCount,
+      invitePreviewEnabled: invitePreviewEnabled,
+      previewArea: previewArea,
+      timezoneOffsetMinutes: timezoneOffsetMinutes,
       recommendationReason: recommendationReason ?? this.recommendationReason,
     );
   }

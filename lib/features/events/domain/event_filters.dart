@@ -10,6 +10,11 @@ class EventDiscoveryFilters {
     this.eventSetting = 'any',
     this.eventLanguage = '',
     this.ageGuidance = 'any',
+    this.customStart,
+    this.customEnd,
+    this.searchLatitude,
+    this.searchLongitude,
+    this.searchArea = '',
   });
 
   final String? category;
@@ -22,6 +27,23 @@ class EventDiscoveryFilters {
   final String eventSetting;
   final String eventLanguage;
   final String ageGuidance;
+  final DateTime? customStart;
+  final DateTime? customEnd;
+  final double? searchLatitude;
+  final double? searchLongitude;
+  final String searchArea;
+
+  Map<String, Object?> get searchContext => {
+    'latitude': searchLatitude,
+    'longitude': searchLongitude,
+    'area': searchArea,
+    'start_from': dateFilter == 'custom'
+        ? customStart?.toUtc().toIso8601String()
+        : null,
+    'start_before': dateFilter == 'custom'
+        ? customEnd?.toUtc().toIso8601String()
+        : null,
+  };
 
   bool get isActive =>
       category != null ||
@@ -38,6 +60,7 @@ class EventDiscoveryFilters {
   ({DateTime? startFrom, DateTime? startBefore}) dateRange(DateTime now) {
     final today = DateTime(now.year, now.month, now.day);
     return switch (dateFilter) {
+      'custom' => (startFrom: customStart, startBefore: customEnd),
       'today' => (
         startFrom: today,
         startBefore: today.add(const Duration(days: 1)),
@@ -76,6 +99,11 @@ class EventDiscoveryFilters {
     String? eventSetting,
     String? eventLanguage,
     String? ageGuidance,
+    DateTime? customStart,
+    DateTime? customEnd,
+    double? searchLatitude,
+    double? searchLongitude,
+    String? searchArea,
   }) => EventDiscoveryFilters(
     category: clearCategory ? null : category ?? this.category,
     dateFilter: dateFilter ?? this.dateFilter,
@@ -88,6 +116,11 @@ class EventDiscoveryFilters {
     eventSetting: eventSetting ?? this.eventSetting,
     eventLanguage: eventLanguage ?? this.eventLanguage,
     ageGuidance: ageGuidance ?? this.ageGuidance,
+    customStart: customStart ?? this.customStart,
+    customEnd: customEnd ?? this.customEnd,
+    searchLatitude: searchLatitude ?? this.searchLatitude,
+    searchLongitude: searchLongitude ?? this.searchLongitude,
+    searchArea: searchArea ?? this.searchArea,
   );
 }
 
@@ -112,6 +145,15 @@ class SavedEventSearch {
       filters: EventDiscoveryFilters(
         category: json['category'] as String?,
         dateFilter: (json['date_filter'] as String?) ?? 'any',
+        customStart: json['custom_start'] is String
+            ? DateTime.parse(json['custom_start'] as String).toLocal()
+            : null,
+        customEnd: json['custom_end'] is String
+            ? DateTime.parse(json['custom_end'] as String).toLocal()
+            : null,
+        searchLatitude: (json['search_latitude'] as num?)?.toDouble(),
+        searchLongitude: (json['search_longitude'] as num?)?.toDouble(),
+        searchArea: (json['search_area'] as String?) ?? '',
         timeFilter: (json['time_filter'] as String?) ?? 'any',
         spotsOnly: json['spots_only'] == true,
         followingOnly: json['following_only'] == true,
@@ -136,6 +178,7 @@ class SavedEventSearch {
 }
 
 String eventDateFilterLabel(String value) => switch (value) {
+  'custom' => 'Choose dates',
   'today' => 'Today',
   'tomorrow' => 'Tomorrow',
   'weekend' => 'This weekend',

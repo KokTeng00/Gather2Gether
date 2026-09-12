@@ -7,9 +7,9 @@ class AppTheme {
   const AppTheme._();
 
   static const fern = Color(0xFF285F46);
-  static const lime = Color(0xFFD7E66D);
+  static const lime = Color(0xFFB8CBA7);
   static const clay = Color(0xFFD87A58);
-  static const lightBackground = Color(0xFFF3F0E7);
+  static const lightBackground = Color(0xFFF5F6F2);
   static const darkBackground = Color(0xFF111612);
 
   static ThemeData get light => _theme(Brightness.light);
@@ -46,7 +46,7 @@ class AppTheme {
       onTertiaryContainer: isDark
           ? const Color(0xFFFFDCCF)
           : const Color(0xFF5A2A1B),
-      surface: isDark ? const Color(0xFF1B211C) : const Color(0xFFFFFCF6),
+      surface: isDark ? const Color(0xFF1B211C) : const Color(0xFFFFFFFF),
       onSurface: isDark ? const Color(0xFFE8ECE6) : const Color(0xFF1B211D),
       onSurfaceVariant: isDark
           ? const Color(0xFFABB5AC)
@@ -54,16 +54,16 @@ class AppTheme {
       outline: isDark ? const Color(0xFF59635B) : const Color(0xFF9D9B91),
       outlineVariant: isDark
           ? const Color(0xFF343D36)
-          : const Color(0xFFD5D0C4),
+          : const Color(0xFFDEE3DB),
       surfaceContainerLowest: isDark
           ? const Color(0xFF101511)
           : const Color(0xFFFFFFFF),
       surfaceContainerLow: isDark
           ? const Color(0xFF181E19)
-          : const Color(0xFFF9F6EE),
+          : const Color(0xFFF6F7F3),
       surfaceContainer: isDark
           ? const Color(0xFF202721)
-          : const Color(0xFFF1EDE3),
+          : const Color(0xFFF0F2EC),
       surfaceContainerHigh: isDark
           ? const Color(0xFF283029)
           : const Color(0xFFEAE5D9),
@@ -88,14 +88,14 @@ class AppTheme {
       textTheme: base.textTheme.copyWith(
         displaySmall: base.textTheme.displaySmall?.copyWith(
           fontSize: 36,
-          height: 1.02,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -1.3,
+          height: 1.12,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.8,
         ),
         headlineMedium: base.textTheme.headlineMedium?.copyWith(
           fontSize: 28,
           height: 1.08,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
           letterSpacing: -0.7,
         ),
         headlineSmall: base.textTheme.headlineSmall?.copyWith(

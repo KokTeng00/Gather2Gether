@@ -1,3 +1,4 @@
+import 'package:gather2gether/features/forum/domain/planning_poll.dart';
 import 'dart:convert';
 
 import 'package:gather2gether/config/app_config.dart';
@@ -58,14 +59,20 @@ class ForumRepository {
   final String _edgeApiUrl;
 
   Future<List<ForumPost>> listPosts() async {
-    return _postList(await _request('GET', 'forum/posts'));
+    return _postList(
+      await _request('GET', 'forum/posts', query: {'planning': '1'}),
+    );
   }
 
   Future<List<ForumPost>> searchPosts(String interest) async {
     final normalized = interest.trim();
     if (normalized.isEmpty) return listPosts();
     return _postList(
-      await _request('GET', 'forum/posts', query: {'interest': normalized}),
+      await _request(
+        'GET',
+        'forum/posts',
+        query: {'interest': normalized, 'planning': '1'},
+      ),
     );
   }
 
@@ -88,7 +95,9 @@ class ForumRepository {
   }
 
   Future<ForumPost> getPost(String postId) async {
-    final payload = _map(await _request('GET', 'forum/posts/$postId'));
+    final payload = _map(
+      await _request('GET', 'forum/posts/$postId', query: {'planning': '1'}),
+    );
     return ForumPost.fromJson(_map(payload['data']));
   }
 
@@ -135,6 +144,59 @@ class ForumRepository {
       ),
     );
     return _id(payload, 'post');
+  }
+
+  Future<String> createPostWithPoll({
+    required String title,
+    required String body,
+    required String category,
+    PreparedImage? image,
+    String? placeName,
+    String? placeAddress,
+    required List<PollDateOption> options,
+  }) async {
+    final normalizedPlaceName = _trimmedOrNull(placeName);
+    final normalizedPlaceAddress = _trimmedOrNull(placeAddress);
+    if ((normalizedPlaceName == null) != (normalizedPlaceAddress == null)) {
+      throw const ForumApiException(
+        statusCode: 400,
+        code: 'forum_validation',
+        message: 'Add both a public place name and address.',
+      );
+    }
+
+    final imageToken = image == null ? null : await _uploadImage(image);
+    final payload = _map(
+      await _request(
+        'POST',
+        'forum/posts',
+        body: {
+          'title': title.trim(),
+          'body': body.trim(),
+          'category': category,
+          'image_token': imageToken,
+          'place_name': normalizedPlaceName,
+          'place_address': normalizedPlaceAddress,
+          'poll_options': options.map((option) => option.toJson()).toList(),
+        },
+      ),
+    );
+    return _id(payload, 'post');
+  }
+
+  Future<PlanningPoll> voteOnPoll(
+    String postId,
+    String optionId,
+    bool available,
+  ) async {
+    final payload = _map(
+      await _request(
+        'PUT',
+        'forum/posts/$postId/poll/$optionId',
+        body: {'available': available},
+      ),
+    );
+    return PlanningPoll.fromJson(_map(payload['data']));
   }
 
   Future<String> createComment({

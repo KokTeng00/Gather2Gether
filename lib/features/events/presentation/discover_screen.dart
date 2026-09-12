@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gather2gether/core/theme/app_sheet.dart';
+import 'package:gather2gether/core/theme/app_date_range_sheet.dart';
 import 'package:gather2gether/core/location/location_service.dart';
 import 'package:gather2gether/core/constants/event_categories.dart';
 import 'package:gather2gether/core/theme/app_visuals.dart';
@@ -11,18 +12,24 @@ import 'package:gather2gether/features/events/presentation/event_detail_screen.d
 import 'package:gather2gether/features/events/presentation/event_map.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:intl/intl.dart';
+import 'package:gather2gether/features/events/presentation/event_planning_widgets.dart';
+import 'package:gather2gether/features/places/data/place_repository.dart';
+import 'package:gather2gether/features/places/domain/place_suggestion.dart';
+import 'package:gather2gether/features/places/presentation/place_autocomplete_field.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({
     required this.onCreate,
     this.profileRepository,
     this.eventRepository,
+    this.placeRepository,
     super.key,
   });
 
   final VoidCallback onCreate;
   final ProfileRepository? profileRepository;
   final EventRepository? eventRepository;
+  final PlaceRepository? placeRepository;
 
   @override
   State<DiscoverScreen> createState() => _DiscoverScreenState();
@@ -39,6 +46,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   double? _latitude;
   double? _longitude;
   double _radiusKm = 10;
+  String _areaLabel = 'Nearby';
+  int _loadGeneration = 0;
   bool _loading = true;
   bool _showMap = false;
   bool _maintenance = false;
@@ -70,6 +79,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     });
     try {
       final profile = await _profiles.fetchOwnProfile();
+      _areaLabel = profile.city.trim().isNotEmpty ? profile.city : 'Nearby';
       _radiusKm = profile.preferredRadiusKm;
       _latitude = profile.approximateLatitude;
       _longitude = profile.approximateLongitude;
@@ -97,6 +107,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     });
     try {
       final position = await _location.currentPosition();
+      _areaLabel = 'Current location';
       if (!mounted) return;
       setState(() {
         _latitude = position.latitude;
@@ -136,6 +147,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   Future<void> _recenterMap() => _useCurrentLocation(showLoading: false);
 
   Future<void> _loadEvents() async {
+    final generation = ++_loadGeneration;
     final latitude = _latitude;
     final longitude = _longitude;
     if (latitude == null || longitude == null) return;
@@ -147,7 +159,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         interest: _interest,
         filters: _filters,
       );
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _results = results;
           _maintenance = false;
@@ -155,7 +167,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         });
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() => _maintenance = true);
       }
     }
@@ -181,6 +193,31 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   void _clearInterest() {
     _interestController.clear();
     _applyInterest('');
+  }
+
+  Future<void> _chooseArea() async {
+    final selected = await showModalBottomSheet<Object>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _DiscoveryAreaSheet(
+        repository: widget.placeRepository ?? PlaceRepository(),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    if (selected == 'current') {
+      await _useCurrentLocation();
+      return;
+    }
+    if (selected is PlaceSuggestion) {
+      setState(() {
+        _latitude = selected.latitude;
+        _longitude = selected.longitude;
+        _areaLabel = selected.displayTitle;
+        _locationNotice = null;
+      });
+      await _refresh();
+    }
   }
 
   Future<void> _openFilters() async {
@@ -216,7 +253,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         repository: _events,
         interest: _interest ?? '',
         radiusKm: _radiusKm,
-        filters: _filters,
+        filters: _filters.copyWith(
+          searchLatitude: _latitude,
+          searchLongitude: _longitude,
+          searchArea: _areaLabel,
+        ),
       ),
     );
     if (selected == null || !mounted) return false;
@@ -225,6 +266,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       _interest = selected.interest.trim().isEmpty ? null : selected.interest;
       _radiusKm = selected.radiusKm;
       _filters = selected.filters;
+      if (selected.filters.searchLatitude != null) {
+        _latitude = selected.filters.searchLatitude;
+        _longitude = selected.filters.searchLongitude;
+        _areaLabel = selected.filters.searchArea;
+      }
       _loading = true;
     });
     await _loadEvents();
@@ -272,7 +318,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               sliver: SliverToBoxAdapter(
                 child: AppPageHeader(
                   title: 'Discover',
-                  subtitle: 'Find something worth going out for.',
+                  subtitle: 'Good company, close by.',
                   actions: [
                     AppCircleButton(
                       key: const Key('create-event-action'),
@@ -281,6 +327,32 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       onPressed: widget.onCreate,
                     ),
                   ],
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 20, 10),
+              sliver: SliverToBoxAdapter(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const Key('discover-area-action'),
+                    onPressed: _loading ? null : _chooseArea,
+                    icon: const Icon(CupertinoIcons.location, size: 17),
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            _areaLabel,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(CupertinoIcons.chevron_down, size: 12),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -418,135 +490,27 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 ),
               )
             else if (_results.isEmpty)
-              const SliverFillRemaining(
+              SliverFillRemaining(
                 hasScrollBody: false,
-                child: _EmptyResults(),
+                child: _EmptyResults(
+                  onChangeDate: _openFilters,
+                  onCreate: widget.onCreate,
+                ),
               )
             else ...[
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                sliver: SliverToBoxAdapter(
-                  child: AppHeroArt(
-                    label: _results.first.category,
-                    title: _results.first.title,
-                    subtitle:
-                        '${DateFormat('EEE, d MMM · HH:mm').format(_results.first.startAt)}  ·  ${_results.first.venueName}',
-                    height: 236,
-                    onTap: () => _openEvent(_results.first),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+                sliver: SliverList.separated(
+                  itemCount: _results.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (_, index) => EventListCard(
+                    event: _results[index],
+                    onTap: () => _openEvent(_results[index]),
                   ),
                 ),
               ),
-              if (_results.length > 1) ...[
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
-                  sliver: SliverToBoxAdapter(
-                    child: Text(
-                      _interest == null ? 'More nearby' : 'More results',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                ),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
-                  sliver: SliverList.separated(
-                    itemCount: _results.length - 1,
-                    separatorBuilder: (_, _) => const SizedBox(height: 10),
-                    itemBuilder: (_, index) {
-                      final event = _results[index + 1];
-                      return _EventRow(
-                        event: event,
-                        onTap: () => _openEvent(event),
-                      );
-                    },
-                  ),
-                ),
-              ] else
-                const SliverToBoxAdapter(child: SizedBox(height: 28)),
             ],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EventRow extends StatelessWidget {
-  const _EventRow({required this.event, required this.onTap});
-
-  final EventSummary event;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final visual = CategoryVisual.resolve(context, event.category);
-    final colors = Theme.of(context).colorScheme;
-    final distance = event.distanceMeters < 1000
-        ? '${event.distanceMeters.round()} m'
-        : '${(event.distanceMeters / 1000).toStringAsFixed(1)} km';
-    return Material(
-      color: colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colors.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            children: [
-              Container(
-                width: 90,
-                height: 96,
-                decoration: BoxDecoration(
-                  color: visual.background,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: visual.ink.withValues(alpha: 0.18)),
-                ),
-                child: Icon(visual.icon, size: 38, color: visual.ink),
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      DateFormat('EEE, d MMM · HH:mm').format(event.startAt),
-                      style: TextStyle(
-                        color: colors.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      event.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      '${event.venueName} · $distance',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                CupertinoIcons.chevron_forward,
-                size: 16,
-                color: colors.onSurfaceVariant,
-              ),
-              const SizedBox(width: 3),
-            ],
-          ),
         ),
       ),
     );
@@ -581,8 +545,11 @@ class _EventFilterSheet extends StatefulWidget {
 }
 
 class _EventFilterSheetState extends State<_EventFilterSheet> {
+  final _dateExpansion = ExpansibleController();
   late String? _category = widget.initial.category;
   late String _dateFilter = widget.initial.dateFilter;
+  late DateTime? _customStart = widget.initial.customStart;
+  late DateTime? _customEnd = widget.initial.customEnd;
   late String _timeFilter = widget.initial.timeFilter;
   late bool _spotsOnly = widget.initial.spotsOnly;
   late bool _followingOnly = widget.initial.followingOnly;
@@ -597,6 +564,7 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
 
   @override
   void dispose() {
+    _dateExpansion.dispose();
     _languageController.dispose();
     super.dispose();
   }
@@ -604,6 +572,11 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
   EventDiscoveryFilters get _value => EventDiscoveryFilters(
     category: _category,
     dateFilter: _dateFilter,
+    customStart: _customStart,
+    customEnd: _customEnd,
+    searchLatitude: widget.initial.searchLatitude,
+    searchLongitude: widget.initial.searchLongitude,
+    searchArea: widget.initial.searchArea,
     timeFilter: _timeFilter,
     spotsOnly: _spotsOnly,
     followingOnly: _followingOnly,
@@ -624,6 +597,8 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
   void _reset() => setState(() {
     _category = null;
     _dateFilter = 'any';
+    _customStart = null;
+    _customEnd = null;
     _timeFilter = 'any';
     _spotsOnly = false;
     _followingOnly = false;
@@ -635,6 +610,157 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
     _radiusKm = widget.initialRadiusKm;
   });
 
+  bool get _hasCustomDates =>
+      _dateFilter == 'custom' && _customStart != null && _customEnd != null;
+
+  String get _dateLabel => _hasCustomDates
+      ? '${DateFormat.MMMd().format(_customStart!)} – ${DateFormat.MMMd().format(_customEnd!.subtract(const Duration(microseconds: 1)))}'
+      : eventDateFilterLabel(_dateFilter);
+
+  Future<void> _pickDates() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final selected = await showAppSheet<DateTimeRange>(
+      context: context,
+      builder: (_) => AppDateRangeSheet(
+        firstDate: today,
+        lastDate: DateTime(today.year + 1, today.month, today.day),
+        initialDateRange:
+            _customStart != null &&
+                _customEnd != null &&
+                !_customStart!.isBefore(today)
+            ? DateTimeRange(
+                start: _customStart!,
+                end: _customEnd!.subtract(const Duration(microseconds: 1)),
+              )
+            : null,
+      ),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _dateFilter = 'custom';
+      _customStart = selected.start;
+      _customEnd = DateTime(
+        selected.end.year,
+        selected.end.month,
+        selected.end.day + 1,
+      );
+    });
+    _dateExpansion.collapse();
+  }
+
+  Widget _dateField(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return ExpansionTile(
+      key: const Key('event-date-filter'),
+      controller: _dateExpansion,
+      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      shape: const Border(),
+      collapsedShape: const Border(),
+      onExpansionChanged: (_) => setState(() {}),
+      trailing: Icon(
+        _dateExpansion.isExpanded
+            ? CupertinoIcons.chevron_down
+            : CupertinoIcons.chevron_right,
+        size: 16,
+        color: colors.onSurfaceVariant.withValues(alpha: 0.72),
+      ),
+      title: Row(
+        children: [
+          Icon(CupertinoIcons.calendar, size: 21, color: colors.primary),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
+              runSpacing: 3,
+              children: [
+                Text(
+                  'Date',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  _dateLabel,
+                  key: const Key('event-date-summary'),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              for (final date in const {
+                'any': 'Any date',
+                'today': 'Today',
+                'tomorrow': 'Tomorrow',
+                'weekend': 'This weekend',
+              }.entries)
+                _dateChip(
+                  context,
+                  key: ValueKey('event-date-${date.key}'),
+                  label: date.value,
+                  selected: _dateFilter == date.key,
+                  onPressed: () {
+                    setState(() => _dateFilter = date.key);
+                    _dateExpansion.collapse();
+                  },
+                ),
+              _dateChip(
+                context,
+                key: const Key('event-custom-dates'),
+                label: 'Choose dates',
+                selected: _hasCustomDates,
+                onPressed: _pickDates,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _dateChip(
+    BuildContext context, {
+    required Key key,
+    required String label,
+    required bool selected,
+    required VoidCallback onPressed,
+  }) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return ChoiceChip(
+      key: key,
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onPressed(),
+      showCheckmark: false,
+      selectedColor: colors.primaryContainer,
+      backgroundColor: colors.surface,
+      labelStyle: theme.textTheme.bodyMedium?.copyWith(
+        color: selected ? colors.onPrimaryContainer : colors.onSurface,
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+      ),
+      side: BorderSide(
+        color: selected ? colors.primary : colors.outlineVariant,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => AppSheetScaffold(
     title: 'Filters',
@@ -643,210 +769,230 @@ class _EventFilterSheetState extends State<_EventFilterSheet> {
       onPressed: _reset,
       child: const Text('Reset'),
     ),
-    bodyBuilder: (context, scrollController) => SingleChildScrollView(
-      key: const Key('event-filters-list'),
-      controller: scrollController,
-      physics: const ClampingScrollPhysics(
-        parent: AlwaysScrollableScrollPhysics(),
-      ),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      padding: EdgeInsets.fromLTRB(
-        20,
-        12,
-        20,
-        MediaQuery.paddingOf(context).bottom + 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AppSurface(
-            padding: EdgeInsets.zero,
-            borderRadius: 18,
+    bodyBuilder: (context, scrollController) => Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            key: const Key('event-filters-list'),
+            controller: scrollController,
+            physics: const ClampingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(
+              20,
+              12,
+              20,
+              MediaQuery.paddingOf(context).bottom + 20,
+            ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                AppChoiceField(
-                  key: const Key('event-category-filter'),
-                  label: 'Category',
-                  icon: CupertinoIcons.square_grid_2x2,
-                  value: _category ?? 'All categories',
-                  options: const ['All categories', ...eventCategories],
-                  onChanged: (value) => setState(
-                    () => _category = value == 'All categories' ? null : value,
+                AppSurface(
+                  padding: EdgeInsets.zero,
+                  borderRadius: 18,
+                  child: Column(
+                    children: [
+                      _dateField(context),
+                      const Divider(height: 1, indent: 50),
+                      AppChoiceField(
+                        key: const Key('event-category-filter'),
+                        label: 'Category',
+                        icon: CupertinoIcons.square_grid_2x2,
+                        value: _category ?? 'All categories',
+                        options: const ['All categories', ...eventCategories],
+                        onChanged: (value) => setState(
+                          () => _category = value == 'All categories'
+                              ? null
+                              : value,
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 50),
+                      AppChoiceField(
+                        key: const Key('event-distance-filter'),
+                        label: 'Distance',
+                        icon: CupertinoIcons.location,
+                        value: '${_radiusKm.toInt()} km',
+                        options: const [
+                          '5 km',
+                          '10 km',
+                          '25 km',
+                          '50 km',
+                          '100 km',
+                        ],
+                        onChanged: (value) => setState(
+                          () =>
+                              _radiusKm = double.parse(value.split(' ').first),
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 50),
+                      AppChoiceField(
+                        key: const Key('event-time-filter'),
+                        label: 'Time',
+                        icon: CupertinoIcons.clock,
+                        value: eventTimeFilterLabel(_timeFilter),
+                        options: const [
+                          'Any time',
+                          'Morning',
+                          'Afternoon',
+                          'Evening',
+                        ],
+                        onChanged: (value) => setState(
+                          () => _timeFilter = switch (value) {
+                            'Morning' => 'morning',
+                            'Afternoon' => 'afternoon',
+                            'Evening' => 'evening',
+                            _ => 'any',
+                          },
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 50),
+                      AppChoiceField(
+                        key: const Key('event-setting-filter'),
+                        label: 'Setting',
+                        icon: CupertinoIcons.building_2_fill,
+                        value: eventSettingFilterLabel(_eventSetting),
+                        options: const [
+                          'Any setting',
+                          'Indoor',
+                          'Outdoor',
+                          'Mixed',
+                        ],
+                        onChanged: (value) => setState(
+                          () => _eventSetting = switch (value) {
+                            'Indoor' => 'indoor',
+                            'Outdoor' => 'outdoor',
+                            'Mixed' => 'mixed',
+                            _ => 'any',
+                          },
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 50),
+                      AppChoiceField(
+                        key: const Key('event-age-filter'),
+                        label: 'Age guidance',
+                        icon: CupertinoIcons.person_2_fill,
+                        value: eventAgeFilterLabel(_ageGuidance),
+                        options: const [
+                          'Any age guidance',
+                          'All ages',
+                          'Family friendly',
+                          'Teens',
+                          'Adults only',
+                        ],
+                        onChanged: (value) => setState(
+                          () => _ageGuidance = switch (value) {
+                            'All ages' => 'all_ages',
+                            'Family friendly' => 'families',
+                            'Teens' => 'teens',
+                            'Adults only' => 'adults',
+                            _ => 'any',
+                          },
+                        ),
+                      ),
+                      const Divider(height: 1, indent: 50),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextField(
+                          key: const Key('event-language-filter'),
+                          controller: _languageController,
+                          maxLength: 80,
+                          textCapitalization: TextCapitalization.words,
+                          decoration: const InputDecoration(
+                            labelText: 'Language',
+                            hintText: 'Any language',
+                            counterText: '',
+                            prefixIcon: Icon(CupertinoIcons.globe),
+                            border: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const Divider(height: 1, indent: 50),
-                AppChoiceField(
-                  key: const Key('event-distance-filter'),
-                  label: 'Distance',
-                  icon: CupertinoIcons.location,
-                  value: '${_radiusKm.toInt()} km',
-                  options: const ['5 km', '10 km', '25 km', '50 km'],
-                  onChanged: (value) => setState(
-                    () => _radiusKm = double.parse(value.split(' ').first),
+                const SizedBox(height: 14),
+                AppSurface(
+                  padding: EdgeInsets.zero,
+                  borderRadius: 18,
+                  child: Column(
+                    children: [
+                      SwitchListTile.adaptive(
+                        key: const Key('event-spots-filter'),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                        ),
+                        value: _spotsOnly,
+                        title: const Text('Available spots only'),
+                        onChanged: (value) =>
+                            setState(() => _spotsOnly = value),
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      SwitchListTile.adaptive(
+                        key: const Key('event-following-filter'),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                        ),
+                        value: _followingOnly,
+                        title: const Text('Hosts I follow only'),
+                        onChanged: (value) =>
+                            setState(() => _followingOnly = value),
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      SwitchListTile.adaptive(
+                        key: const Key('event-beginner-filter'),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                        ),
+                        value: _beginnerFriendlyOnly,
+                        title: const Text('Beginner-friendly only'),
+                        onChanged: (value) =>
+                            setState(() => _beginnerFriendlyOnly = value),
+                      ),
+                      const Divider(height: 1, indent: 16, endIndent: 16),
+                      SwitchListTile.adaptive(
+                        key: const Key('event-wheelchair-filter'),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                        ),
+                        value: _wheelchairAccessibleOnly,
+                        title: const Text('Wheelchair-accessible only'),
+                        onChanged: (value) =>
+                            setState(() => _wheelchairAccessibleOnly = value),
+                      ),
+                    ],
                   ),
                 ),
-                const Divider(height: 1, indent: 50),
-                AppChoiceField(
-                  key: const Key('event-date-filter'),
-                  label: 'Date',
-                  icon: CupertinoIcons.calendar,
-                  value: eventDateFilterLabel(_dateFilter),
-                  options: const [
-                    'Any date',
-                    'Today',
-                    'Tomorrow',
-                    'This weekend',
-                  ],
-                  onChanged: (value) => setState(
-                    () => _dateFilter = switch (value) {
-                      'Today' => 'today',
-                      'Tomorrow' => 'tomorrow',
-                      'This weekend' => 'weekend',
-                      _ => 'any',
-                    },
-                  ),
-                ),
-                const Divider(height: 1, indent: 50),
-                AppChoiceField(
-                  key: const Key('event-time-filter'),
-                  label: 'Time',
-                  icon: CupertinoIcons.clock,
-                  value: eventTimeFilterLabel(_timeFilter),
-                  options: const [
-                    'Any time',
-                    'Morning',
-                    'Afternoon',
-                    'Evening',
-                  ],
-                  onChanged: (value) => setState(
-                    () => _timeFilter = switch (value) {
-                      'Morning' => 'morning',
-                      'Afternoon' => 'afternoon',
-                      'Evening' => 'evening',
-                      _ => 'any',
-                    },
-                  ),
-                ),
-                const Divider(height: 1, indent: 50),
-                AppChoiceField(
-                  key: const Key('event-setting-filter'),
-                  label: 'Setting',
-                  icon: CupertinoIcons.building_2_fill,
-                  value: eventSettingFilterLabel(_eventSetting),
-                  options: const ['Any setting', 'Indoor', 'Outdoor', 'Mixed'],
-                  onChanged: (value) => setState(
-                    () => _eventSetting = switch (value) {
-                      'Indoor' => 'indoor',
-                      'Outdoor' => 'outdoor',
-                      'Mixed' => 'mixed',
-                      _ => 'any',
-                    },
-                  ),
-                ),
-                const Divider(height: 1, indent: 50),
-                AppChoiceField(
-                  key: const Key('event-age-filter'),
-                  label: 'Age guidance',
-                  icon: CupertinoIcons.person_2_fill,
-                  value: eventAgeFilterLabel(_ageGuidance),
-                  options: const [
-                    'Any age guidance',
-                    'All ages',
-                    'Family friendly',
-                    'Teens',
-                    'Adults only',
-                  ],
-                  onChanged: (value) => setState(
-                    () => _ageGuidance = switch (value) {
-                      'All ages' => 'all_ages',
-                      'Family friendly' => 'families',
-                      'Teens' => 'teens',
-                      'Adults only' => 'adults',
-                      _ => 'any',
-                    },
-                  ),
-                ),
-                const Divider(height: 1, indent: 50),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    key: const Key('event-language-filter'),
-                    controller: _languageController,
-                    maxLength: 80,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Language',
-                      hintText: 'Any language',
-                      counterText: '',
-                      prefixIcon: Icon(CupertinoIcons.globe),
-                      border: InputBorder.none,
-                    ),
-                  ),
+                const SizedBox(height: 16),
+                TextButton.icon(
+                  key: const Key('search-alerts-action'),
+                  onPressed: widget.canUseSearchAlerts
+                      ? () => Navigator.pop(
+                          context,
+                          _selection(openSearchAlerts: true),
+                        )
+                      : null,
+                  icon: const Icon(CupertinoIcons.bell),
+                  label: const Text('Search alerts'),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          AppSurface(
-            padding: EdgeInsets.zero,
-            borderRadius: 18,
-            child: Column(
-              children: [
-                SwitchListTile.adaptive(
-                  key: const Key('event-spots-filter'),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  value: _spotsOnly,
-                  title: const Text('Available spots only'),
-                  onChanged: (value) => setState(() => _spotsOnly = value),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                SwitchListTile.adaptive(
-                  key: const Key('event-following-filter'),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  value: _followingOnly,
-                  title: const Text('Hosts I follow only'),
-                  onChanged: (value) => setState(() => _followingOnly = value),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                SwitchListTile.adaptive(
-                  key: const Key('event-beginner-filter'),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  value: _beginnerFriendlyOnly,
-                  title: const Text('Beginner-friendly only'),
-                  onChanged: (value) =>
-                      setState(() => _beginnerFriendlyOnly = value),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                SwitchListTile.adaptive(
-                  key: const Key('event-wheelchair-filter'),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                  value: _wheelchairAccessibleOnly,
-                  title: const Text('Wheelchair-accessible only'),
-                  onChanged: (value) =>
-                      setState(() => _wheelchairAccessibleOnly = value),
-                ),
-              ],
+        ),
+        const Divider(height: 1),
+        SafeArea(
+          top: false,
+          minimum: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              key: const Key('apply-event-filters'),
+              onPressed: () => Navigator.pop(context, _selection()),
+              child: const Text('Apply filters'),
             ),
           ),
-          const SizedBox(height: 16),
-          FilledButton(
-            key: const Key('apply-event-filters'),
-            onPressed: () => Navigator.pop(context, _selection()),
-            child: const Text('Show events'),
-          ),
-          const SizedBox(height: 4),
-          TextButton.icon(
-            key: const Key('search-alerts-action'),
-            onPressed: widget.canUseSearchAlerts
-                ? () =>
-                      Navigator.pop(context, _selection(openSearchAlerts: true))
-                : null,
-            icon: const Icon(CupertinoIcons.bell),
-            label: const Text('Search alerts'),
-          ),
-        ],
-      ),
+        ),
+      ],
     ),
   );
 }
@@ -1352,31 +1498,103 @@ class _LocationPrompt extends StatelessWidget {
 }
 
 class _EmptyResults extends StatelessWidget {
-  const _EmptyResults();
-
+  const _EmptyResults({required this.onChangeDate, required this.onCreate});
+  final VoidCallback onChangeDate;
+  final VoidCallback onCreate;
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.all(28),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(CupertinoIcons.calendar_badge_plus, size: 54),
-          const SizedBox(height: 16),
-          Text(
-            'Nothing planned nearby—yet.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall,
+          Icon(
+            CupertinoIcons.calendar,
+            size: 32,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 7),
+          const SizedBox(height: 20),
           Text(
-            'Start something people around you can join.',
+            'Nothing here just yet',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Try another date or adjust your filters.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+          ),
+          const SizedBox(height: 24),
+          OutlinedButton(
+            onPressed: onChangeDate,
+            child: const Text('Change date'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: onCreate,
+            child: const Text('Start a plan of your own'),
           ),
         ],
+      ),
+    ),
+  );
+}
+
+class _DiscoveryAreaSheet extends StatefulWidget {
+  const _DiscoveryAreaSheet({required this.repository});
+  final PlaceRepository repository;
+  @override
+  State<_DiscoveryAreaSheet> createState() => _DiscoveryAreaSheetState();
+}
+
+class _DiscoveryAreaSheetState extends State<_DiscoveryAreaSheet> {
+  final _controller = TextEditingController();
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        MediaQuery.viewInsetsOf(context).bottom + 28,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Where would you like to go?',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            const Text('Search a city, neighbourhood or public place.'),
+            const SizedBox(height: 20),
+            PlaceAutocompleteField(
+              controller: _controller,
+              repository: widget.repository,
+              fieldKey: const Key('discover-area-search'),
+              decoration: const InputDecoration(
+                labelText: 'City or neighbourhood',
+                prefixIcon: Icon(CupertinoIcons.search),
+              ),
+              onSelected: (place) => Navigator.pop(context, place),
+              onTextChanged: () {},
+              validator: (_) => null,
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () => Navigator.pop(context, 'current'),
+              icon: const Icon(CupertinoIcons.location),
+              label: const Text('Use my current location'),
+            ),
+          ],
+        ),
       ),
     ),
   );

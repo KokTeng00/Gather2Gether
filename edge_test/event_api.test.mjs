@@ -1768,6 +1768,7 @@ test('account deletion requires an exact confirmation and cleans only owned medi
     avatarKey,
     postKey,
     `staging/forum/${userId}/current.jpg`,
+    `staging/events/${userId}/current.jpg`,
   ]));
 });
 

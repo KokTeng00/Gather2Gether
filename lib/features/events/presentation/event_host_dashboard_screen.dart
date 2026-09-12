@@ -115,7 +115,9 @@ class _EventHostDashboardScreenState extends State<EventHostDashboardScreen> {
                   for (final attendee in attendees)
                     Card(
                       child: ListTile(
-                        title: Text(attendee.displayName),
+                        title: Text(
+                          '${attendee.displayName}${attendee.guestCount == 1 ? ' + 1 friend' : ''}',
+                        ),
                         subtitle: Text(
                           attendee.username.isEmpty
                               ? attendee.status

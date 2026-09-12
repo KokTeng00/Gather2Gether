@@ -14,6 +14,8 @@ import 'package:gather2gether/features/events/presentation/event_discussion_scre
 import 'package:gather2gether/features/events/presentation/event_host_dashboard_screen.dart';
 import 'package:gather2gether/features/profile/presentation/public_profile_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:gather2gether/features/events/presentation/event_planning_widgets.dart';
+import 'package:gather2gether/features/events/domain/event_operations.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class EventDetailScreen extends StatefulWidget {
@@ -35,12 +37,15 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   bool _loading = false;
   bool _translating = false;
   bool _offline = false;
+  int _selectedGuests = 0;
+  bool _partyEdited = false;
 
   @override
   void initState() {
     super.initState();
     _events = widget.repository ?? EventRepository();
     _event = widget.event;
+    _selectedGuests = _event.guestCount;
     _refresh();
   }
 
@@ -56,6 +61,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       if (mounted) {
         setState(() {
           _event = event;
+          if (!_partyEdited) _selectedGuests = event.guestCount;
           _announcements = announcements;
           _offline = _events.lastReadWasOffline;
         });
@@ -67,9 +73,25 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _setRsvp(String status) async {
+    if (_loading || _offline) return;
     setState(() => _loading = true);
+    if (status == 'joined' && _event.userRsvpStatus != 'joined') {
+      final proceed = await _checkConflicts();
+      if (!mounted) return;
+      if (!proceed) {
+        setState(() => _loading = false);
+        return;
+      }
+    }
     try {
-      final savedStatus = await _events.updateRsvp(_event.id, status);
+      final savedStatus = _event.allowGuest || _event.guestCount > 0
+          ? await _events.updateRsvpWithGuest(
+              _event.id,
+              status,
+              status == 'cancelled' ? 0 : _selectedGuests,
+            )
+          : await _events.updateRsvp(_event.id, status);
+      _partyEdited = false;
       await _refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -89,8 +111,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '$error'.contains('event_full')
-                  ? 'This event is already full.'
+              error is EdgeApiException
+                  ? error.message
                   : 'Could not update your response.',
             ),
           ),
@@ -99,6 +121,80 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<bool> _checkConflicts() async {
+    List<EventConflict> conflicts;
+    try {
+      conflicts = await _events.conflicts(_event.id);
+    } catch (_) {
+      if (!mounted) return false;
+      return await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Couldn’t check your other plans'),
+              content: const Text(
+                'You can still join, or go back and try again.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Go back'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Join anyway'),
+                ),
+              ],
+            ),
+          ) ??
+          false;
+    }
+    if (conflicts.isEmpty) return true;
+    if (!mounted) return false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('You have another plan then'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('This event overlaps with:'),
+                  const SizedBox(height: 12),
+                  for (final event in conflicts)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            event.title,
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          Text(
+                            '${DateFormat.MMMd().format(event.startAt)} · ${DateFormat.Hm().format(event.startAt)}–${DateFormat.Hm().format(event.endAt)}',
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Go back'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Join anyway'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _report() async {
@@ -252,7 +348,8 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   Future<void> _openDirections() async {
     final uri = Uri.https('www.google.com', '/maps/search/', {
       'api': '1',
-      'query': '${_event.latitude},${_event.longitude}',
+      'query':
+          '${_event.meetingLatitude ?? _event.latitude},${_event.meetingLongitude ?? _event.longitude}',
     });
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
         mounted) {
@@ -579,7 +676,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           ),
           IconButton(
             key: const Key('event-share-action'),
-            tooltip: 'Copy invite',
+            tooltip: 'Share invitation',
             onPressed: _share,
             icon: const Icon(CupertinoIcons.share),
           ),
@@ -596,12 +693,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 130),
           children: [
-            AppHeroArt(
-              label: _event.category,
-              title: _event.title,
-              subtitle: 'Hosted by ${_event.organizerName}',
-              height: 270,
-            ),
+            EventIntroduction(event: _event),
             if (_offline) ...[
               const SizedBox(height: 10),
               MaterialBanner(
@@ -689,6 +781,118 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
             ],
             const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                _event.description,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            ),
+            const SizedBox(height: 24),
+            if (_event.meetingInstructions.isNotEmpty ||
+                _event.hasMeetingImage ||
+                _event.meetingLatitude != null) ...[
+              AppSection(
+                title: 'Where to meet',
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_event.hasMeetingImage) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            _events.meetingImageUrl(_event.id),
+                            headers: _events.mediaHeaders(),
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            semanticLabel: 'Entrance or meeting spot',
+                            errorBuilder: (_, _, _) => const SizedBox(
+                              height: 60,
+                              child: Center(
+                                child: Text('Meeting photo unavailable'),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      if (_event.meetingInstructions.isNotEmpty)
+                        Text(
+                          _event.meetingInstructions,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                      if (_event.meetingLatitude != null)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _openDirections,
+                            icon: const Icon(
+                              CupertinoIcons.map_pin_ellipse,
+                              size: 18,
+                            ),
+                            label: const Text(
+                              'Directions to the meeting point',
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+            if (_event.allowGuest &&
+                !_event.hasEnded &&
+                !_event.isCancelled &&
+                !_event.viewerIsOrganizer) ...[
+              AppSection(
+                title: 'Who’s coming?',
+                footer:
+                    'Your friend takes one place. You can update this later.',
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 0, label: Text('Just me')),
+                        ButtonSegment(value: 1, label: Text('Me + 1')),
+                      ],
+                      selected: {_selectedGuests},
+                      onSelectionChanged: _loading || _offline
+                          ? null
+                          : (selected) async {
+                              setState(() {
+                                _selectedGuests = selected.first;
+                                _partyEdited = true;
+                              });
+                              if (const [
+                                'joined',
+                                'waitlisted',
+                                'tentative',
+                              ].contains(_event.userRsvpStatus)) {
+                                await _setRsvp(
+                                  _event.userRsvpStatus == 'tentative'
+                                      ? 'tentative'
+                                      : 'joined',
+                                );
+                                if (mounted) {
+                                  setState(() {
+                                    _selectedGuests = _event.guestCount;
+                                    _partyEdited = false;
+                                  });
+                                }
+                              }
+                            },
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
             AppSection(
               title: 'Plan',
               child: Column(
@@ -978,16 +1182,6 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            AppSection(
-              title: 'About',
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Text(
-                  _event.description,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-            ),
             if (_announcements.isNotEmpty) ...[
               const SizedBox(height: 24),
               AppSection(
@@ -1150,7 +1344,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                         padding: const EdgeInsets.only(right: 8),
                         child: IconButton.outlined(
                           tooltip: 'Remove response',
-                          onPressed: _loading
+                          onPressed: _loading || _offline
                               ? null
                               : () => _setRsvp('cancelled'),
                           icon: const Icon(CupertinoIcons.xmark),
@@ -1158,7 +1352,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                       ),
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _loading
+                        onPressed: _loading || _offline
                             ? null
                             : () => _setRsvp('tentative'),
                         child: Text(
@@ -1169,7 +1363,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: FilledButton(
-                        onPressed: _loading ? null : () => _setRsvp('joined'),
+                        onPressed: _loading || _offline
+                            ? null
+                            : () => _setRsvp('joined'),
                         child: _loading
                             ? CupertinoActivityIndicator(
                                 color: colors.onPrimary,

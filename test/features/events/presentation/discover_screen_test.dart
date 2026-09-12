@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:gather2gether/core/theme/app_date_range_sheet.dart';
+import 'package:gather2gether/features/places/data/place_repository.dart';
+import 'package:gather2gether/features/places/domain/place_suggestion.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/theme/app_theme.dart';
 import 'package:gather2gether/features/events/data/event_repository.dart';
@@ -8,6 +11,24 @@ import 'package:gather2gether/features/events/domain/event_summary.dart';
 import 'package:gather2gether/features/events/presentation/discover_screen.dart';
 import 'package:gather2gether/features/profile/data/profile_repository.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
+
+class _OtherCityRepository extends PlaceRepository {
+  @override
+  Future<List<PlaceSuggestion>> autocomplete({
+    required String text,
+    double? latitude,
+    double? longitude,
+    String? language,
+  }) async => const [
+    PlaceSuggestion(
+      id: 'heidelberg',
+      name: 'Heidelberg',
+      formattedAddress: 'Heidelberg, Germany',
+      latitude: 49.4,
+      longitude: 8.7,
+    ),
+  ];
+}
 
 class _UnavailableProfileRepository extends ProfileRepository {
   @override
@@ -48,6 +69,8 @@ class _CapturingEventRepository extends EventRepository {
   final bool failSearchAlerts;
   EventDiscoveryFilters? filters;
   double? radiusKm;
+  double? latitude;
+  double? longitude;
   String? interest;
   String? naturalQuery;
   String? savedSearchName;
@@ -61,6 +84,8 @@ class _CapturingEventRepository extends EventRepository {
     String? interest,
     EventDiscoveryFilters filters = const EventDiscoveryFilters(),
   }) async {
+    this.latitude = latitude;
+    this.longitude = longitude;
     this.filters = filters;
     this.radiusKm = radiusKm;
     this.interest = interest;
@@ -115,7 +140,149 @@ class _CapturingEventRepository extends EventRepository {
   }
 }
 
+Future<void> _expandDates(WidgetTester tester) async {
+  await tester.ensureVisible(find.text('Date'));
+  await tester.tap(find.text('Date'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  testWidgets(
+    'choosing another city searches there without changing the home profile',
+    (tester) async {
+      final events = _CapturingEventRepository();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Scaffold(
+            body: DiscoverScreen(
+              onCreate: () {},
+              profileRepository: _AvailableProfileRepository(),
+              eventRepository: events,
+              placeRepository: _OtherCityRepository(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(events.latitude, 52.52);
+      await tester.tap(find.byKey(const Key('discover-area-action')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField).last, 'Heidelberg');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('place-suggestion-heidelberg')),
+      );
+      await tester.pumpAndSettle();
+      expect(events.latitude, 49.4);
+      expect(events.longitude, 8.7);
+      expect(find.text('Heidelberg'), findsOneWidget);
+    },
+  );
+
+  testWidgets('custom dates remain editable after applying the filter', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final events = _CapturingEventRepository();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: DiscoverScreen(
+            onCreate: () {},
+            profileRepository: _AvailableProfileRepository(),
+            eventRepository: events,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('event-filter-action')));
+    await tester.pumpAndSettle();
+    await _expandDates(tester);
+    await tester.ensureVisible(find.byKey(const Key('event-custom-dates')));
+    await tester.tap(find.byKey(const Key('event-custom-dates')));
+    await tester.pumpAndSettle();
+    final date = DateTime.now().add(const Duration(days: 14));
+    final range = DateTimeRange(
+      start: DateTime(date.year, date.month, date.day),
+      end: DateTime(date.year, date.month, date.day + 2),
+    );
+    final calendar = find.byType(AppDateRangeSheet);
+    final calendarSheet = find.descendant(
+      of: calendar,
+      matching: find.byKey(const Key('app-sheet')),
+    );
+    final calendarHeader = find.descendant(
+      of: calendar,
+      matching: find.byKey(const Key('app-sheet-header')),
+    );
+    expect(tester.getTopLeft(calendarSheet).dy, closeTo(844 * 0.4, 1));
+    await tester.drag(calendarHeader, const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(calendarSheet).dy, closeTo(0, 1));
+    for (final day in [range.start, range.end]) {
+      final cell = find.byKey(
+        ValueKey('calendar-day-${day.year}-${day.month}-${day.day}'),
+      );
+      await tester.scrollUntilVisible(
+        cell,
+        250,
+        scrollable: find.descendant(
+          of: find.byKey(const Key('date-range-calendar')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.tap(cell);
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byKey(const Key('use-calendar-dates')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('apply-event-filters')));
+    await tester.tap(find.byKey(const Key('apply-event-filters')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('event-custom-dates')), findsNothing);
+    expect(events.filters?.customStart, range.start);
+    expect(
+      events.filters?.customEnd,
+      DateTime(date.year, date.month, date.day + 3),
+    );
+    await tester.tap(find.byKey(const Key('event-filter-action')));
+    await tester.pumpAndSettle();
+    await _expandDates(tester);
+    await tester.ensureVisible(find.byKey(const Key('event-custom-dates')));
+    await tester.tap(find.byKey(const Key('event-custom-dates')));
+    await tester.pumpAndSettle();
+    expect(calendar, findsOneWidget);
+    final picker = tester.widget<AppDateRangeSheet>(calendar);
+    expect(picker.initialDateRange, range);
+    await tester.tap(find.byKey(const Key('clear-calendar-dates')));
+    await tester.drag(calendarHeader, const Offset(0, 400));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<ChoiceChip>(find.byKey(const Key('event-custom-dates')))
+          .selected,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const Key('reset-event-filters')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(find.byKey(const Key('event-date-summary'))).data,
+      'Any date',
+    );
+    await tester.tap(find.byKey(const Key('apply-event-filters')));
+    await tester.pumpAndSettle();
+    expect(events.filters?.customStart, isNull);
+    expect(events.filters?.customEnd, isNull);
+    expect(events.filters?.dateFilter, 'any');
+  });
+
   testWidgets('onboarding choices personalize without repacking discovery', (
     tester,
   ) async {
@@ -240,7 +407,21 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('event-filter-action')));
         await tester.pumpAndSettle();
+        await _expandDates(tester);
+        await tester.tap(find.byKey(const ValueKey('event-date-tomorrow')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('event-date-tomorrow')), findsNothing);
+        expect(
+          tester.widget<Text>(find.byKey(const Key('event-date-summary'))).data,
+          'Tomorrow',
+        );
+        expect(events.filters?.dateFilter, 'any');
         final sheet = find.byKey(const Key('app-sheet'));
+        expect(sheet, findsOneWidget);
+        expect(
+          find.byKey(const Key('apply-event-filters')).hitTestable(),
+          findsOneWidget,
+        );
         final header = find.byKey(const Key('app-sheet-header'));
         expect(tester.getTopLeft(sheet).dy, closeTo(844 * 0.4, 1));
         expect(tester.getCenter(find.text('Filters')).dx, closeTo(195, 1));
@@ -249,9 +430,21 @@ void main() {
           tester.widget<Material>(sheet).color,
           (dark ? AppTheme.dark : AppTheme.light).colorScheme.surface,
         );
+        await tester.ensureVisible(
+          find.byKey(const Key('event-distance-filter')),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('event-distance-filter')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('app-choice-25 km')));
+        await tester.pumpAndSettle();
+        // Sheet resizing starts when the attached list is at its top.
+        tester
+            .widget<SingleChildScrollView>(
+              find.byKey(const Key('event-filters-list')),
+            )
+            .controller!
+            .jumpTo(0);
         await tester.pumpAndSettle();
         await tester.drag(
           find.byKey(const Key('event-filters-list')),
@@ -299,6 +492,7 @@ void main() {
 
         await tester.tap(find.byKey(const Key('event-filter-action')));
         await tester.pumpAndSettle();
+        expect(find.byKey(const Key('event-spots-filter')), findsOneWidget);
         expect(
           tester
               .widget<SwitchListTile>(
@@ -308,12 +502,17 @@ void main() {
           isFalse,
         );
         expect(find.text('10 km'), findsOneWidget);
+        expect(
+          tester.widget<Text>(find.byKey(const Key('event-date-summary'))).data,
+          'Any date',
+        );
+        expect(find.byKey(const ValueKey('event-date-any')), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
   }
 
-  testWidgets('quick filters include availability and followed hosts', (
+  testWidgets('date choices collapse while other filters stay available', (
     tester,
   ) async {
     final events = _CapturingEventRepository();
@@ -334,6 +533,16 @@ void main() {
     await tester.tap(find.byKey(const Key('event-filter-action')));
     await tester.pumpAndSettle();
     expect(find.text('50 km'), findsNothing);
+    expect(find.byKey(const ValueKey('event-date-weekend')), findsNothing);
+    expect(find.text('More filters'), findsNothing);
+    expect(find.byKey(const Key('event-time-filter')), findsOneWidget);
+    await _expandDates(tester);
+    await tester.tap(find.byKey(const ValueKey('event-date-weekend')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('app-sheet')), findsOneWidget);
+    expect(events.filters?.dateFilter, 'any');
+    await tester.ensureVisible(find.byKey(const Key('event-distance-filter')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('event-distance-filter')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('app-choice-25 km')));
@@ -344,6 +553,21 @@ void main() {
     await tester.ensureVisible(find.byKey(const Key('event-following-filter')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('event-following-filter')));
+    await tester.ensureVisible(find.byKey(const Key('event-language-filter')));
+    await tester.enterText(
+      find.byKey(const Key('event-language-filter')),
+      'German',
+    );
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('event-spots-filter')), findsOneWidget);
+    expect(find.byKey(const Key('event-language-filter')), findsOneWidget);
+    expect(find.byKey(const ValueKey('event-date-weekend')), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('event-date-summary'))).data,
+      'This weekend',
+    );
+    expect(events.filters?.eventLanguage, isEmpty);
     await tester.ensureVisible(find.byKey(const Key('apply-event-filters')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('apply-event-filters')));
@@ -351,8 +575,32 @@ void main() {
 
     expect(events.filters?.spotsOnly, isTrue);
     expect(events.filters?.followingOnly, isTrue);
+    expect(events.filters?.dateFilter, 'weekend');
     expect(events.radiusKm, 25);
     expect(find.text('Nearby · 25 km'), findsOneWidget);
+    expect(events.filters?.eventLanguage, 'German');
+
+    await tester.tap(find.byKey(const Key('event-filter-action')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('event-spots-filter')), findsOneWidget);
+    expect(find.byKey(const ValueKey('event-date-weekend')), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('event-date-summary'))).data,
+      'This weekend',
+    );
+    await tester.tap(find.byKey(const Key('reset-event-filters')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('event-spots-filter')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('event-date-summary'))).data,
+      'Any date',
+    );
+    await tester.tap(find.byKey(const Key('apply-event-filters')));
+    await tester.pumpAndSettle();
+    expect(events.filters?.spotsOnly, isFalse);
+    expect(events.filters?.followingOnly, isFalse);
+    expect(events.filters?.eventLanguage, isEmpty);
+    expect(events.filters?.dateFilter, 'any');
   });
 
   testWidgets('one search alerts flow creates and manages alerts', (

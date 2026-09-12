@@ -11,7 +11,8 @@ Android and iOS.
 - Guided first-run setup for interests, accessibility needs, discovery radius,
   and optional approximate home area
 - Foreground-only location permission
-- PostGIS nearby-event search at 5, 10, 25, or 50 km, with date, time,
+- PostGIS event search around home or a chosen city at 5, 10, 25, 50, or 100 km,
+  with single-day/custom date ranges, time,
   category, available-place, followed-organizer, indoor/outdoor, language,
   age, beginner-friendly, and wheelchair-accessible filters
 - Editable Search alerts that can be renamed, refreshed from the current
@@ -23,7 +24,11 @@ Android and iOS.
   public or unlisted invitations, bounded weekly/monthly recurrence, co-hosts,
   accessibility and suitability details, plus a pre-filled Create again action
 - Plans hub for Going, Maybe/Waitlist, Hosting, Drafts, Saved, and Past events
-- Atomic Join/Tentative/Waitlist/Cancel RSVP updates with automatic promotion
+- Exact meeting-point pins, short arrival instructions, and an optional private
+  entrance photo, separate from the venue address
+- Atomic Join/Tentative/Waitlist/Cancel RSVP updates with automatic promotion;
+  hosts can allow one friend, with whole-party capacity and waitlist handling
+- Overlap checks against your joined and hosted plans before joining another event
 - Device, in-app, and FCM remote reminders, native calendar handoff, and map
   directions; notification taps open the relevant event
 - Category-level notification controls with local-time quiet hours enforced by
@@ -35,9 +40,11 @@ Android and iOS.
   private post-event feedback
 - Privacy-aware attendee lists, per-event attendee visibility, and discussion
   notification muting that keeps essential event updates enabled
-- Shareable invitation landing pages with authenticated mobile deep links
-- High-accuracy hybrid event and discussion recommendations from recent views,
-  RSVPs, likes, and replies, with nearby/fresh cold-start feeds, plain-language
+- Shareable invitation landing pages with authenticated mobile deep links and
+  host-enabled public previews; addresses, meeting pins, photos, and attendees
+  stay behind sign-in
+- Interest-based event and discussion recommendations from the first visit,
+  refined by a few recent choices, with nearby/fresh fallbacks, plain-language
   recommendation reasons, per-item “Not for me”, category hiding, and reset or
   full opt-out controls
 - Cloudflare edge API for event validation and request orchestration
@@ -48,6 +55,8 @@ Android and iOS.
 - Report, block/unblock, blocked-member management, and permanent account
   deletion controls, plus a portable in-app account-data export
 - Authenticated forum posts, replies, reports, block filtering, and abuse limits
+- Community date polls with two or three choices and multiple availability votes;
+  authors can turn one date into an event, which each voter joins separately
 - Member-visible report status, a role-gated moderator queue and audit trail,
   and optional AI prioritization that leaves enforcement to a human moderator
 - Privacy-safe community JPEGs and public-place tags, backed by private R2
@@ -61,6 +70,7 @@ Android and iOS.
 - Per-event discussion read cursors with an on-demand “What changed” summary
 - Structured Pages/API logs, model/push logs with sampled traces, a versioned
   health contract, a production smoke check, and pull-request release gates
+- Quiet light/dark layouts with date-led event lists and clear planning controls
 - No price fields, payment SDK, or payment collection
 
 ## Architecture
@@ -130,29 +140,40 @@ cover title, category, venue, address, and description. Community documents
 cover title, topic, body, public place name, and public place address. PostGIS
 still enforces the member's configured distance radius for event results.
 
-Default feeds use a two-stage recommender. PostgreSQL aggregates one private row
-per member, content item, and signal type; repeated views are counted at most
-once every six hours. Views are weak signals, while RSVPs, likes, and replies
-have more influence, and all influence decays over time. Candidate retrieval
-combines category/author affinity, a weighted centroid of the existing
-`gte-small` content embeddings, distance, freshness, and popularity.
+Default feeds use the member's selected interests immediately, with no activity
+history or model call required. PostgreSQL maps broad onboarding choices such as
+Sports and Games to event topics and discussion text. Interests remain inside
+the database. Location and practical filters constrain event eligibility before
+the candidate limit; filtered and unfiltered mobile feeds use the same scorer.
 
-After at least two distinct interactions, OpenRouter's
-`voyageai/rerank-2.5` cross-encoder reranks only the first 24 candidates. The API
-blends that relevance score with the database order so location, recency, and
-popularity continue to matter. Each exact ordering is cached for six hours and
-is invalidated when behavior or candidates change. An atomic database throttle
-permits at most one model attempt per member and feed type every six hours,
-including across concurrent refreshes. Provider failures return the database
-order, so feeds remain available without AI. Cold-start members also stay
-entirely on the local nearby/fresh ranking. Signals older than 180 days are
-removed as members continue using the app.
+At most twelve distinct items from the last thirty days refine those interests.
+Only the strongest action per item counts; repeated views do not add weight.
+Existing saves and attendance records supplement RSVPs, likes, and replies
+without another tracking log. Hidden or blocked content and poorly rated events
+are excluded from positive evidence. Bounded category/author affinity and
+similarity to individual `gte-small` content embeddings are combined with
+distance, timing, followed organizers, available places, and existing plans.
+
+After one deliberate choice (a save, RSVP, attendance, like, or reply),
+OpenRouter's `voyageai/rerank-2.5` may rerank the first 24 candidates. Passive
+views alone never trigger a model call. The blend gives 60% to database order
+and 40% to model relevance; nearly tied model scores preserve the database order.
+Exact orderings are cached for six hours and keyed to evidence, interests,
+controls, candidate order, and content updates. An atomic throttle permits at
+most one model attempt per member and feed type every six hours. Failures fall
+back to the same local interest-based ranking. Existing aggregate signals are
+still pruned after 180 days; ranking reads only the last thirty days.
 
 Members remain in control of this personalization. They can disable ranking,
 hide categories, dismiss individual event or discussion recommendations, and
-reset those choices. Hidden IDs and preferences are applied before model
-reranking. The API also returns a short deterministic reason for recommended
-events; it is explanatory UI, not a model-generated claim.
+reset those choices. Resetting excludes old save/attendance activity from
+ranking while preserving the actual saved plans and selected interests. Hidden
+IDs and preferences are applied before model reranking. Event reasons identify
+actual evidence, for example "Matches your interest in Photography".
+
+The ranking weights are initial product assumptions, not calibrated attendance
+probabilities. Synthetic regression scenarios cover first-visit and sparse-data
+behavior; real-world accuracy still needs evaluation against a nearby/date feed.
 
 Community presentation interleaves three personalized discussions with one
 latest active discussion. IDs are de-duplicated across both sources; if either
@@ -321,7 +342,8 @@ flutter build apk --debug --dart-define-from-file=.env.json
 
 The Supabase regression suite includes transactional lifecycle coverage for
 saved-search alerts, followed-organizer alerts, attendee privacy, discussion
-notification preferences, and RSVP reconfirmation:
+notification preferences, RSVP reconfirmation, whole-party capacity, safe invite
+previews, date polls, and custom search areas:
 
 ```bash
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
@@ -330,6 +352,23 @@ psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
   -f supabase/tests/push_delivery.sql
 psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
   -f supabase/tests/product_operations.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
+  -f supabase/tests/event_planning.sql
+psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
+  -f supabase/tests/interest_first_recommendations.sql
+```
+
+The planning release uses `supabase/migrations/20260912000100_event_planning.sql`.
+Interest-first recommendations add `supabase/migrations/20260912000200_interest_first_recommendations.sql`.
+Apply migrations first, deploy Pages Functions next, then release the mobile app.
+The API keeps the existing event routes for older clients; new readers request
+`planning=1`. No new external services or secrets are needed. Invitation previews
+are off by default, including for existing events, and hosts enable them per event.
+
+For the native map and meeting-pin checks, run:
+
+```bash
+flutter test integration_test/event_map_native_test.dart -d <device-id>
 ```
 
 After deploying API version 2, verify the unauthenticated production health
@@ -411,7 +450,7 @@ wrangler secrets-store secret create STORE_ID \
 ```
 
 Production uses `google/gemini-3.1-flash-lite` with minimal reasoning for Gather
-Guide and `voyageai/rerank-2.5` for the high-accuracy recommendation shortlist.
+Guide and `voyageai/rerank-2.5` for optional recommendation reranking.
 The same private OpenRouter credential serves both routes. Create a separate
 local-only secret (omit `--remote`) when using Wrangler local development;
 production secret values are not available locally.

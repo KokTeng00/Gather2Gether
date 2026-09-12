@@ -1,3 +1,4 @@
+import 'package:gather2gether/features/forum/presentation/planning_poll_card.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:gather2gether/core/constants/forum_constants.dart';
@@ -219,6 +220,14 @@ class _ForumPostScreenState extends State<ForumPostScreen> {
                     onLike: _toggleLike,
                     liking: _liking,
                   ),
+                  if (post.poll != null) ...[
+                    const SizedBox(height: 24),
+                    PlanningPollCard(
+                      post: post,
+                      repository: _repository,
+                      onPublished: _load,
+                    ),
+                  ],
                   const SizedBox(height: 22),
                   Row(
                     children: [

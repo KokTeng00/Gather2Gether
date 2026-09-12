@@ -1,3 +1,5 @@
+import 'package:gather2gether/features/forum/domain/planning_poll.dart';
+
 class ForumPost {
   const ForumPost({
     required this.id,
@@ -14,6 +16,8 @@ class ForumPost {
     this.likeCount = 0,
     this.viewerHasLiked = false,
     this.hasImage = false,
+    this.hasPoll = false,
+    this.poll,
     this.placeName,
     this.placeAddress,
   });
@@ -37,6 +41,12 @@ class ForumPost {
       likeCount: _integer(json['like_count']),
       viewerHasLiked: json['liked'] == true || json['viewer_has_liked'] == true,
       hasImage: json['has_image'] == true,
+      hasPoll: json['has_poll'] == true || json['poll'] is Map,
+      poll: json['poll'] is Map
+          ? PlanningPoll.fromJson(
+              Map<String, dynamic>.from(json['poll'] as Map),
+            )
+          : null,
       placeName: _optionalString(json['place_name']),
       placeAddress: _optionalString(json['place_address']),
     );
@@ -66,6 +76,8 @@ class ForumPost {
   final int likeCount;
   final bool viewerHasLiked;
   final bool hasImage;
+  final bool hasPoll;
+  final PlanningPoll? poll;
   final String? placeName;
   final String? placeAddress;
 
@@ -88,6 +100,8 @@ class ForumPost {
     likeCount: count,
     viewerHasLiked: liked,
     hasImage: hasImage,
+    hasPoll: hasPoll,
+    poll: poll,
     placeName: placeName,
     placeAddress: placeAddress,
   );

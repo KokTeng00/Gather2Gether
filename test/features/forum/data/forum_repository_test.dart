@@ -45,6 +45,7 @@ void main() {
       expect(request.url.path, '/api/v1/forum/posts');
       expect(request.url.queryParameters, {
         'interest': 'people learning new skills',
+        'planning': '1',
       });
       return http.Response(
         jsonEncode({

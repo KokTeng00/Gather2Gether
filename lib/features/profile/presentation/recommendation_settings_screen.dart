@@ -144,7 +144,7 @@ class _RecommendationSettingsScreenState
       builder: (context) => AlertDialog(
         title: const Text('Reset recommendations?'),
         content: const Text(
-          'This clears the activity used for recommendations, restores hidden content and turns personalization on.',
+          'This clears learned preferences, restores hidden content and turns personalization on. Your selected interests and saved events stay.',
         ),
         actions: [
           TextButton(
@@ -247,7 +247,7 @@ class _RecommendationSettingsScreenState
                         ],
                       ),
                       const AppSettingsCaption(
-                        'Use your activity to order recommendations. When off, nearby events appear in date order.',
+                        'Use your selected interests and recent choices to order recommendations. When off, nearby events appear in date order.',
                       ),
                       const SizedBox(height: 24),
                       const AppSettingsHeading('Content preferences'),

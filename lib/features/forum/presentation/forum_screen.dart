@@ -233,7 +233,9 @@ class _PostRow extends StatelessWidget {
                         const SizedBox(width: 6),
                         Flexible(
                           child: Text(
-                            post.category,
+                            post.hasPoll
+                                ? '${post.category} · Date poll'
+                                : post.category,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

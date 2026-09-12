@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:gather2gether/core/theme/app_date_time_sheet.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/features/assistant/data/assistant_repository.dart';
 import 'package:gather2gether/features/assistant/domain/assistant_message.dart';
@@ -34,7 +36,267 @@ class _FakeAssistantRepository extends AssistantRepository {
   );
 }
 
+EventSummary _eventWithOptions({DateTime? startAt, DateTime? endAt}) =>
+    EventSummary(
+      id: '22222222-2222-4222-8222-222222222222',
+      organizerId: '11111111-1111-4111-8111-111111111111',
+      organizerName: 'Alex',
+      title: 'Morning walk',
+      description: 'A relaxed walk together.',
+      category: 'Hiking',
+      venueName: 'City Park',
+      address: 'Park entrance',
+      latitude: 52.52,
+      longitude: 13.405,
+      startAt: startAt ?? DateTime(2099, 9, 20, 10),
+      endAt: endAt ?? DateTime(2099, 9, 20, 12),
+      maxParticipants: 24,
+      joinedCount: 3,
+      tentativeCount: 0,
+      distanceMeters: 0,
+      userRsvpStatus: 'joined',
+      viewerIsOrganizer: true,
+      beginnerFriendly: true,
+      wheelchairAccessible: true,
+      eventSetting: 'outdoor',
+      ageGuidance: 'adults',
+      eventLanguage: 'English',
+      whatToBring: 'Water',
+      allowGuest: true,
+      meetingInstructions: 'Meet beside the north gate.',
+      meetingLatitude: 52.521,
+      meetingLongitude: 13.406,
+      hasMeetingImage: true,
+      eventVisibility: 'unlisted',
+      invitePreviewEnabled: true,
+      previewArea: 'Berlin',
+    );
+
 void main() {
+  testWidgets(
+    'editing preserves optional settings without opening their sections',
+    (tester) async {
+      Map<String, dynamic>? saved;
+      final events = EventRepository(
+        httpClient: MockClient((request) async {
+          saved = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('{}', 200);
+        }),
+        accessTokenProvider: () => 'token',
+        edgeApiUrl: 'https://example.test/api/v1',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateEventScreen(
+            onCreated: () {},
+            initialEvent: _eventWithOptions(endAt: DateTime(2099, 9, 22, 9)),
+            eventRepository: events,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('event-meeting-instructions')), findsNothing);
+      expect(find.byKey(const Key('event-capacity-field')), findsNothing);
+      expect(find.byKey(const Key('event-language-field')), findsNothing);
+      expect(find.byKey(const Key('event-visibility-field')), findsNothing);
+      await tester.ensureVisible(find.byKey(const Key('publish-event-button')));
+      await tester.tap(find.byKey(const Key('publish-event-button')));
+      await tester.pumpAndSettle();
+      expect(
+        DateTime.parse(saved!['start_at']).toLocal(),
+        DateTime(2099, 9, 20, 10),
+      );
+      expect(
+        DateTime.parse(saved!['end_at']).toLocal(),
+        DateTime(2099, 9, 22, 9),
+      );
+      expect(saved!['max_participants'], 24);
+      expect(saved!['event_language'], 'English');
+      expect(saved!['what_to_bring'], 'Water');
+      expect(saved!['beginner_friendly'], true);
+      expect(saved!['wheelchair_accessible'], true);
+      expect(saved!['visibility'], 'unlisted');
+      final planning = saved!['planning'] as Map<String, dynamic>;
+      expect(planning['allow_guest'], true);
+      expect(planning['meeting_instructions'], 'Meet beside the north gate.');
+      expect(planning['meeting_latitude'], 52.521);
+      expect(planning['meeting_longitude'], closeTo(13.406, 1e-9));
+      expect(planning['invite_preview_enabled'], true);
+      expect(planning['preview_area'], 'Berlin');
+      expect(planning['remove_meeting_image'], false);
+    },
+  );
+
+  testWidgets(
+    'start and end pickers save independent dates and preserve duration when moved',
+    (tester) async {
+      Map<String, dynamic>? saved;
+      final events = EventRepository(
+        httpClient: MockClient((request) async {
+          saved = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('{}', 200);
+        }),
+        accessTokenProvider: () => 'token',
+        edgeApiUrl: 'https://example.test/api/v1',
+      );
+      final originalStart = DateTime(2099, 9, 20, 10);
+      final selectedEnd = DateTime(2099, 9, 22, 9);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateEventScreen(
+            onCreated: () {},
+            initialEvent: _eventWithOptions(),
+            eventRepository: events,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Date'), findsNothing);
+      Future<void> choose(
+        String field,
+        DateTime selected, {
+        bool cancel = false,
+      }) async {
+        final row = find.byKey(Key(field));
+        await tester.ensureVisible(row);
+        await tester.tap(row);
+        await tester.pumpAndSettle();
+        final wheel = tester.widget<CupertinoDatePicker>(
+          find.byType(CupertinoDatePicker),
+        );
+        expect(wheel.mode, CupertinoDatePickerMode.dateAndTime);
+        wheel.onDateTimeChanged(selected);
+        if (cancel) {
+          Navigator.of(tester.element(find.byType(AppDateTimeSheet))).pop();
+        } else {
+          await tester.tap(find.byKey(const Key('use-event-date-time')));
+        }
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> save() async {
+        await tester.ensureVisible(
+          find.byKey(const Key('publish-event-button')),
+        );
+        await tester.tap(find.byKey(const Key('publish-event-button')));
+        await tester.pumpAndSettle();
+      }
+
+      await choose('event-end-date-time', selectedEnd);
+      await save();
+      expect(DateTime.parse(saved!['start_at']).toLocal(), originalStart);
+      expect(DateTime.parse(saved!['end_at']).toLocal(), selectedEnd);
+
+      final movedStart = DateTime(2099, 9, 25, 18);
+      await choose('event-start-date-time', movedStart, cancel: true);
+      await save();
+      expect(DateTime.parse(saved!['start_at']).toLocal(), originalStart);
+      await choose('event-start-date-time', movedStart);
+      await save();
+      expect(DateTime.parse(saved!['start_at']).toLocal(), movedStart);
+      expect(
+        DateTime.parse(saved!['end_at']).toLocal(),
+        movedStart.add(selectedEnd.difference(originalStart)),
+      );
+      await tester.ensureVisible(find.byKey(const Key('event-end-date-time')));
+      await tester.tap(find.byKey(const Key('event-end-date-time')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<CupertinoDatePicker>(find.byType(CupertinoDatePicker))
+            .minimumDate,
+        movedStart.add(const Duration(minutes: 1)),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('copying a past multi-day event retains its whole duration', (
+    tester,
+  ) async {
+    Map<String, dynamic>? saved;
+    final template = _eventWithOptions(
+      startAt: DateTime(2025, 1, 1, 18),
+      endAt: DateTime(2025, 1, 3, 9),
+    );
+    final events = EventRepository(
+      httpClient: MockClient((request) async {
+        saved = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(jsonEncode({'id': 'created-event'}), 201);
+      }),
+      accessTokenProvider: () => 'token',
+      edgeApiUrl: 'https://example.test/api/v1',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CreateEventScreen(
+          onCreated: () {},
+          templateEvent: template,
+          eventRepository: events,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('publish-event-button')));
+    await tester.tap(find.byKey(const Key('publish-event-button')));
+    await tester.pumpAndSettle();
+    final start = DateTime.parse(saved!['start_at']);
+    final end = DateTime.parse(saved!['end_at']);
+    expect(start.isAfter(DateTime.now()), isTrue);
+    expect(end.difference(start), template.endAt.difference(template.startAt));
+  });
+
+  testWidgets(
+    'invalid optional values reopen their section before publishing',
+    (tester) async {
+      Map<String, dynamic>? saved;
+      final events = EventRepository(
+        httpClient: MockClient((request) async {
+          saved = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('{}', 200);
+        }),
+        accessTokenProvider: () => 'token',
+        edgeApiUrl: 'https://example.test/api/v1',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateEventScreen(
+            onCreated: () {},
+            initialEvent: _eventWithOptions(),
+            eventRepository: events,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final guests = find.byKey(const Key('event-guests-options'));
+      await tester.ensureVisible(guests);
+      await tester.tap(guests);
+      await tester.pumpAndSettle();
+      final capacity = find.byKey(const Key('event-capacity-field'));
+      await tester.ensureVisible(capacity);
+      await tester.enterText(capacity, '');
+      await tester.ensureVisible(guests);
+      await tester.tap(find.text('Guests & capacity'));
+      await tester.pumpAndSettle();
+      expect(capacity, findsNothing);
+      await tester.ensureVisible(find.byKey(const Key('publish-event-button')));
+      await tester.tap(find.byKey(const Key('publish-event-button')));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pumpAndSettle();
+      expect(saved, isNull);
+      expect(find.text('Choose a limit from 2 to 500.'), findsOneWidget);
+      expect(capacity.hitTestable(), findsOneWidget);
+      await tester.enterText(capacity, '30');
+      await tester.ensureVisible(guests);
+      await tester.tap(find.text('Guests & capacity'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('publish-event-button')));
+      await tester.tap(find.byKey(const Key('publish-event-button')));
+      await tester.pumpAndSettle();
+      expect(saved!['max_participants'], 30);
+    },
+  );
+
   testWidgets('new event hierarchy stays usable on a compact phone', (
     tester,
   ) async {
@@ -273,6 +535,9 @@ void main() {
 
     expect(find.text('Create again'), findsOneWidget);
     expect(find.text('Morning Run'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('event-details-options')));
+    await tester.tap(find.byKey(const Key('event-details-options')));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.byKey(const Key('event-beginner-friendly')),
       300,
@@ -325,6 +590,11 @@ void main() {
       );
       await tester.pump();
 
+      await tester.ensureVisible(
+        find.byKey(const Key('event-sharing-options')),
+      );
+      await tester.tap(find.byKey(const Key('event-sharing-options')));
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.byKey(const Key('event-visibility-field')),
         300,

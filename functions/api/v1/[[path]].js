@@ -3,7 +3,9 @@ const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 const MAX_PLACE_RESPONSE_BYTES = 128 * 1024;
 const ASSISTANT_HISTORY_LIMIT = 24;
 const RECOMMENDATION_RERANK_LIMIT = 24;
-const RECOMMENDATION_AI_WEIGHT = 0.8;
+// Keep declared interests and practical suitability stronger than the optional
+// semantic reranker, particularly when only one deliberate choice is available.
+const RECOMMENDATION_AI_WEIGHT = 0.4;
 const COMMUNITY_FEED_LIMIT = 30;
 const COMMUNITY_RECOMMENDATION_BLOCK = 3;
 const UUID_PATTERN =
@@ -40,7 +42,7 @@ const EVENT_AGE_GUIDANCE = new Set(['all_ages', 'families', 'teens', 'adults']);
 const EVENT_SETTING_FILTERS = new Set(['any', 'indoor', 'outdoor', 'mixed']);
 const EVENT_AGE_FILTERS = new Set(['any', ...EVENT_AGE_GUIDANCE]);
 const EVENT_STATUSES = new Set(['draft', 'published']);
-const EVENT_VISIBILITIES = new Set(['public', 'unlisted']);
+const EVENT_VISIBILITIES = new Set(['public', 'unlisted', 'followers', 'following', 'selected']);
 const EVENT_REPEAT_INTERVALS = new Set(['none', 'weekly', 'monthly']);
 const PUSH_PLATFORMS = new Set(['android', 'ios']);
 const SERIES_SCOPES = new Set(['this', 'future', 'all']);
@@ -432,11 +434,14 @@ export async function handleApiRequest(request, env, defer = null) {
         ...(Array.isArray(deletedMedia.forum_image_keys)
           ? deletedMedia.forum_image_keys
           : []),
+        ...(Array.isArray(deletedMedia.event_image_keys) ? deletedMedia.event_image_keys : []),
+        `staging/events/${identity.userId}/current.jpg`,
         `staging/forum/${identity.userId}/current.jpg`,
       ].filter((key) =>
         key === `staging/forum/${identity.userId}/current.jpg` ||
         isOwnedMediaKey(key, 'avatars', identity.userId) ||
-        isOwnedMediaKey(key, 'posts', identity.userId)
+        isOwnedMediaKey(key, 'posts', identity.userId) ||
+        isOwnedMediaKey(key, 'events', identity.userId) || key === `staging/events/${identity.userId}/current.jpg`
       );
       await Promise.all([...new Set(keys)].map((key) =>
         deleteMediaObject(env.USER_MEDIA, key)
@@ -449,7 +454,7 @@ export async function handleApiRequest(request, env, defer = null) {
         const searches = await supabaseRpc(
           env,
           identity.authorization,
-          'list_saved_event_searches',
+          url.searchParams.get('planning') === '1' ? 'list_saved_event_search_plans' : 'list_saved_event_searches',
           {},
         );
         if (!Array.isArray(searches)) {
@@ -458,7 +463,15 @@ export async function handleApiRequest(request, env, defer = null) {
         return jsonResponse({data: searches}, 200, requestId, cors);
       }
       if (request.method === 'POST') {
-        const input = validateSavedEventSearch(await jsonBody(request));
+        const body = await jsonBody(request);
+        if (body.planning !== undefined) {
+          const {planning, ...fields} = body;
+          const context = validateSearchContext(planning, fields.date_filter);
+          const input = validateSavedEventSearch({...fields, date_filter: fields.date_filter === 'custom' ? 'any' : fields.date_filter});
+          const id = await supabaseRpc(env, identity.authorization, 'save_event_search_plan', {p_search_id: null, p_input: input, p_context: context});
+          return jsonResponse({id}, 201, requestId, cors);
+        }
+        const input = validateSavedEventSearch(body);
         const id = await supabaseRpc(
           env,
           identity.authorization,
@@ -479,7 +492,15 @@ export async function handleApiRequest(request, env, defer = null) {
     ) {
       const searchId = uuidParameter(segments[1], 'search_id');
       if (request.method === 'PUT') {
-        const input = validateSavedEventSearch(await jsonBody(request));
+        const body = await jsonBody(request);
+        if (body.planning !== undefined) {
+          const {planning, ...fields} = body;
+          const context = validateSearchContext(planning, fields.date_filter);
+          const input = validateSavedEventSearch({...fields, date_filter: fields.date_filter === 'custom' ? 'any' : fields.date_filter});
+          await supabaseRpc(env, identity.authorization, 'save_event_search_plan', {p_search_id: searchId, p_input: input, p_context: context});
+          return jsonResponse({updated: true}, 200, requestId, cors);
+        }
+        const input = validateSavedEventSearch(body);
         const updated = await supabaseRpc(
           env,
           identity.authorization,
@@ -1023,7 +1044,9 @@ export async function handleApiRequest(request, env, defer = null) {
       const rankedPosts = isDefaultFeed && recommendationsEnabled
         ? interleaveCommunityFeed(personalizedPosts, visibleLatestPosts)
         : personalizedPosts;
-      return jsonResponse({data: rankedPosts}, 200, requestId, cors);
+      const data = url.searchParams.get('planning') === '1'
+        ? await enrichForumPolls(env, identity.authorization, rankedPosts) : rankedPosts;
+      return jsonResponse({data}, 200, requestId, cors);
     }
 
     if (request.method === 'POST' && segments.join('/') === 'forum/posts') {
@@ -1057,8 +1080,9 @@ export async function handleApiRequest(request, env, defer = null) {
         const postId = await supabaseRpc(
           env,
           identity.authorization,
-          'create_forum_post',
+          input.pollOptions === null ? 'create_forum_post' : 'create_forum_post_with_poll',
           {
+            ...(input.pollOptions === null ? {} : {p_options: input.pollOptions}),
             p_title: input.title,
             p_body: input.body,
             p_category: input.category,
@@ -1100,6 +1124,20 @@ export async function handleApiRequest(request, env, defer = null) {
     if (segments.length >= 3 && segments[0] === 'forum' && segments[1] === 'posts') {
       const postId = uuidParameter(segments[2], 'post_id');
 
+      if (request.method === 'GET' && segments.length === 4 && segments[3] === 'poll') {
+        const data = await supabaseRpc(env, identity.authorization, 'get_forum_poll', {p_post_id: postId});
+        return jsonResponse({data}, 200, requestId, cors);
+      }
+      if (request.method === 'PUT' && segments.length === 5 && segments[3] === 'poll') {
+        const body = await jsonBody(request);
+        exactKeys(body, ['available']);
+        if (typeof body.available !== 'boolean') throw new ApiError(400, 'poll_validation', 'Choose your availability.');
+        const data = await supabaseRpc(env, identity.authorization, 'set_forum_poll_vote', {
+          p_post_id: postId, p_option_id: uuidParameter(segments[4], 'option_id'), p_available: body.available,
+        });
+        return jsonResponse({data}, 200, requestId, cors);
+      }
+
       if (request.method === 'GET' && segments.length === 3) {
         const [rows, likeState] = await Promise.all([
           supabaseRpc(
@@ -1129,7 +1167,8 @@ export async function handleApiRequest(request, env, defer = null) {
           postId,
         );
         return jsonResponse(
-          {data: {...rows[0], ...likeState}},
+          {data: {...rows[0], ...likeState, ...(url.searchParams.get('planning') === '1'
+            ? {poll: await supabaseRpc(env, identity.authorization, 'get_forum_poll', {p_post_id: postId})} : {})}},
           200,
           requestId,
           cors,
@@ -1248,7 +1287,9 @@ export async function handleApiRequest(request, env, defer = null) {
       if (!Array.isArray(events)) {
         throw new ApiError(502, 'invalid_backend_response', 'The database returned invalid event data.');
       }
-      return jsonResponse({data: events}, 200, requestId, cors);
+      const data = url.searchParams.get('planning') === '1'
+        ? await enrichEventPlans(env, identity.authorization, events) : events;
+      return jsonResponse({data}, 200, requestId, cors);
     }
 
     if (request.method === 'GET' && segments.join('/') === 'events/nearby') {
@@ -1332,6 +1373,31 @@ export async function handleApiRequest(request, env, defer = null) {
           : [],
       );
       const hiddenIds = new Set(hiddenRecommendationIds);
+      const hasDiscoveryFilters = startFrom !== null || startBefore !== null ||
+        category !== null || timeFilter !== 'any' || spotsOnly || followingOnly ||
+        beginnerFriendlyOnly || wheelchairAccessibleOnly || eventSetting !== 'any' ||
+        eventLanguage !== null || ageGuidance !== 'any';
+      // Keep the indexed hybrid RPC for unconstrained text searches. Default
+      // recommendations and filtered discovery share the interest-first scorer.
+      if (url.searchParams.get('planning') === '1' && (interest === null || hasDiscoveryFilters)) {
+        const queryEmbedding = interest === null ? null : await generateEmbedding(env, identity.authorization, interest);
+        const data = await supabaseRpc(env, identity.authorization, 'discover_event_plans', {
+          p_latitude: latitude, p_longitude: longitude, p_radius_km: radiusKm,
+          p_filters: {interest, category, query_embedding: queryEmbedding, start_from: startFrom?.toISOString() ?? null,
+            start_before: startBefore?.toISOString() ?? null, time_filter: timeFilter,
+            spots_only: spotsOnly, following_only: followingOnly,
+            beginner_friendly_only: beginnerFriendlyOnly, wheelchair_accessible_only: wheelchairAccessibleOnly,
+            event_setting: eventSetting, event_language: eventLanguage, age_guidance: ageGuidance,
+            timezone_offset_minutes: timezoneOffsetMinutes},
+        });
+        if (!Array.isArray(data)) throw new ApiError(502, 'invalid_backend_response', 'Events are unavailable.');
+        const visible = data.filter(event => !hiddenIds.has(event.id) && !hiddenCategories.has(event.category));
+        const ranked = interest === null && recommendationsEnabled
+          ? await rerankRecommendations({env, authorization: identity.authorization, surface: 'event', candidates: visible, defer})
+          : visible;
+        return jsonResponse({data: ranked.map(event => ({...event,
+          recommendation_reason: recommendationReason(event, interest, recommendationsEnabled)}))}, 200, requestId, cors);
+      }
       const embedding = interest === null || followingOnly
         ? null
         : await generateEmbedding(env, identity.authorization, interest);
@@ -1430,16 +1496,40 @@ export async function handleApiRequest(request, env, defer = null) {
             defer,
         })
         : filteredEvents;
+      const plannedEvents = url.searchParams.get('planning') === '1'
+        ? await enrichEventPlans(env, identity.authorization, rankedEvents) : rankedEvents;
       return jsonResponse({
-        data: rankedEvents.map((event) => ({
+        data: plannedEvents.map((event) => ({
           ...event,
           recommendation_reason: recommendationReason(event, interest, recommendationsEnabled),
         })),
       }, 200, requestId, cors);
     }
 
+    if (request.method === 'POST' && segments.join('/') === 'events/media') {
+      assertMediaEnvironment(env);
+      const token = crypto.randomUUID();
+      await putUploadedJpeg(env.USER_MEDIA, `staging/events/${identity.userId}/current.jpg`, request, {
+        owner: identity.userId, purpose: 'event-staging', token,
+      });
+      return jsonResponse({token}, 201, requestId, cors);
+    }
+
     if (request.method === 'POST' && segments.join('/') === 'events') {
-      const input = validateCreateEvent(await jsonBody(request));
+      const body = await jsonBody(request);
+      if (body.planning !== undefined) {
+        const {planning, ...eventBody} = body;
+        const input = validateCreateEvent(eventBody);
+        const ids = await saveEventPlan(env, identity, input, planning, null, 'this');
+        for (const id of ids) {
+          defer?.(indexCreatedContent({env, authorization: identity.authorization,
+            rpc: 'set_event_embedding', idField: 'p_event_id', id,
+            input: semanticDocument({Title: input.p_title, Category: input.p_category,
+              Venue: input.p_venue_name, Address: input.p_address, Description: input.p_description})}));
+        }
+        return jsonResponse({id: ids[0], ids}, 201, requestId, cors);
+      }
+      const input = validateCreateEvent(body);
       const eventIds = await supabaseRpc(
         env,
         identity.authorization,
@@ -1478,6 +1568,28 @@ export async function handleApiRequest(request, env, defer = null) {
     if (segments.length >= 2 && segments[0] === 'events') {
       const eventId = uuidParameter(segments[1], 'event_id');
 
+      if (request.method === 'GET' && segments.length === 3 && segments[2] === 'conflicts') {
+        const data = await supabaseRpc(env, identity.authorization, 'list_event_conflicts', {p_event_id: eventId});
+        if (!Array.isArray(data)) throw new ApiError(502, 'invalid_backend_response', 'Your plans are unavailable.');
+        return jsonResponse({data}, 200, requestId, cors);
+      }
+      if (request.method === 'GET' && segments.length === 3 && segments[2] === 'meeting-image') {
+        assertMediaEnvironment(env);
+        const key = await supabaseRpc(env, identity.authorization, 'get_event_meeting_image_key', {p_event_id: eventId});
+        if (!isMediaKey(key, 'events')) throw new ApiError(404, 'image_not_found', 'Photo is unavailable.');
+        const object = await getMediaObject(env.USER_MEDIA, key);
+        if (!object) throw new ApiError(404, 'image_not_found', 'Photo is unavailable.');
+        return mediaResponse(object, requestId, cors);
+      }
+      if (request.method === 'GET' && segments.length === 2 && url.searchParams.get('planning') === '1') {
+        await supabaseRpc(env, identity.authorization, 'process_due_event_reconfirmations', {});
+        const data = await supabaseRpc(env, identity.authorization, 'get_event_plan', {
+          p_event_id: eventId, p_via_invite: url.searchParams.get('invite') === '1',
+        });
+        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new ApiError(404, 'event_not_found', 'Event was not found.');
+        deferRecommendationView(defer, env, identity.authorization, 'event', eventId);
+        return jsonResponse({data}, 200, requestId, cors);
+      }
       if (request.method === 'GET' && segments.length === 2) {
         await supabaseRpc(
           env,
@@ -1508,7 +1620,18 @@ export async function handleApiRequest(request, env, defer = null) {
       }
 
       if (request.method === 'PUT' && segments.length === 2) {
-        const input = validateCreateEvent(await jsonBody(request), false);
+        const body = await jsonBody(request);
+        if (body.planning !== undefined) {
+          const {planning, ...eventBody} = body;
+          const input = validateCreateEvent(eventBody, false);
+          await saveEventPlan(env, identity, input, planning, eventId, 'this');
+          defer?.(indexCreatedContent({env, authorization: identity.authorization,
+            rpc: 'set_event_embedding', idField: 'p_event_id', id: eventId,
+            input: semanticDocument({Title: input.p_title, Category: input.p_category,
+              Venue: input.p_venue_name, Address: input.p_address, Description: input.p_description})}));
+          return jsonResponse({updated: true}, 200, requestId, cors);
+        }
+        const input = validateCreateEvent(body, false);
         const {p_repeat_interval: _, p_repeat_count: __, ...eventInput} = input;
         await supabaseRpc(
           env,
@@ -1544,8 +1667,12 @@ export async function handleApiRequest(request, env, defer = null) {
         if (!SERIES_SCOPES.has(scope)) {
           throw new ApiError(400, 'series_scope_validation', 'Recurring event scope is invalid.');
         }
-        const {scope: _, ...eventBody} = body;
+        const {scope: _, planning, ...eventBody} = body;
         const input = validateCreateEvent(eventBody, false);
+        if (planning !== undefined) {
+          const ids = await saveEventPlan(env, identity, input, planning, eventId, scope);
+          return jsonResponse({updated: true, updated_count: ids.length}, 200, requestId, cors);
+        }
         const {p_repeat_interval: __, p_repeat_count: ___, ...eventInput} = input;
         const updatedCount = await supabaseRpc(
           env,
@@ -1582,7 +1709,7 @@ export async function handleApiRequest(request, env, defer = null) {
         const attendees = await supabaseRpc(
           env,
           identity.authorization,
-          'list_event_host_attendees',
+          url.searchParams.get('planning') === '1' ? 'list_event_host_parties' : 'list_event_host_attendees',
           {p_event_id: eventId},
         );
         if (!Array.isArray(attendees)) {
@@ -1760,15 +1887,16 @@ export async function handleApiRequest(request, env, defer = null) {
 
       if (request.method === 'PUT' && segments.length === 3 && segments[2] === 'rsvp') {
         const body = await jsonBody(request);
-        exactKeys(body, ['status']);
+        exactOptionalKeys(body, ['status'], ['guest_count']);
+        const guests = body.guest_count === undefined ? null : integerParameter(body.guest_count, 'guest_count', 0, 1);
         if (typeof body.status !== 'string' || !RSVP_STATUSES.has(body.status)) {
           throw new ApiError(400, 'invalid_rsvp_status', 'RSVP status is invalid.');
         }
         const status = await supabaseRpc(
           env,
           identity.authorization,
-          'set_event_rsvp',
-          {p_event_id: eventId, p_status: body.status},
+          guests === null ? 'set_event_rsvp' : 'set_event_rsvp_with_guest',
+          {p_event_id: eventId, p_status: body.status, ...(guests === null ? {} : {p_guest_count: guests})},
         );
         return jsonResponse({status}, 200, requestId, cors);
       }
@@ -2461,8 +2589,16 @@ async function parseSupabaseResponse(response) {
 function mappedSupabaseError(status, payload) {
   const backendMessage = typeof payload?.message === 'string' ? payload.message : '';
   const known = {
+    guest_place_unavailable: [409, 'guest_place_unavailable', 'There is not enough room for that change. Existing reservations are unchanged.'],
+    guests_not_allowed: [400, 'guests_not_allowed', 'This host has not enabled guests.'],
+    guests_already_registered: [409, 'guests_already_registered', 'Guests are already registered. Keep this enabled until they have been removed.'],
+    poll_validation: [400, 'poll_validation', 'Check the proposed dates and choose an available option.'],
+    poll_closed: [409, 'poll_closed', 'This poll has already been turned into an event. Refresh to see it.'],
+    poll_option_unavailable: [409, 'poll_option_unavailable', 'This date is no longer available.'],
     authentication_required: [401, 'authentication_required', 'Sign in is required.'],
     event_validation: [400, 'event_validation', 'Event details are invalid.'],
+    audience_validation: [400, 'audience_validation', 'Choose up to 50 valid usernames for this audience.'],
+    audience_not_found: [400, 'audience_not_found', 'One or more usernames could not be selected. Check the usernames and try again.'],
     invalid_rsvp_status: [400, 'invalid_rsvp_status', 'RSVP status is invalid.'],
     invalid_event_filter: [400, 'invalid_event_filter', 'Event plan filter is invalid.'],
     invalid_reminder_time: [400, 'invalid_reminder_time', 'Choose a reminder before the event starts.'],
@@ -2723,7 +2859,7 @@ function validateCreateForumPost(body) {
   exactOptionalKeys(
     body,
     ['title', 'body', 'category'],
-    ['image_token', 'place_name', 'place_address'],
+    ['image_token', 'place_name', 'place_address', 'poll_options'],
   );
   const title = stringParameter(body.title, 'title', 5, 120);
   const postBody = stringParameter(body.body, 'body', 10, 4000);
@@ -2739,7 +2875,7 @@ function validateCreateForumPost(body) {
   if ((placeName === null) !== (placeAddress === null)) {
     throw new ApiError(400, 'invalid_parameter', 'Place name and address must be provided together.');
   }
-  return {title, body: postBody, category, imageToken, placeName, placeAddress};
+  return {title, body: postBody, category, imageToken, placeName, placeAddress, pollOptions: validatePollOptions(body.poll_options)};
 }
 
 function validateEventFeedback(body) {
@@ -3376,6 +3512,11 @@ function recommendationReason(event, interest, recommendationsEnabled) {
     return `Matches “${interest.trim().slice(0, 80)}”`;
   }
   if (!recommendationsEnabled) return 'Near your chosen area';
+  if (typeof event?.recommendation_reason === 'string' &&
+      event.recommendation_reason.trim().length > 0 &&
+      event.recommendation_reason.length <= 160) {
+    return event.recommendation_reason.trim();
+  }
   if (typeof event?.category === 'string' && event.category.trim().length > 0) {
     return `Recommended in ${event.category.trim().slice(0, 60)}`;
   }
@@ -3663,6 +3804,9 @@ function blendRecommendationRanking(ranking, shortlist) {
   const minimum = Math.min(...scored.map((item) => item.aiScore));
   const maximum = Math.max(...scored.map((item) => item.aiScore));
   const spread = maximum - minimum;
+  // Min-max scaling would otherwise turn nearly identical model scores into
+  // a confident preference and erase the useful interest/distance ordering.
+  if (spread < 0.05) return shortlist;
   return scored
     .map((item) => {
       const normalizedAi = spread > Number.EPSILON
@@ -3880,4 +4024,118 @@ function jsonResponse(payload, status, requestId, cors) {
     status,
     headers: responseHeaders(requestId, cors),
   });
+}
+
+function validatePollOptions(value) {
+  if (value === undefined || value === null) return null;
+  if (!Array.isArray(value) || value.length < 2 || value.length > 3) {
+    throw new ApiError(400, 'poll_validation', 'Choose two or three possible dates.');
+  }
+  const seen = new Set();
+  return value.map(option => {
+    exactKeys(option, ['start_at', 'end_at']);
+    const start = dateParameter(option.start_at, 'start_at');
+    const end = dateParameter(option.end_at, 'end_at');
+    if (start <= new Date() || start.getTime() > Date.now() + 366 * 86400000 || end <= start || end - start > 86400000 || seen.has(start.toISOString())) {
+      throw new ApiError(400, 'poll_validation', 'Choose different future dates, each lasting at most one day.');
+    }
+    seen.add(start.toISOString());
+    return {start_at: start.toISOString(), end_at: end.toISOString()};
+  });
+}
+
+async function saveEventPlan(env, identity, input, planning, eventId, scope) {
+  exactOptionalKeys(planning, [], ['meeting_instructions', 'meeting_latitude', 'meeting_longitude',
+    'meeting_image_token', 'remove_meeting_image', 'allow_guest', 'invite_preview_enabled',
+    'preview_area', 'timezone_offset_minutes', 'poll_post_id', 'poll_option_id', 'audience_usernames']);
+  const rawUsernames = planning.audience_usernames ?? [];
+  if (!Array.isArray(rawUsernames) || rawUsernames.length > 50 || rawUsernames.some(name =>
+    typeof name !== 'string' || !/^@?[a-z0-9_]{3,30}$/i.test(name.trim()))) {
+    throw new ApiError(400, 'audience_validation', 'Enter up to 50 valid usernames.');
+  }
+  const audienceUsernames = [...new Set(rawUsernames.map(name => name.trim().replace(/^@/, '').toLowerCase()))];
+  if ((input.p_visibility === 'selected') !== (audienceUsernames.length > 0)) {
+    throw new ApiError(400, 'audience_validation', input.p_visibility === 'selected'
+      ? 'Enter at least one username.' : 'Usernames are only used with Specific people.');
+  }
+  if (!['public', 'unlisted'].includes(input.p_visibility) && planning.invite_preview_enabled === true) {
+    throw new ApiError(400, 'audience_validation', 'Invite previews are unavailable for a restricted audience.');
+  }
+  for (const key of ['allow_guest', 'invite_preview_enabled', 'remove_meeting_image']) {
+    if (planning[key] !== undefined && typeof planning[key] !== 'boolean') throw new ApiError(400, 'event_validation', 'Event options are invalid.');
+  }
+  const lat = planning.meeting_latitude == null ? null : numberParameter(planning.meeting_latitude, 'meeting_latitude', -90, 90);
+  const lon = planning.meeting_longitude == null ? null : numberParameter(planning.meeting_longitude, 'meeting_longitude', -180, 180);
+  if ((lat === null) !== (lon === null)) throw new ApiError(400, 'event_validation', 'Choose a complete meeting point.');
+  const postId = planning.poll_post_id == null ? null : uuidParameter(planning.poll_post_id, 'poll_post_id');
+  const optionId = planning.poll_option_id == null ? null : uuidParameter(planning.poll_option_id, 'poll_option_id');
+  if ((postId === null) !== (optionId === null) || (postId !== null && eventId !== null)) throw new ApiError(400, 'poll_validation', 'Choose a poll date.');
+  const details = {
+    audience_usernames: audienceUsernames,
+    meeting_instructions: optionalStringWithDefault(planning.meeting_instructions, 'meeting_instructions', 500),
+    meeting_latitude: lat, meeting_longitude: lon, allow_guest: planning.allow_guest ?? false,
+    invite_preview_enabled: planning.invite_preview_enabled ?? false,
+    preview_area: optionalStringWithDefault(planning.preview_area, 'preview_area', 120),
+    timezone_offset_minutes: integerParameter(planning.timezone_offset_minutes ?? 0, 'timezone_offset_minutes', -840, 840),
+    ...(planning.remove_meeting_image ? {meeting_image_key: null} : {}),
+  };
+  let finalKey = null;
+  if (planning.meeting_image_token != null) {
+    if (planning.remove_meeting_image) throw new ApiError(400, 'event_validation', 'Choose or remove the photo.');
+    const token = uuidParameter(planning.meeting_image_token, 'meeting_image_token');
+    assertMediaEnvironment(env);
+    const staged = await getMediaObject(env.USER_MEDIA, `staging/events/${identity.userId}/current.jpg`);
+    if (!staged || staged.customMetadata?.owner !== identity.userId || staged.customMetadata?.purpose !== 'event-staging' ||
+      staged.customMetadata?.token !== token || !Number.isInteger(staged.size) || staged.size < 4 || staged.size > MAX_MEDIA_BYTES) {
+      throw new ApiError(400, 'invalid_image_token', 'Choose the meeting photo again.');
+    }
+    finalKey = `events/${identity.userId}/${crypto.randomUUID()}.jpg`;
+    await putMediaObject(env.USER_MEDIA, finalKey, staged.body, {owner: identity.userId, purpose: 'event-meeting'}, staged.size);
+    details.meeting_image_key = finalKey;
+  }
+  try {
+    const ids = await supabaseRpc(env, identity.authorization, 'save_event_plan', {
+      p_event_id: eventId, p_scope: scope, p_event: input, p_details: details,
+      p_poll_post_id: postId, p_poll_option_id: optionId,
+    });
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 12 || ids.some(id => typeof id !== 'string' || !UUID_PATTERN.test(id))) {
+      throw new ApiError(502, 'invalid_backend_response', 'The event could not be confirmed. Check your plans before retrying.');
+    }
+    return ids;
+  } catch (error) {
+    if (finalKey !== null && isDefiniteClientRejection(error)) await deleteMediaObject(env.USER_MEDIA, finalKey);
+    throw error;
+  }
+}
+
+async function enrichEventPlans(env, authorization, events) {
+  if (events.length === 0) return events;
+  const byId = new Map();
+  for (let start = 0; start < events.length; start += 200) {
+    const rows = await supabaseRpc(env, authorization, 'get_event_plan_extras', {p_event_ids: events.slice(start, start + 200).map(event => event.id)});
+    if (!Array.isArray(rows)) throw new ApiError(502, 'invalid_backend_response', 'Event details are unavailable.');
+    for (const row of rows) if (row && typeof row.id === 'string') byId.set(row.id, row);
+  }
+  return events.filter(event => byId.has(event.id)).map(event => ({...event, ...byId.get(event.id), distance_meters: event.distance_meters}));
+}
+
+async function enrichForumPolls(env, authorization, posts) {
+  if (posts.length === 0) return posts;
+  const ids = await supabaseRpc(env, authorization, 'get_forum_poll_ids', {p_post_ids: posts.map(post => post.id)});
+  if (!Array.isArray(ids)) throw new ApiError(502, 'invalid_backend_response', 'Discussions are unavailable.');
+  const hasPoll = new Set(ids);
+  return posts.map(post => ({...post, has_poll: hasPoll.has(post.id)}));
+}
+
+function validateSearchContext(value, dateFilter) {
+  exactOptionalKeys(value, [], ['latitude','longitude','area','start_from','start_before']);
+  const latitude = value.latitude == null ? null : numberParameter(value.latitude,'latitude',-90,90);
+  const longitude = value.longitude == null ? null : numberParameter(value.longitude,'longitude',-180,180);
+  if ((latitude === null) !== (longitude === null)) throw new ApiError(400,'saved_search_validation','Choose a search area.');
+  const start = value.start_from == null ? null : dateParameter(value.start_from,'start_from');
+  const end = value.start_before == null ? null : dateParameter(value.start_before,'start_before');
+  if ((start === null) !== (end === null) || (dateFilter === 'custom' && start === null) || (start !== null && (end <= start || dateFilter !== 'custom'))) {
+    throw new ApiError(400,'saved_search_validation','Choose a complete date range.');
+  }
+  return {latitude,longitude,area:optionalStringWithDefault(value.area,'area',160),start_from:start?.toISOString() ?? null,start_before:end?.toISOString() ?? null};
 }

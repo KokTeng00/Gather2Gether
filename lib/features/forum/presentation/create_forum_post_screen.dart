@@ -1,3 +1,5 @@
+import 'package:gather2gether/features/forum/domain/planning_poll.dart';
+import 'package:gather2gether/features/forum/presentation/planning_poll_card.dart';
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -44,6 +46,7 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
   String? _placeAddress;
   bool _preparingImage = false;
   bool _submitting = false;
+  List<PollDateOption> _pollOptions = const [];
 
   @override
   void initState() {
@@ -64,18 +67,33 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
   }
 
   Future<void> _submit() async {
+    if (_pollOptions.length == 1) {
+      _showError('Add a second date or remove the poll before publishing.');
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     setState(() => _submitting = true);
     try {
-      final id = await _repository.createPost(
-        title: _title.text,
-        body: _body.text,
-        category: _category,
-        image: _image,
-        placeName: _placeName,
-        placeAddress: _placeAddress,
-      );
+      final id = _pollOptions.isNotEmpty
+          ? await _repository.createPostWithPoll(
+              title: _title.text,
+              body: _body.text,
+              category: _category,
+              image: _image,
+              placeName: _placeName,
+              placeAddress: _placeAddress,
+              options: _pollOptions,
+            )
+          : await _repository.createPost(
+              title: _title.text,
+              body: _body.text,
+              category: _category,
+              image: _image,
+              placeName: _placeName,
+              placeAddress: _placeAddress,
+            );
       if (mounted) Navigator.of(context).pop(id);
     } on ForumApiException catch (error) {
       if (mounted) _showError(error.message);
@@ -249,6 +267,12 @@ class _CreateForumPostScreenState extends State<CreateForumPostScreen> {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 20),
+              PollDateEditor(
+                options: _pollOptions,
+                enabled: !_submitting,
+                onChanged: (options) => setState(() => _pollOptions = options),
               ),
               const SizedBox(height: 20),
               AppSection(

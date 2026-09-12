@@ -111,6 +111,7 @@ class EventHostAttendee {
     required this.username,
     required this.status,
     this.reconfirmedAt,
+    this.guestCount = 0,
   });
 
   factory EventHostAttendee.fromJson(Map<String, dynamic> json) =>
@@ -119,6 +120,7 @@ class EventHostAttendee {
         displayName: json['display_name'] as String,
         username: (json['username'] as String?) ?? '',
         status: json['rsvp_status'] as String,
+        guestCount: (json['guest_count'] as num?)?.toInt() ?? 0,
         reconfirmedAt: json['reconfirmed_at'] is String
             ? DateTime.tryParse(json['reconfirmed_at'] as String)?.toLocal()
             : null,
@@ -129,6 +131,7 @@ class EventHostAttendee {
   final String username;
   final String status;
   final DateTime? reconfirmedAt;
+  final int guestCount;
 }
 
 class DiscussionChanges {
@@ -148,4 +151,23 @@ class DiscussionChanges {
   final String summary;
   final List<String> actionItems;
   final int messageCount;
+}
+
+class EventConflict {
+  const EventConflict({
+    required this.id,
+    required this.title,
+    required this.startAt,
+    required this.endAt,
+  });
+  factory EventConflict.fromJson(Map<String, dynamic> json) => EventConflict(
+    id: json['id'] as String,
+    title: json['title'] as String,
+    startAt: DateTime.parse(json['start_at'] as String).toLocal(),
+    endAt: DateTime.parse(json['end_at'] as String).toLocal(),
+  );
+  final String id;
+  final String title;
+  final DateTime startAt;
+  final DateTime endAt;
 }

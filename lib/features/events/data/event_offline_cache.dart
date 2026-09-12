@@ -22,6 +22,7 @@ class EventOfflineCache {
       await _storage.write(
         key: _key(userId, scope),
         value: jsonEncode({
+          'scope': scope,
           'saved_at': _now().toUtc().toIso8601String(),
           'events': events
               .take(_maximumEvents)
@@ -44,6 +45,7 @@ class EventOfflineCache {
         await _storage.delete(key: key);
         return null;
       }
+      if (scope.startsWith('nearby_') && payload['scope'] != scope) return null;
       final savedAt = DateTime.tryParse('${payload['saved_at']}');
       final rows = payload['events'];
       if (savedAt == null ||
@@ -62,5 +64,5 @@ class EventOfflineCache {
   }
 
   String _key(String userId, String scope) =>
-      'g2g.events.v1.$userId.${scope.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}';
+      'g2g.events.v1.$userId.${(scope.startsWith('nearby_') ? 'nearby_query' : scope).replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}';
 }

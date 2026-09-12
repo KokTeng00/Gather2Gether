@@ -13,7 +13,7 @@ test('non-API browser routes return a hardened 404', () => {
 
 test('invite links provide a hardened app handoff without exposing event data', async () => {
   const eventId = '22222222-2222-4222-8222-222222222222';
-  const response = onRequest({
+  const response = await onRequest({
     request: new Request(`https://gather2gether.pages.dev/invite/${eventId}`),
   });
   const body = await response.text();
