@@ -55,6 +55,9 @@ crashlytics-build.properties
 # Node / Cloudflare tooling dependencies
 node_modules/
 
+# Python test runner cache
+__pycache__/
+
 # Local deployment tool caches
 .wrangler/
 supabase/.temp/

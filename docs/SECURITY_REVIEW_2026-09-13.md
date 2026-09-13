@@ -20,12 +20,14 @@
 - [前一轮失败](https://github.com/KokTeng00/Gather2Gether/actions/runs/34719121526)：两项窄屏导航单行布局测试失败。
 - CI 原先使用 `latest`，实际为 Flutter 3.47.4 / Dart 3.13.3；本机为 Flutter 3.38.5 / Dart 3.10.4。现在固定到已在本机完整验证的 3.38.5，保留格式与布局断言。此修改不宣称已经兼容 3.47.4；后续 SDK 升级需同步处理新版布局差异。
 - edge 任务增加 `npm audit --audit-level=high`，既有测试自动包含新增安全回归。
+- [修复分支首次 GitHub 实跑](https://github.com/KokTeng00/Gather2Gether/actions/runs/34750960853)：Flutter 和 edge 全部通过；数据库在下载镜像时遇到 ECR 的 `toomanyrequests: Rate exceeded`，尚未进入 SQL 测试。数据库脚本现增加有限重试和官方 Docker Hub/ECR 备用源，两个来源使用已核对一致的 SHA-256 内容摘要；每个镜像下载最多五分钟，失败仍终止 CI，不跳过数据库断言。
 
 ## 本地验证
 
 - Dart 格式检查、Flutter 分析通过；182 项 Flutter 测试通过。
 - 132 项 Node 后端测试通过。
 - 临时离线 Docker 数据库：28 个迁移、9 套 SQL 回归通过；检查后删除容器。
+- 6 项 Python 下载恢复测试通过，覆盖缓存、备用源、超时、重试及全部失败后的非零退出边界。
 - Pages、模型 Worker、推送 Worker 的构建/部署预检查通过，没有发布生产版本。
 - npm 审计为 0 个已知漏洞；OSV 查询 144 个 hosted Dart 包，没有匹配公告。这不覆盖 SDK、原生二进制或本地 MapLibre 修改的完整安全审计。
 - Gitleaks 8.30.1 扫描 HEAD 可达历史；8 个命中经核对为 6 个测试缓存键及 2 个公开 Supabase publishable key。没有发现新增有效私密凭据；未扫描远端缓存、旧克隆与不可达历史。

@@ -380,8 +380,11 @@ migrations and run every SQL suite in a disposable database:
 npm run test:db
 ```
 
-The runner uses pinned official Supabase PostgreSQL/Auth images, creates only
-local fixtures, and removes its container afterward. CI runs the same check;
+The runner uses official Supabase PostgreSQL/Auth images pinned by content
+digest, creates only local fixtures, and removes its container afterward. Image
+downloads use bounded retries and the matching official Docker Hub/ECR mirrors
+to handle registry throttling; running containers have no external network.
+CI runs the same check plus the download recovery tests;
 no live project credentials are needed.
 
 The planning release uses `supabase/migrations/20260912000100_event_planning.sql`.
