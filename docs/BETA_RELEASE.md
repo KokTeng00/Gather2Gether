@@ -17,19 +17,42 @@ scoped force-with-lease. All 15 retained commits were checked; the tip's only
 tree change was removal of the plan. The local branch now matches the cleaned
 history, with all pending beta edits preserved. Local stashes, Codex checkpoints,
 reflogs, old clones and cached copies may still retain the previous commits.
-Credential replacement is therefore still required.
+Credential replacement is therefore required even after history cleanup. As of
+2026-09-13, the Supabase management credential has been replaced and the database
+password successfully rotated. Cloudflare and Google OAuth rotation remains pending.
 
 Ignore rules and `npm run
 check:repository` prevent deployment artifacts and private configuration from
 returning to Git; CI runs that check.
 
-A targeted database-password rotation was attempted. Supabase rejected the
-stored management credential with `JWT could not be decoded`; the live password
-was not changed. Local Terraform state was reconciled with the unchanged project.
-Do not use the old saved plan to deploy.
+A first database-password rotation attempt failed because the stored management
+credential was invalid. On 2026-09-13, a new project-scoped management token was
+created with the owner's approval, expiring **2027-09-12**, and saved directly into
+ignored local Terraform configuration with mode 600. A freshly inspected targeted
+plan then rotated the password successfully without recreating the project.
+The new password connects with verified TLS; the previous password is rejected.
+Terraform's project, password resource and sensitive output agree. Do not reuse
+old saved plans to deploy.
+
+Production now has all 28 migrations, including event audiences, report protections
+and administrator AAL2 enforcement. Email sign-in is disabled, Google remains
+enabled, and TOTP is enabled. Database SSL enforcement is active and a non-TLS
+connection is rejected. A private database backup was created before migrations;
+a full restore drill and real-device Google/MFA checks are still pending. See
+[the security review](SECURITY_REVIEW_2026-09-13.md) for evidence and remaining limits.
+The embedding function is deployed as v4 with bounded requests and explicit user
+session validation. Public-key-only calls previously returned embeddings; they now
+return 401, as do public keys used as Bearer tokens and forged user JWTs.
+
+For future rotations:
 
 1. Replace the Supabase personal access token through the account dashboard and
    save it directly into ignored deployment configuration. Do not paste it into chat.
+   The current repair token is limited to this project. It does not include API key
+   or billing reads used by the provider's full refresh, nor broader project writes
+   required by some Auth updates. Do not broaden it to all-account access to work
+   around those restrictions. Use a separately reviewed permission change or the
+   dashboard for those operations.
 2. Recreate the targeted rotation plan with a valid token, inspect it, and apply:
 
    ```sh
