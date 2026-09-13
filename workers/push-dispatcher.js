@@ -19,6 +19,9 @@ export default {
   },
 
   async fetch(_request, env) {
+    if (env.REMOTE_PUSH_ENABLED !== 'true') {
+      return Response.json({status: 'disabled', service: 'gather2gether-push'});
+    }
     try {
       assertEnvironment(env);
       return Response.json({status: 'ok', service: 'gather2gether-push'});
@@ -29,6 +32,9 @@ export default {
 };
 
 export async function deliverPushBatch(env, dependencies = {}) {
+  if (env.REMOTE_PUSH_ENABLED !== 'true') {
+    return {claimed: 0, delivered: 0, disabled: true};
+  }
   assertEnvironment(env);
   const rpc = dependencies.rpc ?? ((name, parameters) =>
     supabaseRpc(env, name, parameters));
@@ -248,6 +254,7 @@ function assertEnvironment(env) {
     env.SUPABASE_SERVICE_ROLE_KEY.length < 40 ||
     typeof env.FIREBASE_PROJECT_ID !== 'string' ||
     !/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(env.FIREBASE_PROJECT_ID) ||
+    /^(replace-with|your-)/.test(env.FIREBASE_PROJECT_ID) ||
     typeof env.FIREBASE_SERVICE_ACCOUNT_EMAIL !== 'string' ||
     !env.FIREBASE_SERVICE_ACCOUNT_EMAIL.endsWith('.iam.gserviceaccount.com') ||
     typeof env.FIREBASE_PRIVATE_KEY !== 'string' ||

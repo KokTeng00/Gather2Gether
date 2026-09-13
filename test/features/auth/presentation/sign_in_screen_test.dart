@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gather2gether/core/theme/app_theme.dart';
@@ -9,6 +11,8 @@ Future<void> _pumpSignIn(
   ThemeData? theme,
   double textScale = 1,
   Future<bool> Function()? googleSignIn,
+  Future<bool> Function()? appleSignIn,
+  bool appleEnabled = false,
 }) async {
   tester.view.physicalSize = const Size(320, 568);
   tester.view.devicePixelRatio = 1;
@@ -23,13 +27,77 @@ Future<void> _pumpSignIn(
           size: const Size(320, 568),
           textScaler: TextScaler.linear(textScale),
         ),
-        child: SignInScreen(googleSignIn: googleSignIn),
+        child: SignInScreen(
+          googleSignIn: googleSignIn,
+          appleSignIn: appleSignIn,
+          appleEnabled: appleEnabled,
+        ),
       ),
     ),
   );
 }
 
 void main() {
+  testWidgets(
+    'Apple is offered on iOS only after provider setup is enabled',
+    (tester) async {
+      await _pumpSignIn(tester);
+      expect(find.byKey(const Key('apple-sign-in-button')), findsNothing);
+      await _pumpSignIn(tester, appleEnabled: true);
+      expect(find.text('Continue with Apple'), findsOneWidget);
+      expect(find.text('Continue with Google'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  testWidgets(
+    'Apple flow prevents a competing Google sign-in and recovers from failure',
+    (tester) async {
+      final pending = Completer<bool>();
+      await _pumpSignIn(
+        tester,
+        appleEnabled: true,
+        appleSignIn: () => pending.future,
+      );
+      await tester.ensureVisible(find.byKey(const Key('apple-sign-in-button')));
+      await tester.tap(find.byKey(const Key('apple-sign-in-button')));
+      await tester.pump();
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const Key('google-sign-in-button')),
+            )
+            .onPressed,
+        isNull,
+      );
+      pending.complete(false);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Could not open Apple sign-in. Please try again.'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<OutlinedButton>(
+              find.byKey(const Key('google-sign-in-button')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.iOS),
+  );
+
+  testWidgets('policy and support links are available before sign-in', (
+    tester,
+  ) async {
+    await _pumpSignIn(tester);
+    expect(find.text('Privacy'), findsOneWidget);
+    expect(find.text('Community rules'), findsOneWidget);
+    expect(find.text('Delete account'), findsOneWidget);
+    expect(find.text('Help & feedback'), findsOneWidget);
+  });
+
   testWidgets('shows Google as the only authentication option', (tester) async {
     await _pumpSignIn(tester);
 

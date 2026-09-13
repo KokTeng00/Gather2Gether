@@ -399,9 +399,11 @@ void main() {
     await tester.tap(find.text('Security'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Google sign-in'), findsOneWidget);
+    expect(find.text('Account sign-in'), findsOneWidget);
     expect(
-      find.text('Your sign-in password is managed by your Google Account.'),
+      find.text(
+        'Your sign-in provider manages your password. Gather2Gether does not receive it.',
+      ),
       findsOneWidget,
     );
     expect(find.text('Change password'), findsNothing);

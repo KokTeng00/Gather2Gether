@@ -35,7 +35,21 @@ resource "supabase_settings" "app" {
     external_google_client_id        = var.google_oauth_client_id
     external_google_secret           = var.google_oauth_client_secret
     external_google_skip_nonce_check = false
+    external_apple_enabled           = var.apple_oauth_enabled
+    external_apple_client_id         = var.apple_oauth_client_id
+    external_apple_secret            = var.apple_oauth_client_secret
+    external_apple_skip_nonce_check  = false
   })
+
+  lifecycle {
+    precondition {
+      condition = !var.apple_oauth_enabled || (
+        length(trimspace(var.apple_oauth_client_id)) > 0 &&
+        length(trimspace(var.apple_oauth_client_secret)) > 0
+      )
+      error_message = "Apple OAuth requires both the Services ID and an unexpired client-secret JWT."
+    }
+  }
 }
 
 resource "cloudflare_r2_bucket" "user_media" {

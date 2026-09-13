@@ -20,6 +20,7 @@
 **/.symlinks/
 ios/Flutter/Generated.xcconfig
 ios/Flutter/flutter_export_environment.sh
+ios/Flutter/Signing.xcconfig
 android/local.properties
 
 # Signing material
@@ -40,6 +41,10 @@ key.properties
 terraform.tfvars
 *.tfstate
 *.tfstate.*
+*.tfplan
+*.tfplan.*
+*.plan
+.secrets/
 .terraform/
 crashlytics-build.properties
 

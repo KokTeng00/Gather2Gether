@@ -7,7 +7,8 @@ Android and iOS.
 
 ## MVP features
 
-- Google-only account creation and sign-in through Supabase Auth
+- Google account creation and sign-in through Supabase Auth, with configurable
+  Apple OAuth for iOS distribution
 - Guided first-run setup for interests, accessibility needs, discovery radius,
   and optional approximate home area
 - Foreground-only location permission
@@ -294,6 +295,11 @@ add it to `.env.json`, Dart defines, the Flutter bundle, or source control.
 
 ### Remote notification setup
 
+Remote push is opt-in: set `REMOTE_PUSH_ENABLED` to `true` in both the mobile
+configuration and `wrangler.push.jsonc` only after completing provider setup.
+Firebase is not required for device-local reminders or the private in-app inbox.
+See [beta release setup](docs/BETA_RELEASE.md) for signing, policy pages and checks.
+
 Create Android and iOS apps in one Firebase project using the package/bundle ID
 `com.gather2gether.gather2gether`, enable the FCM HTTP v1 API, and copy their
 public project, sender, API-key, and app-ID values into `.env.json`. The app
@@ -352,20 +358,16 @@ flutter build apk --debug --dart-define-from-file=.env.json
 The Supabase regression suite includes transactional lifecycle coverage for
 saved-search alerts, followed-organizer alerts, attendee privacy, discussion
 notification preferences, RSVP reconfirmation, whole-party capacity, safe invite
-previews, date polls, and custom search areas:
+previews, date polls, and custom search areas. With Docker running, apply all
+migrations and run every SQL suite in a disposable database:
 
 ```bash
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
-  -f supabase/tests/practical_event_tools.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
-  -f supabase/tests/push_delivery.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
-  -f supabase/tests/product_operations.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
-  -f supabase/tests/event_planning.sql
-psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
-  -f supabase/tests/interest_first_recommendations.sql
+npm run test:db
 ```
+
+The runner uses pinned official Supabase PostgreSQL/Auth images, creates only
+local fixtures, and removes its container afterward. CI runs the same check;
+no live project credentials are needed.
 
 The planning release uses `supabase/migrations/20260912000100_event_planning.sql`.
 Interest-first recommendations add `supabase/migrations/20260912000200_interest_first_recommendations.sql`.
@@ -406,7 +408,7 @@ bash scripts/smoke_test.sh
 
 Terraform owns the dedicated Supabase project, Cloudflare Pages project,
 private R2 media bucket and staging-object lifecycle. It also enforces
-Google-only authentication and the mobile callback allow-list. Database tables
+social-provider authentication and the mobile callback allow-list. Database tables
 and policies remain SQL migrations because schema history is safer and easier
 to review outside Terraform state.
 

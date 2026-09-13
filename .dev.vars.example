@@ -1,1 +1,4 @@
 GEOAPIFY_API_KEY=your-geoapify-api-key
+# Public policy contact. Leave unset until the operator details and text are reviewed.
+APP_OPERATOR_NAME=
+SUPPORT_EMAIL=

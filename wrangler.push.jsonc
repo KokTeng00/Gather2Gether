@@ -17,6 +17,7 @@
   },
   "vars": {
     "SUPABASE_URL": "https://zpxwzpdjyvvbpywbrnpr.supabase.co",
-    "FIREBASE_PROJECT_ID": "replace-with-firebase-project-id"
+    "REMOTE_PUSH_ENABLED": "false",
+    "FIREBASE_PROJECT_ID": "gather2gether-5a108"
   }
 }

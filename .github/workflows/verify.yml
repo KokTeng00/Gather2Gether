@@ -39,7 +39,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run check:repository
       - run: npm run test:edge
       - run: npm run check:edge
       - run: npm run check:assistant
       - run: npm run check:push
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - run: python3 scripts/check_database.py

@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:gather2gether/core/support/support_links.dart';
 import 'package:gather2gether/core/theme/app_settings.dart';
 import 'package:gather2gether/core/theme/app_settings_picker.dart';
 import 'package:gather2gether/core/theme/appearance_controller.dart';
@@ -1011,7 +1012,7 @@ class _SecuritySettingsScreen extends StatelessWidget {
                       title: 'Keep your account secure',
                       description: hasPasswordSignIn
                           ? 'Manage your password and review how this device protects your session.'
-                          : 'Review your Google sign-in and how this device protects your session.',
+                          : 'Review your account sign-in and how this device protects your session.',
                     ),
                     const SizedBox(height: 24),
                     const AppSettingsHeading('Sign-in security'),
@@ -1036,9 +1037,9 @@ class _SecuritySettingsScreen extends StatelessWidget {
                           const _SettingsInformationRow(
                             icon: CupertinoIcons
                                 .person_crop_circle_badge_checkmark,
-                            title: 'Google sign-in',
+                            title: 'Account sign-in',
                             value:
-                                'Your sign-in password is managed by your Google Account.',
+                                'Your sign-in provider manages your password. Gather2Gether does not receive it.',
                           ),
                       ],
                     ),
@@ -1399,6 +1400,8 @@ class _AboutScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 28),
+                    const SupportLinks(),
+                    const SizedBox(height: 14),
                     AppSurface(
                       borderRadius: 18,
                       padding: const EdgeInsets.all(18),

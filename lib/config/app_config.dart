@@ -2,6 +2,11 @@ class AppConfig {
   const AppConfig._();
 
   static const authCallbackUrl = 'gather2gether://login-callback';
+  static const appleSignInEnabled = bool.fromEnvironment(
+    'APPLE_SIGN_IN_ENABLED',
+  );
+  static const remotePushEnabled = bool.fromEnvironment('REMOTE_PUSH_ENABLED');
+  static Uri publicPage(String path) => Uri.parse(edgeApiUrl).resolve('/$path');
 
   static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   static const supabasePublishableKey = String.fromEnvironment(

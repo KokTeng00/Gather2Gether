@@ -14,3 +14,8 @@ supabase_region          = "eu-west-1"
 
 google_oauth_client_id     = "replace-with-google-web-client-id.apps.googleusercontent.com"
 google_oauth_client_secret = "replace-with-google-web-client-secret"
+
+# Configure in Apple Developer before enabling an iOS beta.
+apple_oauth_enabled       = false
+apple_oauth_client_id     = ""
+apple_oauth_client_secret = ""

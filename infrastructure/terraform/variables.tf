@@ -74,3 +74,22 @@ variable "production_branch" {
   type        = string
   default     = "main"
 }
+
+variable "apple_oauth_enabled" {
+  description = "Enable only after configuring Sign in with Apple in Apple Developer."
+  type        = bool
+  default     = false
+}
+
+variable "apple_oauth_client_id" {
+  description = "Apple Services ID for the browser OAuth flow through Supabase."
+  type        = string
+  default     = ""
+}
+
+variable "apple_oauth_client_secret" {
+  description = "Apple OAuth client-secret JWT; rotate before its six-month expiry."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

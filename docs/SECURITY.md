@@ -106,7 +106,7 @@
   moderation, profile, and hosting mutations still require the live API.
 - Auth sessions use Android Keystore encryption and iOS Keychain.
 - Hosted Supabase Auth disables email/password authentication; the app exposes
-  only Google OAuth and creates profiles after the first successful Google
+  Google OAuth, plus Apple OAuth when configured, and creates profiles after the first successful social
   sign-in.
 - Android cloud backup is disabled for encrypted auth material.
 - Cloudflare serves HSTS, CSP, anti-framing, MIME-sniffing, referrer, and
@@ -181,7 +181,7 @@ project's database password or JWT secret.
 
 ## Before public launch
 
-- Configure custom SMTP and verify confirmation/reset email flows.
+- Verify Google and (for iOS) Apple sign-in, including fresh-install callbacks.
 - Enable Supabase CAPTCHA and review Auth rate limits.
 - Require MFA and short-lived sessions for every moderator account before
   assigning the moderator role in production.
@@ -191,6 +191,8 @@ project's database password or JWT secret.
   production alerts; verify PII scrubbing, access control, sampling, and
   retention limits in that sink.
 - Publish privacy, safety, acceptable-use, and data-deletion policies.
+  Draft routes are implemented at `/privacy`, `/terms`, `/account-deletion` and
+  `/support`; they return 503 until public operator/contact details are configured.
 - Perform dependency, RLS, and abuse-case reviews before each release.
 - Add per-user Cloudflare rate-limit bindings before opening registration at
   scale; database capacity checks must remain authoritative because edge rate

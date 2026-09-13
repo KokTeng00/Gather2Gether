@@ -6,7 +6,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "check:repository": "node scripts/check_repository.mjs",
+    "check:beta": "npm run check:repository && node scripts/check_beta_release.mjs",
     "test:edge": "node --test edge_test/*.test.mjs",
+    "test:db": "python3 scripts/check_database.py",
     "check:edge": "wrangler pages functions build --outdir .wrangler/functions-build",
     "check:assistant": "wrangler deploy --config wrangler.assistant.jsonc --dry-run --outdir .wrangler/assistant-build",
     "check:push": "wrangler deploy --config wrangler.push.jsonc --dry-run --outdir .wrangler/push-build",

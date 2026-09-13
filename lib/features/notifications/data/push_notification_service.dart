@@ -96,6 +96,7 @@ class PushNotificationService {
   }
 
   Future<bool> _initializeOnce() async {
+    if (!AppConfig.remotePushEnabled) return false;
     final options = _firebaseOptions;
     if (options == null) return false;
     if (Firebase.apps.isEmpty) {

@@ -1,10 +1,14 @@
 const INVITE_PATH = /^\/invite\/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/?$/i;
 
+import {publicInformationResponse} from '../workers/public-information.js';
+
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 export function onRequest(context) {
   const request = context?.request;
   const url = new URL(request?.url ?? 'https://gather2gether.invalid/');
+  const information = publicInformationResponse(url.pathname, context?.env, request?.method);
+  if (information) return information;
   const invite = INVITE_PATH.exec(url.pathname);
   if ((request?.method ?? 'GET') === 'GET' && invite !== null) {
     return invitation(invite[1].toLowerCase(), context?.env);

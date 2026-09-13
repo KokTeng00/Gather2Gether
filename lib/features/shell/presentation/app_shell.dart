@@ -340,27 +340,35 @@ class AppNavigationBar extends StatelessWidget {
     child: NavigationBar(
       selectedIndex: selectedIndex,
       onDestinationSelected: onDestinationSelected,
-      destinations: const [
-        NavigationDestination(
-          icon: Icon(CupertinoIcons.location),
-          selectedIcon: Icon(CupertinoIcons.location_fill),
-          label: 'Discover',
-        ),
-        NavigationDestination(
-          icon: Icon(CupertinoIcons.calendar),
-          selectedIcon: Icon(CupertinoIcons.calendar_today),
-          label: 'Plans',
-        ),
-        NavigationDestination(
-          icon: Icon(CupertinoIcons.chat_bubble_2),
-          selectedIcon: Icon(CupertinoIcons.chat_bubble_2_fill),
-          label: 'Community',
-        ),
-        NavigationDestination(
-          icon: Icon(CupertinoIcons.person_crop_circle),
-          selectedIcon: Icon(CupertinoIcons.person_crop_circle_fill),
-          label: 'You',
-        ),
+      destinations: [
+        for (final destination in const [
+          NavigationDestination(
+            icon: Icon(CupertinoIcons.location),
+            selectedIcon: Icon(CupertinoIcons.location_fill),
+            label: 'Discover',
+          ),
+          NavigationDestination(
+            icon: Icon(CupertinoIcons.calendar),
+            selectedIcon: Icon(CupertinoIcons.calendar_today),
+            label: 'Plans',
+          ),
+          NavigationDestination(
+            icon: Icon(CupertinoIcons.chat_bubble_2),
+            selectedIcon: Icon(CupertinoIcons.chat_bubble_2_fill),
+            label: 'Community',
+          ),
+          NavigationDestination(
+            icon: Icon(CupertinoIcons.person_crop_circle),
+            selectedIcon: Icon(CupertinoIcons.person_crop_circle_fill),
+            label: 'You',
+          ),
+        ])
+          DefaultTextStyle.merge(
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            child: destination,
+          ),
       ],
     ),
   );

@@ -5,6 +5,7 @@ import {deliverPushBatch} from '../workers/push-dispatcher.js';
 
 const originalFetch = globalThis.fetch;
 const env = {
+  REMOTE_PUSH_ENABLED: 'true',
   SUPABASE_URL: 'https://project.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key-that-is-long-enough-for-validation',
   FIREBASE_PROJECT_ID: 'gather2gether-test',
@@ -25,6 +26,19 @@ const delivery = {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+test('disabled remote push never claims notifications or contacts providers', async () => {
+  globalThis.fetch = async () => { throw new Error('Unexpected network request'); };
+  const result = await deliverPushBatch({REMOTE_PUSH_ENABLED: 'false'}, {
+    rpc: async () => { throw new Error('Unexpected outbox claim'); },
+  });
+  assert.deepEqual(result, {claimed: 0, delivered: 0, disabled: true});
+});
+
+test('enabled remote push rejects placeholder project IDs before claiming work', async () => {
+  await assert.rejects(deliverPushBatch({...env, FIREBASE_PROJECT_ID: 'replace-with-project'}),
+    /configuration is invalid/);
 });
 
 test('dispatcher sends a claimed notification and acknowledges it', async () => {
