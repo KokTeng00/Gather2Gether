@@ -1,4 +1,5 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
+import { BodyTooLargeError, readBoundedText } from '../_shared/http-body.js'
 
 const model = new Supabase.ai.Session('gte-small')
 const encoder = new TextEncoder()
@@ -7,15 +8,13 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 })
   }
-  const length = Number(request.headers.get('content-length') ?? 0)
-  if (Number.isFinite(length) && length > 16 * 1024) {
-    return Response.json({ error: 'request_too_large' }, { status: 413 })
-  }
-
   let body: unknown
   try {
-    body = await request.json()
-  } catch {
+    body = JSON.parse(await readBoundedText(request, 16 * 1024))
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      return Response.json({ error: 'request_too_large' }, { status: 413 })
+    }
     return Response.json({ error: 'invalid_json' }, { status: 400 })
   }
   if (!body || Array.isArray(body) || typeof body !== 'object') {

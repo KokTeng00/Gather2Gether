@@ -21,7 +21,9 @@ jobs:
       - uses: flutter-actions/setup-flutter@v4
         with:
           channel: stable
-          version: latest
+          # Match the SDK used for local builds; formatter/framework upgrades
+          # must be tested explicitly instead of arriving on every push.
+          version: '3.38.5'
           cache: true
           cache-sdk: true
       - run: flutter pub get
@@ -40,6 +42,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check:repository
+      - run: npm audit --audit-level=high
       - run: npm run test:edge
       - run: npm run check:edge
       - run: npm run check:assistant

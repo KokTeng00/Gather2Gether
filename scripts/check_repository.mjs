@@ -6,9 +6,16 @@ const files = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--
   encoding: 'utf8',
 }).split('\0').filter(file => file && existsSync(file));
 const forbidden = files.filter(file => {
-  if (/(?:^|\/)[^/]*example[^/]*$/.test(file)) return false;
+  // Only these reviewed templates are exempt. A name containing "example"
+  // must never exempt a saved plan, private directory or signing key.
+  if (new Set([
+    '.env.example.json',
+    '.dev.vars.example',
+    'infrastructure/terraform/terraform.tfvars.example',
+    'ios/Flutter/Signing.xcconfig.example',
+  ]).has(file)) return false;
   return /\.(?:tfplan|tfstate|plan)(?:\.|$)/.test(file) ||
-    /(?:^|\/)(?:terraform\.tfvars|key\.properties|\.env(?:\..+)?|\.dev\.vars(?:\..+)?|\.secrets)(?:\/|$)/.test(file) ||
+    /(?:^|\/)(?:[^/]+\.tfvars(?:\.json)?|key\.properties|\.env(?:\..+)?|\.dev\.vars(?:\..+)?|\.secrets)(?:\/|$)/.test(file) ||
     /\.(?:jks|keystore|p8|p12|mobileprovision)$/.test(file);
 });
 if (forbidden.length) {

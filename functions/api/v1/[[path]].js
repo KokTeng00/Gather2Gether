@@ -1,3 +1,5 @@
+import {BodyTooLargeError, readBoundedText} from '../../../supabase/functions/_shared/http-body.js';
+
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_MEDIA_BYTES = 5 * 1024 * 1024;
 const MAX_PLACE_RESPONSE_BYTES = 128 * 1024;
@@ -2654,6 +2656,7 @@ function mappedSupabaseError(status, payload) {
     assistant_disabled: [403, 'assistant_disabled', 'The assistant is disabled in your settings.'],
     assistant_rate_limited: [429, 'assistant_rate_limited', 'Please wait a moment before sending another message.'],
     invalid_report_reason: [400, 'invalid_report_reason', 'Report reason is invalid.'],
+    report_rate_limited: [429, 'report_rate_limited', 'You are submitting reports too quickly. Please wait and try again.'],
     cannot_report_own_content: [400, 'cannot_report_own_content', 'You cannot report your own content.'],
     permission_denied: [403, 'permission_denied', 'You do not have permission for this action.'],
   };
@@ -2665,22 +2668,18 @@ function mappedSupabaseError(status, payload) {
 }
 
 async function jsonBody(request) {
-  const contentLength = Number(request.headers.get('Content-Length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
-    throw new ApiError(413, 'request_too_large', 'Request body is too large.');
-  }
-  if (!(request.headers.get('Content-Type') ?? '').toLowerCase().includes('application/json')) {
+  if ((request.headers.get('Content-Type') ?? '').split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
     throw new ApiError(415, 'json_required', 'Content-Type must be application/json.');
   }
-  const text = await request.text();
-  if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) {
-    throw new ApiError(413, 'request_too_large', 'Request body is too large.');
-  }
   try {
+    const text = await readBoundedText(request, MAX_BODY_BYTES);
     const body = JSON.parse(text);
     if (!body || Array.isArray(body) || typeof body !== 'object') throw new Error();
     return body;
-  } catch (_) {
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      throw new ApiError(413, 'request_too_large', 'Request body is too large.');
+    }
     throw new ApiError(400, 'invalid_json', 'Request body must be a JSON object.');
   }
 }

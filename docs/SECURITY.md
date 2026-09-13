@@ -12,6 +12,14 @@
 - Event operations pass through a Cloudflare Pages Function that verifies the
   Supabase session, constrains request size and fields, and maps backend errors
   to a small safe error vocabulary.
+- JSON bodies are bounded while streaming, including requests with missing or
+  inaccurate Content-Length. The API, private model Worker and embedding
+  function stop reading and cancel the stream when their byte limit is exceeded.
+- Event report inserts grant only reporter, event and reason columns to clients.
+  A database trigger checks the authenticated reporter and event visibility,
+  rejects reports of the member's own managed events, preserves server-owned
+  status/timestamps, makes retries idempotent, and limits new reports to 20 per
+  member per hour under a transaction lock.
 - Forum tables deny direct client access. Fixed-signature RPCs enforce post and
   reply length, per-user database rate limits, locked discussions, mutual block
   filtering, duplicate-report prevention, and a private moderation queue.
@@ -95,8 +103,9 @@
   use strict input and output schemas, bounded text, per-member quotas, and the
   same private model-service boundary. Moderation triage only orders an existing
   queue; it cannot mutate content, reports, or accounts.
-- Moderator access is derived from authenticated JWT app metadata and checked
-  again inside fixed database functions. Every report action records the actor,
+- Moderator access requires trusted JWT app metadata and an MFA-verified `aal2`
+  session, checked inside every privileged database function. The mobile app
+  provides TOTP enrollment/challenge before opening moderation. Every report action records the actor,
   action, target, and note in an append-only audit table unavailable to clients.
 - Data export is owner-scoped and includes the member's recommendation signals
   and controls for transparency, while deliberately excluding push tokens,
@@ -183,8 +192,9 @@ project's database password or JWT secret.
 
 - Verify Google and (for iOS) Apple sign-in, including fresh-install callbacks.
 - Enable Supabase CAPTCHA and review Auth rate limits.
-- Require MFA and short-lived sessions for every moderator account before
-  assigning the moderator role in production.
+- Enable and test TOTP enrollment and verification for moderator accounts, and
+  review their session lifetime and recovery process. The database denies
+  moderation without an `aal2` session even when the account has a trusted role.
 - Add image safety scanning and an image-aware moderation workflow before
   opening photo posting to a large public audience.
 - Route the structured Cloudflare logs and standalone Worker traces to
