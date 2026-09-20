@@ -7,6 +7,7 @@ import 'package:gather2gether/features/profile/domain/profile_stats.dart';
 import 'package:gather2gether/features/profile/domain/profile_connection.dart';
 import 'package:gather2gether/features/profile/domain/public_profile.dart';
 import 'package:gather2gether/features/profile/domain/member_controls.dart';
+import 'package:gather2gether/features/profile/domain/moderator_verification.dart';
 import 'package:gather2gether/features/profile/domain/user_profile.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -444,6 +445,51 @@ class ProfileRepository {
       await _edgeRequest('GET', 'moderation/status'),
     );
     return payload['moderator'] == true;
+  }
+
+  // This hint only exposes the verification entry point. The database checks
+  // both the trusted role and the current session's assurance level on every
+  // moderation operation.
+  bool get hasModeratorRole => const [
+    'moderator',
+    'admin',
+  ].contains(_client.auth.currentUser?.appMetadata['role']);
+
+  Future<ModeratorVerification> startModeratorVerification() async {
+    if (!hasModeratorRole) throw StateError('Moderator access is required.');
+    final factors = await _client.auth.mfa.listFactors();
+    if (!hasModeratorRole) throw StateError('Moderator access is required.');
+    if (factors.totp.isNotEmpty) {
+      return ModeratorVerification(factorId: factors.totp.first.id);
+    }
+    const name = 'Gather2Gether moderation';
+    // Clean up only this flow's unfinished enrollments; verified factors and
+    // factors created elsewhere are never removed.
+    for (final factor in factors.all) {
+      if (factor.factorType == FactorType.totp &&
+          factor.status == FactorStatus.unverified &&
+          factor.friendlyName == name) {
+        await _client.auth.mfa.unenroll(factor.id);
+      }
+    }
+    final enrolled = await _client.auth.mfa.enroll(
+      factorType: FactorType.totp,
+      issuer: 'Gather2Gether',
+      friendlyName: name,
+    );
+    final secret = enrolled.totp?.secret;
+    if (secret == null || secret.isEmpty) {
+      throw const FormatException('Authenticator setup is unavailable.');
+    }
+    return ModeratorVerification(factorId: enrolled.id, setupSecret: secret);
+  }
+
+  Future<void> verifyModeratorCode(String factorId, String code) async {
+    if (!hasModeratorRole) throw StateError('Moderator access is required.');
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      throw const FormatException('Enter a six-digit code.');
+    }
+    await _client.auth.mfa.challengeAndVerify(factorId: factorId, code: code);
   }
 
   Future<Map<String, int>> moderationOverview() async {

@@ -32,13 +32,14 @@ android/local.properties
 key.properties
 
 # Local configuration and infrastructure secrets
-.env.json
-.env.*.json
+.env
+.env.*
 !.env.example.json
 .env.deploy
 .dev.vars*
 !.dev.vars.example
-terraform.tfvars
+*.tfvars
+*.tfvars.json
 *.tfstate
 *.tfstate.*
 *.tfplan
@@ -53,6 +54,9 @@ crashlytics-build.properties
 
 # Node / Cloudflare tooling dependencies
 node_modules/
+
+# Python test runner cache
+__pycache__/
 
 # Local deployment tool caches
 .wrangler/

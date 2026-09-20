@@ -19,6 +19,7 @@ import 'package:gather2gether/features/profile/presentation/profile_widgets.dart
 import 'package:gather2gether/features/profile/presentation/notification_preferences_screen.dart';
 import 'package:gather2gether/features/profile/presentation/recommendation_settings_screen.dart';
 import 'package:gather2gether/features/profile/presentation/moderation_dashboard_screen.dart';
+import 'package:gather2gether/features/profile/presentation/moderator_verification_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileSettingsScreen extends StatefulWidget {
@@ -54,6 +55,7 @@ class ProfileSettingsScreen extends StatefulWidget {
 class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
   late UserProfile _profile;
   bool _isModerator = false;
+  bool _needsModeratorVerification = false;
 
   @override
   void initState() {
@@ -66,6 +68,10 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     try {
       final moderator = await widget.repository.isModerator();
       if (mounted) setState(() => _isModerator = moderator);
+      if (!moderator) {
+        final hasRole = widget.repository.hasModeratorRole;
+        if (mounted) setState(() => _needsModeratorVerification = hasRole);
+      }
     } catch (_) {}
   }
 
@@ -153,11 +159,25 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
     ),
   );
 
-  Future<void> _openModeration() => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) => ModerationDashboardScreen(repository: widget.repository),
-    ),
-  );
+  Future<void> _openModeration() async {
+    if (!_isModerator) {
+      final verified = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) =>
+              ModeratorVerificationScreen(repository: widget.repository),
+        ),
+      );
+      if (!mounted || verified != true) return;
+      await _loadModeratorStatus();
+      if (!mounted || !_isModerator) return;
+    }
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) =>
+            ModerationDashboardScreen(repository: widget.repository),
+      ),
+    );
+  }
 
   String? _avatarUrlFor(UserProfile profile) {
     if (!profile.hasAvatar) return null;
@@ -310,11 +330,13 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
                     const SizedBox(height: 24),
                     AppSettingsGroup(
                       children: [
-                        if (_isModerator)
+                        if (_isModerator || _needsModeratorVerification)
                           AppSettingsRow(
                             key: const Key('settings-moderation-row'),
                             icon: CupertinoIcons.shield,
-                            title: 'Moderation dashboard',
+                            title: _isModerator
+                                ? 'Moderation dashboard'
+                                : 'Verify moderator access',
                             onTap: _openModeration,
                           ),
                         AppSettingsRow(

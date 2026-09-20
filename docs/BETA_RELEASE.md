@@ -17,19 +17,54 @@ scoped force-with-lease. All 15 retained commits were checked; the tip's only
 tree change was removal of the plan. The local branch now matches the cleaned
 history, with all pending beta edits preserved. Local stashes, Codex checkpoints,
 reflogs, old clones and cached copies may still retain the previous commits.
-Credential replacement is therefore still required.
+Credential replacement is therefore required even after history cleanup. As of
+2026-09-13, the Supabase management credential has been replaced, the database
+password successfully rotated, the Cloudflare deployment token rolled, and the
+Google OAuth client secret replaced. The old Google secret is disabled and
+rejected by Google; an existing user's Google login succeeded after disabling it.
 
 Ignore rules and `npm run
 check:repository` prevent deployment artifacts and private configuration from
 returning to Git; CI runs that check.
 
-A targeted database-password rotation was attempted. Supabase rejected the
-stored management credential with `JWT could not be decoded`; the live password
-was not changed. Local Terraform state was reconciled with the unchanged project.
-Do not use the old saved plan to deploy.
+A first database-password rotation attempt failed because the stored management
+credential was invalid. On 2026-09-13, a new project-scoped management token was
+created with the owner's approval, expiring **2027-09-12**, and saved directly into
+ignored local Terraform configuration with mode 600. A freshly inspected targeted
+plan then rotated the password successfully without recreating the project.
+The new password connects with verified TLS; the previous password is rejected.
+Terraform's project, password resource and sensitive output agree. Do not reuse
+old saved plans to deploy.
+
+Production now has all 28 migrations, including event audiences, report protections
+and administrator AAL2 enforcement. Email sign-in is disabled, Google remains
+enabled, and TOTP is enabled. Database SSL enforcement is active and a non-TLS
+connection is rejected. A private database backup was created before migrations;
+a full restore drill and real-device Google/MFA checks are still pending. See
+[the security review](SECURITY_REVIEW_2026-09-13.md) for evidence and remaining limits.
+The embedding function is deployed as v4 with bounded requests and explicit user
+session validation. Public-key-only calls previously returned embeddings; they now
+return 401, as do public keys used as Bearer tokens and forged user JWTs.
+
+The Cloudflare Pages API and assistant model Worker were also deployed from the
+reviewed security-fix commit on 2026-09-13. Production health and anonymous/browser
+API rejection checks passed. The rolled Cloudflare token retains its existing
+Pages/R2 permissions and no-expiration setting; unrelated tokens were untouched.
+The new Google secret is stored in both Supabase's Google provider and ignored
+local Terraform variables. Client ID, redirect URI and OAuth scopes are unchanged.
+The browser-to-Supabase login was verified from the existing user's updated
+sign-in timestamp, with user and profile counts unchanged. Native callback
+handoff and the mobile PKCE/session flow still require real-device verification.
+
+For future rotations:
 
 1. Replace the Supabase personal access token through the account dashboard and
    save it directly into ignored deployment configuration. Do not paste it into chat.
+   The current repair token is limited to this project. It does not include API key
+   or billing reads used by the provider's full refresh, nor broader project writes
+   required by some Auth updates. Do not broaden it to all-account access to work
+   around those restrictions. Use a separately reviewed permission change or the
+   dashboard for those operations.
 2. Recreate the targeted rotation plan with a valid token, inspect it, and apply:
 
    ```sh
@@ -76,6 +111,29 @@ command-line tools on this Mac were installed from the official download and
 verified against its published SHA-256 before the successful build.
 Release Gradle tasks fail if signing material is missing. Debug builds do not
 require it. Increment the build number before uploading subsequent bundles.
+
+For a directly installable APK for Android testing, run from the repository root:
+
+```sh
+flutter build apk --release --dart-define-from-file=.env.json --build-number=2
+```
+
+The output is `build/app/outputs/flutter-apk/app-release.apk`. On 2026-09-13,
+version **1.0.0 (2)** was built and copied to
+`build/releases/Gather2Gether-1.0.0-build2.apk` for sharing (89.9 MB).
+This universal APK contains ARM64, ARM32 and x86_64 libraries and requires
+Android 7.0/API 24 or newer. APK signature verification passed, the certificate
+matches the existing release keystore, and ZIP page alignment verification
+passed. A SHA-256 sidecar and build metadata are in the same directory.
+These checks do not replace installing and testing on a physical Android phone.
+
+Share the APK file through a file download link or directly with testers. They
+can open it on Android and allow installation from that source when prompted.
+APK files cannot be installed on iOS. Keep the existing signing key for updates
+and use a higher build number for the next release. Share only the APK, never
+the signing material or private deployment configuration. Remote push is still
+disabled and Firebase remains in `gather2gether-5a108`; the proposed Firebase
+project consolidation was cancelled by the owner.
 
 ## Apple sign-in and signing
 
@@ -138,8 +196,7 @@ The push Worker is deployed to the existing personal Cloudflare account with
 `FIREBASE_PRIVATE_KEY` secrets are configured. Google authentication and an
 FCM `validate_only` request succeeded; no message was sent. The remaining
 server requirement is `SUPABASE_SERVICE_ROLE_KEY`, which is not available in
-the local configuration. The in-app browser is at Supabase sign-in; sign in
-with the existing project owner account to continue. Supply the existing server key through the Supabase
+the local configuration. Supply the existing server key through the Supabase
 dashboard and store it only as a Worker secret before enabling delivery.
 
 Set `REMOTE_PUSH_ENABLED` to `true` in the app and dispatcher only when the
@@ -183,7 +240,9 @@ and anonymous/browser rejection checks passed without creating test users.
 All 26 migrations and all 8 SQL regression suites passed in a disposable
 PostgreSQL 17 container using the official Supabase Auth schema. The two native
 map integration tests also passed on the iPhone 17 simulator.
-These checks do not resolve the credential incident or the external setup below.
+Those initial checks did not resolve the credential incident. The subsequent
+rotations and production deployments above address the recorded credentials and
+backend fixes; the remaining external setup and device checks still apply.
 
 
 Run `flutter analyze`, `flutter test`, `npm run test:edge`, `npm run check:edge`,

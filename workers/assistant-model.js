@@ -1,3 +1,5 @@
+import {readBoundedText} from '../supabase/functions/_shared/http-body.js';
+
 const MAX_REQUEST_BYTES = 96 * 1024;
 const OPENROUTER_MODEL = 'google/gemini-3.1-flash-lite';
 const OPENROUTER_RERANK_MODEL = 'voyageai/rerank-2.5';
@@ -447,15 +449,7 @@ function structuredToolConfiguration(path, input) {
 }
 
 async function readJson(request) {
-  const contentLength = Number(request.headers.get('Content-Length') ?? 0);
-  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
-    throw new Error('request_too_large');
-  }
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > MAX_REQUEST_BYTES) {
-    throw new Error('request_too_large');
-  }
-  return JSON.parse(body);
+  return JSON.parse(await readBoundedText(request, MAX_REQUEST_BYTES));
 }
 
 async function readApiKey(env) {

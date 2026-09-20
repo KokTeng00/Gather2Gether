@@ -189,7 +189,7 @@ $$;
 
 select set_config(
   'request.jwt.claims',
-  '{"sub":"50000000-0000-4000-8000-000000000003","role":"authenticated","app_metadata":{"role":"moderator"}}',
+  '{"sub":"50000000-0000-4000-8000-000000000003","role":"authenticated","aal":"aal2","app_metadata":{"role":"moderator"}}',
   true
 );
 select set_config(

@@ -199,7 +199,7 @@ the shortlist. The request denies providers that enable data collection.
 
 Requirements:
 
-- Flutter 3.38+ and Dart 3.10+
+- Flutter 3.38.5 and Dart 3.10.4 (the SDK pinned in CI)
 - Android Studio/SDK for Android
 - JDK 21+ for Android builds (required by the MapLibre Android plugin)
 - A full Xcode installation for iOS 15+ builds
@@ -337,11 +337,26 @@ produce a duplicate notification.
 
 ### Moderator setup
 
-The moderation dashboard appears only when the signed-in user's trusted JWT
-`app_metadata.role` is `moderator` or `admin`; the database repeats that check
-for every queue read and action. Assign this metadata only through a trusted
-Supabase admin environment after requiring MFA for that account. Never accept a
-moderator role from user-editable profile fields or `user_metadata`.
+The moderation dashboard requires both a trusted JWT `app_metadata.role` of
+`moderator` or `admin` and an MFA-verified `aal2` session. The database repeats
+both checks for every queue read, action, and AI triage request. Assign roles
+only through a trusted Supabase admin environment, never through profile fields
+or `user_metadata`.
+
+Enable Supabase Auth TOTP enrollment and verification. A privileged member opens
+Settings → Verify moderator access, adds the displayed setup key to an
+authenticator if needed, and enters a six-digit code. Existing verified TOTP
+factors are reused. The setup key is held only in the screen's memory, hidden
+until requested, and never logged or cached. Complete a new-account enrollment
+and a returning-account challenge on a real device before enabling production
+moderation. Protect access to the authenticator and arrange operator-assisted
+account recovery; this flow cannot recover a lost verified factor.
+
+The security release adds `20260913000100_report_security.sql` and
+`20260913000200_moderator_mfa.sql`. Apply the migrations, deploy the model Worker,
+Pages API and Supabase `embed` function, then release the mobile verification UI
+together. Older clients cannot open moderation after MFA enforcement until they
+can establish an `aal2` session. Ordinary member access is unchanged.
 
 ## Verification
 
@@ -365,8 +380,11 @@ migrations and run every SQL suite in a disposable database:
 npm run test:db
 ```
 
-The runner uses pinned official Supabase PostgreSQL/Auth images, creates only
-local fixtures, and removes its container afterward. CI runs the same check;
+The runner uses official Supabase PostgreSQL/Auth images pinned by content
+digest, creates only local fixtures, and removes its container afterward. Image
+downloads use bounded retries and the matching official Docker Hub/ECR mirrors
+to handle registry throttling; running containers have no external network.
+CI runs the same check plus the download recovery tests;
 no live project credentials are needed.
 
 The planning release uses `supabase/migrations/20260912000100_event_planning.sql`.
@@ -392,8 +410,11 @@ npm run check:production
 ```
 
 `.github/workflows/verify.yml` runs formatting, analysis, Flutter tests, edge
-tests, and all three Cloudflare dry-run builds for every pull request and main
-branch push.
+tests, a high-severity npm vulnerability gate, database regressions, and all three
+Cloudflare dry-run builds for every pull request and main branch push. Flutter
+is pinned to 3.38.5 so CI and local formatter/layout behavior agree. Upgrade the
+SDK deliberately in both places and rerun the full suite, including narrow-screen
+navigation tests; do not switch CI alone back to `latest`.
 
 The disposable live-system smoke test creates two temporary users and verifies
 Cloudflare Functions, Supabase auth/profile creation, event discovery,
